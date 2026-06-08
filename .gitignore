@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+target/
+.DS_Store
+Thumbs.db
+server/node_modules/
