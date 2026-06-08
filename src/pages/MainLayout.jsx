@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut } from "lucide-react";
 import {
   GameController, User, Trophy, ShoppingBag,
   Newspaper, Headset, UsersThree, SignOut,
@@ -47,25 +46,39 @@ export default function MainLayout({ user, onLogout }) {
     >
       <Titlebar />
 
-      {/* ── Navbar ── */}
-      <div className="flex items-center justify-between h-11 bg-black border-b border-white/[0.05] flex-shrink-0 px-3">
-        <div className="flex items-center gap-0.5 flex-1">
+      {/* ── Floating navbar по центру ── */}
+      <div className="relative flex items-center justify-center h-14 flex-shrink-0 px-4">
+        {/* Центральная таблетка */}
+        <div
+          className="flex items-center gap-1 px-2 py-1.5 rounded-2xl"
+          style={{
+            background: "rgba(18,18,18,0.95)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
+            backdropFilter: "blur(20px)",
+          }}
+        >
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const active = page === id;
             return (
               <button
                 key={id}
                 onClick={() => setPage(id)}
-                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium tracking-wide transition-all duration-150 whitespace-nowrap ${
-                  active ? "text-white bg-white/[0.07]" : "text-white/35 hover:text-white/65 hover:bg-white/[0.04]"
-                }`}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium tracking-wide transition-all duration-150 whitespace-nowrap"
+                style={active
+                  ? { color: "#fff", background: "rgba(255,255,255,0.1)" }
+                  : { color: "rgba(255,255,255,0.35)" }
+                }
+                onMouseEnter={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
               >
                 <Icon size={13} weight={active ? "fill" : "regular"} />
                 {label}
                 {active && (
                   <motion.div
-                    layoutId="nav-pill"
-                    className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-blue-500 rounded-full"
+                    layoutId="nav-active"
+                    className="absolute inset-0 rounded-xl"
+                    style={{ background: "rgba(255,255,255,0.07)" }}
                     transition={{ type: "spring", stiffness: 400, damping: 35 }}
                   />
                 )}
@@ -74,23 +87,32 @@ export default function MainLayout({ user, onLogout }) {
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 pl-2">
-          <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 py-1.5">
+        {/* Правая группа — абсолютно позиционирована */}
+        <div className="absolute right-4 flex items-center gap-1.5">
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+            style={{ background: "rgba(255,255,255,0.04)" }}
+          >
             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
             <span className="text-[12px] font-bold text-white tabular-nums">{user.balance ?? 0}</span>
-            <span className="text-[10px] text-white/25">СБТ</span>
+            <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>СБТ</span>
           </div>
           <button
             onClick={() => setShowCommunity(v => !v)}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 ${
-              showCommunity ? "bg-blue-600 text-white" : "text-white/35 hover:text-white/70 hover:bg-white/[0.06]"
-            }`}
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150"
+            style={showCommunity
+              ? { background: "#2563EB", color: "#fff" }
+              : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }
+            }
           >
             <UsersThree size={15} weight={showCommunity ? "fill" : "regular"} />
           </button>
           <button
             onClick={onLogout}
-            className="w-8 h-8 rounded-lg text-white/35 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all duration-150"
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150"
+            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "rgba(239,68,68,0.9)"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
           >
             <SignOut size={15} />
           </button>

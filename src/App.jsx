@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import LoginPage from "./pages/LoginPage.jsx";
 import MainLayout from "./pages/MainLayout.jsx";
+import CustomCursor from "./components/CustomCursor.jsx";
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -24,12 +25,15 @@ export default function App() {
   };
 
   return (
-    <AnimatePresence mode="wait">
-      {!user ? (
-        <LoginPage key="login" onLogin={handleLogin} />
-      ) : (
-        <MainLayout key="main" user={user} onLogout={handleLogout} />
-      )}
-    </AnimatePresence>
+    <>
+      <CustomCursor />
+      <AnimatePresence mode="wait">
+        {!user ? (
+          <LoginPage key="login" onLogin={handleLogin} />
+        ) : (
+          <MainLayout key="main" user={user} onLogout={handleLogout} />
+        )}
+      </AnimatePresence>
+    </>
   );
 }

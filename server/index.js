@@ -1,3 +1,4 @@
+const fetch = require("node-fetch");
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
@@ -7,9 +8,10 @@ const fs = require("fs");
 const { WebSocketServer, WebSocket } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
-const BOT_TOKEN = "8507862760:AAFfOVKJRJeVL10WA55nKsTofxmSu2y7GCk";
-const PORT      = 3000;
-const PORT_SSL  = 3443;
+const BOT_TOKEN    = "8507862760:AAFfOVKJRJeVL10WA55nKsTofxmSu2y7GCk";
+const NEWS_CHANNEL = "@sb7games";
+const PORT         = 3000;
+const PORT_SSL     = 3443;
 const ADMIN_USERNAMES = ["efseea"];
 
 const SSL_KEY  = "/etc/ssl/private/sbgames.key";
@@ -253,6 +255,172 @@ function broadcastToTicket(ticketId, excludeUserId, data) {
 function ticketSummary(t) {
   return { id: t.id, category: t.category, username: t.username, status: t.status, createdAt: t.createdAt, preview: t.preview, unread: t.unread || 0 };
 }
+
+// ─── News: парсинг из Telegram канала @sb7games ───────────────────────────────
+let newsCache = [];
+let newsCacheTime = 0;
+
+async function fetchChannelNews() {
+  if (Date.now() - newsCacheTime < 5 * 60 * 1000 && newsCache.length > 0) return newsCache;
+  try {
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=20`;
+    const r = await fetch(url);
+    const d = await r.json();
+    // Ищем сообщения из канала через forwardFrom или chat
+    // Альтернатива — читаем напрямую через getChat + getChatHistory
+    // Для паблик канала используем публичный API
+    const pubUrl = `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?allowed_updates=["channel_post"]&limit=30`;
+    const pr = await fetch(pubUrl);
+    const pd = await pr.json();
+
+    const posts = (pd.result || [])
+      .filter(u => u.channel_post && u.channel_post.chat?.username === "sb7games")
+      .map(u => {
+        const msg = u.channel_post;
+        const text = msg.text || msg.caption || "";
+        const lines = text.split("\n");
+        const title = lines[0]?.slice(0, 80) || "Новость";
+        const date = new Date(msg.date * 1000).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+        return {
+          id: msg.message_id,
+          title,
+          text,
+          date,
+          photo: null, // фото через отдельный getFile если нужно
+        };
+      })
+      .reverse();
+
+    if (posts.length > 0) {
+      newsCache = posts;
+      newsCacheTime = Date.now();
+    }
+    return newsCache;
+  } catch (e) {
+    console.error("fetchChannelNews:", e.message);
+    return newsCache;
+  }
+}
+
+// Альтернатива через публичный парсинг t.me/sb7games
+async function fetchNewsPublic() {
+  if (Date.now() - newsCacheTime < 5 * 60 * 1000 && newsCache.length > 0) return newsCache;
+  try {
+    // Используем rsshub или tgstat
+    const r = await fetch(`https://rsshub.app/telegram/channel/sb7games`, {
+      headers: { "User-Agent": "SBGamesLauncher/1.0" }
+    });
+    if (!r.ok) return newsCache;
+    const xml = await r.text();
+    // Простой парсинг RSS
+    const items = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null) {
+      const block = match[1];
+      const title = (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || [])[1]
+                 || (block.match(/<title>(.*?)<\/title>/) || [])[1] || "Новость";
+      const desc  = (block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/) || [])[1]
+                 || (block.match(/<description>([\s\S]*?)<\/description>/) || [])[1] || "";
+      const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1] || "";
+      // Убираем HTML-теги
+      const cleanDesc = desc.replace(/<[^>]+>/g, "").trim();
+      const cleanTitle = title.replace(/<[^>]+>/g, "").trim();
+      // Ищем картинку
+      const imgMatch = desc.match(/<img[^>]+src="([^"]+)"/);
+      const photo = imgMatch ? imgMatch[1] : null;
+
+      const dateObj = pubDate ? new Date(pubDate) : new Date();
+      const dateStr = dateObj.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+      items.push({ id: items.length + 1, title: cleanTitle, text: cleanDesc.slice(0, 400), date: dateStr, photo });
+      if (items.length >= 12) break;
+    }
+    if (items.length > 0) {
+      newsCache = items;
+      newsCacheTime = Date.now();
+    }
+    return newsCache;
+  } catch (e) {
+    console.error("fetchNewsPublic:", e.message);
+    return newsCache;
+  }
+}
+
+app.get("/news", async (req, res) => {
+  const posts = await fetchNewsPublic();
+  res.json({ posts });
+});
+
+// Обновлять кэш каждые 5 минут
+setInterval(fetchNewsPublic, 5 * 60 * 1000);
+fetchNewsPublic(); // первый запрос при старте
+
+// ─── Telegram Bot — команды для пользователей ────────────────────────────────
+const TelegramBot = require("node-telegram-bot-api");
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+
+bot.onText(/\/start/, async (msg) => {
+  const tgId = String(msg.from.id);
+  const account = accounts.get(tgId);
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: "💰 Мой баланс", callback_data: "balance" }],
+      [{ text: "🎫 Мои обращения", callback_data: "tickets" }],
+      [{ text: "📋 Реквизиты для пополнения", callback_data: "topup" }],
+    ]
+  };
+  const name = account ? `*${account.username}*` : "незнакомец";
+  bot.sendMessage(msg.chat.id,
+    `👋 Привет, ${name}!\n\n🎮 *SB Games Launcher*\n\nВыбери действие:`,
+    { parse_mode: "Markdown", reply_markup: keyboard }
+  );
+});
+
+bot.on("callback_query", async (q) => {
+  const tgId = String(q.from.id);
+  const account = accounts.get(tgId);
+  bot.answerCallbackQuery(q.id);
+
+  if (q.data === "balance") {
+    const bal = account ? account.balance : 0;
+    bot.sendMessage(q.message.chat.id,
+      `💰 *Баланс*\n\nСБТ: \`${bal}\`\n\nДля пополнения нажми кнопку ниже.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "📋 Реквизиты", callback_data: "topup" }]] } }
+    );
+  }
+
+  if (q.data === "topup") {
+    bot.sendMessage(q.message.chat.id,
+      `📋 *Реквизиты для пополнения*\n\n` +
+      `Переведи нужную сумму и напиши в поддержку:\n\n` +
+      `🏦 Сбербанк: \`2202 2020 2020 2020\`\n` +
+      `💳 USDT TRC20: \`Txxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\`\n\n` +
+      `После оплаты отправь чек в поддержку — баланс будет пополнен в течение 10 минут.\n\n` +
+      `_1 СБТ = 1 ₽_`,
+      { parse_mode: "Markdown" }
+    );
+  }
+
+  if (q.data === "tickets") {
+    const userTickets = [...tickets.values()]
+      .filter(t => t.userId === tgId)
+      .slice(-5);
+    if (userTickets.length === 0) {
+      bot.sendMessage(q.message.chat.id, "🎫 У тебя нет активных обращений.");
+      return;
+    }
+    const STATUS_EMOJI = { open: "🟡", answered: "🟢", closed: "⚫" };
+    const text = userTickets.map(t =>
+      `${STATUS_EMOJI[t.status] || "⚪"} #${t.id} — ${t.category}\n_${t.preview}_`
+    ).join("\n\n");
+    bot.sendMessage(q.message.chat.id, `🎫 *Твои обращения:*\n\n${text}`, { parse_mode: "Markdown" });
+  }
+});
+
+bot.on("polling_error", (err) => {
+  if (!err.message?.includes("409")) console.error("[bot]", err.message);
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 // HTTP
