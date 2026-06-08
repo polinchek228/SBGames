@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { UsersThree, ChatCircle, X, UserCirclePlus, Circle, WifiHigh, WifiSlash } from "@phosphor-icons/react";
 
-const WS_URL = "ws://94.26.83.31:3000";
+import { WS_URL } from "../lib/api.js";
 
 // Mock-друзья на случай если нет реальных онлайн
 const MOCK = [

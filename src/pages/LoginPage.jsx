@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Loader2, CheckCircle2, XCircle, AtSign } from "lucide-react";
 import Titlebar from "../components/Titlebar.jsx";
 
-const API_URL = "http://94.26.83.31:3000";
+import { API_URL } from "../lib/api.js";
 const BOT_USERNAME = "sbgamessupport_bot";
 
 // step: "tg" → пользователь логинится через TG Widget

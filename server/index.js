@@ -2,12 +2,18 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 const http = require("http");
+const https = require("https");
+const fs = require("fs");
 const { WebSocketServer, WebSocket } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
 const BOT_TOKEN = "8507862760:AAFfOVKJRJeVL10WA55nKsTofxmSu2y7GCk";
-const PORT = 3000;
-const ADMIN_USERNAMES = ["EFSEEa"]; // lowercase check
+const PORT      = 3000;
+const PORT_SSL  = 3443;
+const ADMIN_USERNAMES = ["efseea"];
+
+const SSL_KEY  = "/etc/ssl/private/sbgames.key";
+const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
 
 const app = express();
 app.use(cors());
@@ -249,6 +255,29 @@ function ticketSummary(t) {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+// HTTP
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`SBGames server :${PORT}  admins: ${ADMIN_USERNAMES.join(", ")}`);
+  console.log(`SBGames HTTP  :${PORT}`);
 });
+
+// HTTPS — для macOS WebKit (ATS блокирует HTTP)
+try {
+  const sslOpts = {
+    key:  fs.readFileSync(SSL_KEY),
+    cert: fs.readFileSync(SSL_CERT),
+  };
+  const httpsServer = https.createServer(sslOpts, app);
+  const wssSSL = new WebSocketServer({ server: httpsServer });
+
+  // Вешаем те же обработчики WS на HTTPS сервер
+  wssSSL.on("connection", (ws) => {
+    // reuse same handler — просто эмитим в основной wss
+    wss.emit("connection", ws);
+  });
+
+  httpsServer.listen(PORT_SSL, "0.0.0.0", () => {
+    console.log(`SBGames HTTPS :${PORT_SSL}`);
+  });
+} catch (e) {
+  console.warn("HTTPS not started (no cert?):", e.message);
+}

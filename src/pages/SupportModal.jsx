@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronDown, Send, Headphones, CheckCheck, Clock } from "lucide-react";
 
-const API_URL = "http://94.26.83.31:3000";
+import { API_URL } from "../lib/api.js";
 
 const CATEGORIES = [
   "Выберите тему...",

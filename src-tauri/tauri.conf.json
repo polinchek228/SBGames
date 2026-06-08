@@ -48,8 +48,7 @@
     "macOS": {
       "minimumSystemVersion": "10.15",
       "signingIdentity": null,
-      "entitlements": "entitlements.plist",
-      "infoPlistPath": "Info.plist"
+      "entitlements": "entitlements.plist"
     },
     "linux": {
       "deb": {

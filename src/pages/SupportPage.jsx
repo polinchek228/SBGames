@@ -5,8 +5,8 @@ import {
   ChevronLeft, Shield, Circle, X, MessageSquare,
 } from "lucide-react";
 
-const API_URL  = "http://94.26.83.31:3000";
-const WS_URL   = "ws://94.26.83.31:3000";
+
+import { API_URL, WS_URL } from "../lib/api.js";
 
 const CATEGORIES = [
   "Технические проблемы",
