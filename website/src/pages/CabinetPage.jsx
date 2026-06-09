@@ -37,7 +37,7 @@ export default function CabinetPage({ user }) {
 
       {/* User card */}
       <div className="rounded-2xl p-6 mb-5 flex items-center gap-5"
-        style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+        style={{ background: "rgba(12,12,12,0.95)" }}
       >
         <div className="w-14 h-14 rounded-xl flex items-center justify-center text-[22px] font-black text-white flex-shrink-0"
           style={{ background: "linear-gradient(135deg,#2563EB,#818cf8)" }}
@@ -72,7 +72,7 @@ export default function CabinetPage({ user }) {
         {/* LEFT: профиль + миры */}
         <div className="flex flex-col gap-4">
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
           >
             <p className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 mb-4"
               style={{ color: "rgba(255,255,255,0.5)" }}
@@ -96,7 +96,7 @@ export default function CabinetPage({ user }) {
           </div>
 
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
           >
             <p className="text-[10px] font-bold tracking-widest uppercase mb-3" style={{ color: "rgba(255,255,255,0.5)" }}>Миры</p>
             <div className="rounded-xl px-3 py-2.5 flex items-center justify-between"
@@ -110,7 +110,7 @@ export default function CabinetPage({ user }) {
 
         {/* CENTER: 3D skin */}
         <div className="rounded-2xl overflow-hidden flex flex-col"
-          style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: "rgba(12,12,12,0.95)" }}
         >
           <div className="px-4 pt-4 pb-2 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export default function CabinetPage({ user }) {
         {/* RIGHT: активность + помощь */}
         <div className="flex flex-col gap-4">
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
           >
             <p className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5 mb-4"
               style={{ color: "rgba(255,255,255,0.5)" }}
@@ -154,7 +154,7 @@ export default function CabinetPage({ user }) {
 
           <Link to="/support"
             className="rounded-2xl p-5 block transition-colors group"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; }}
           >

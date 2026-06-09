@@ -119,7 +119,7 @@ export default function SupportPage({ user }) {
 
         {/* Right: chat / new form */}
         <div className="col-span-2 rounded-2xl overflow-hidden flex flex-col"
-          style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)", minHeight: 400 }}
+          style={{ background: "rgba(12,12,12,0.95)", minHeight: 400 }}
         >
           <AnimatePresence mode="wait">
             {view === "list" && (
@@ -145,7 +145,7 @@ export default function SupportPage({ user }) {
                       className="rounded-xl px-3 py-2 text-left text-[12px] transition-all"
                       style={cat === c
                         ? { background: "rgba(37,99,235,0.2)", border: "1px solid rgba(37,99,235,0.4)", color: "#93c5fd" }
-                        : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.55)" }
+                        : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)" }
                       }
                     >{c}</button>
                   ))}
@@ -207,7 +207,7 @@ export default function SupportPage({ user }) {
                     onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMsg())}
                     placeholder="Напиши сообщение..."
                     className="flex-1 rounded-xl px-4 py-2.5 text-[13px]"
-                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff" }}
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#fff" }}
                   />
                   <button type="submit" disabled={!input.trim()}
                     className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:opacity-30 transition-colors"

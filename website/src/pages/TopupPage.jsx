@@ -42,7 +42,7 @@ export default function TopupPage({ user }) {
           Выбери сумму, способ оплаты и подтверди платёж. Баланс обновится автоматически.
         </p>
         <div className="inline-flex items-center gap-2 mt-3 rounded-xl px-4 py-2"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ background: "rgba(255,255,255,0.05)" }}
         >
           <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>Текущий баланс:</span>
           <span className="text-[13px] font-black text-white tabular-nums">{(user?.balance ?? 0).toLocaleString("ru-RU")}</span>
@@ -56,7 +56,7 @@ export default function TopupPage({ user }) {
 
           {/* Amount */}
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
               Сумма пополнения
@@ -91,7 +91,7 @@ export default function TopupPage({ user }) {
 
           {/* Method */}
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
               Способ оплаты
@@ -102,7 +102,7 @@ export default function TopupPage({ user }) {
                   className="rounded-xl p-4 flex flex-col gap-1.5 text-left transition-all"
                   style={method === id
                     ? { background: "rgba(37,99,235,0.15)", border: "1px solid rgba(37,99,235,0.4)" }
-                    : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }
+                    : { background: "rgba(255,255,255,0.04)" }
                   }
                 >
                   <Icon size={18} style={{ color: method === id ? "#60a5fa" : "rgba(255,255,255,0.5)" }} />
@@ -117,7 +117,7 @@ export default function TopupPage({ user }) {
         {/* Right: summary */}
         <div className="flex flex-col gap-3">
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(255,255,255,0.3)" }}>
               Итог

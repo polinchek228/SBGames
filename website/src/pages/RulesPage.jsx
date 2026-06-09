@@ -51,7 +51,7 @@ export default function RulesPage() {
         {/* Sidebar */}
         <div className="flex flex-col gap-2">
           <div className="rounded-2xl p-4 mb-1"
-            style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(12,12,12,0.95)" }}
           >
             <div className="flex items-center gap-2 mb-1">
               <Shield size={14} style={{ color: "rgba(255,255,255,0.6)" }} />
@@ -89,7 +89,7 @@ export default function RulesPage() {
 
         {/* Content */}
         <div className="rounded-2xl p-6"
-          style={{ background: "rgba(12,12,12,0.95)", border: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: "rgba(12,12,12,0.95)" }}
         >
           {section && (
             <>
@@ -105,7 +105,7 @@ export default function RulesPage() {
               <div className="flex flex-col gap-2">
                 {section.rules.map((rule, i) => (
                   <div key={i} className="flex items-start gap-3 rounded-xl px-4 py-3"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                    style={{ background: "rgba(255,255,255,0.04)" }}
                   >
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                     <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.75)" }}>{rule}</p>

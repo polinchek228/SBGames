@@ -1,8 +1,6 @@
 import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  House, User, CurrencyDollar, Headset, Shield, SignOut, SealWarning,
-} from "@phosphor-icons/react";
+import { Link, useLocation } from "react-router-dom";
+import { House, User, CurrencyDollar, Headset, Shield, SignOut, DownloadSimple } from "@phosphor-icons/react";
 
 const NAV = [
   { to: "/",        label: "Главная",    icon: House },
@@ -14,15 +12,12 @@ const NAV = [
 
 export default function Navbar({ user, onLogout }) {
   const { pathname } = useLocation();
-  const nav = useNavigate();
 
   return (
     <header className="sticky top-0 z-50 flex justify-center pt-4 pb-2 px-4">
-      <div
-        className="flex items-center gap-1 px-2 py-1.5 rounded-2xl"
+      <div className="flex items-center gap-1 px-2 py-1.5 rounded-2xl"
         style={{
-          background: "rgba(12,12,12,0.95)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(10,10,10,0.96)",
           boxShadow: "0 4px 24px rgba(0,0,0,0.7)",
           backdropFilter: "blur(20px)",
         }}
@@ -38,15 +33,14 @@ export default function Navbar({ user, onLogout }) {
           </span>
         </Link>
 
-        {/* Nav items */}
         {NAV.map(({ to, label, icon: Icon }) => {
           const active = pathname === to;
           return (
             <Link key={to} to={to}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-all duration-150 whitespace-nowrap"
               style={active
-                ? { background: "rgba(255,255,255,0.1)", color: "#fff" }
-                : { color: "rgba(255,255,255,0.38)" }
+                ? { background: "rgba(255,255,255,0.09)", color: "#fff" }
+                : { color: "rgba(255,255,255,0.35)" }
               }
             >
               <Icon size={13} weight={active ? "fill" : "regular"} />
@@ -55,14 +49,23 @@ export default function Navbar({ user, onLogout }) {
           );
         })}
 
+        {/* Download — отдельная кнопка */}
+        <Link to="/download"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all duration-150 ml-1"
+          style={{ background: "#2563EB", color: "#fff" }}
+        >
+          <DownloadSimple size={13} weight="bold" />
+          Скачать
+        </Link>
+
         {/* Auth */}
-        <div className="ml-1 pl-1" style={{ borderLeft: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="ml-1 pl-1.5" style={{ borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
           {user ? (
             <button onClick={onLogout}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-all duration-150"
-              style={{ color: "rgba(255,255,255,0.38)" }}
+              style={{ color: "rgba(255,255,255,0.35)" }}
               onMouseEnter={e => { e.currentTarget.style.color = "#f87171"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
-              onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.38)"; e.currentTarget.style.background = "transparent"; }}
+              onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background = "transparent"; }}
             >
               <SignOut size={13} />
               Выйти
@@ -70,7 +73,7 @@ export default function Navbar({ user, onLogout }) {
           ) : (
             <Link to="/login"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-all"
-              style={{ background: "#2563EB", color: "#fff" }}
+              style={{ color: "rgba(255,255,255,0.5)" }}
             >
               <User size={13} />
               Войти

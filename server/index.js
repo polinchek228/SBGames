@@ -43,7 +43,15 @@ app.use(helmet({
 app.use(cors({
   origin: (origin, cb) => {
     // Разрешаем: Tauri (null origin), наш домен
-    const allowed = [null, undefined, "https://api.sbgames.hyperionsearch.xyz:8443", "http://localhost:1420"];
+    const allowed = [
+      null, undefined,
+      "https://api.sbgames.hyperionsearch.xyz:8443",
+      "https://sbgames.hyperionsearch.xyz:8444",
+      "https://sbgames.hyperionsearch.xyz",
+      "http://sbgames.hyperionsearch.xyz",
+      "http://localhost:1420",
+      "http://localhost:5173",
+    ];
     if (!origin || allowed.includes(origin)) return cb(null, true);
     cb(new Error("CORS: not allowed"));
   },
