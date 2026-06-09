@@ -1,25 +1,81 @@
-const fetch = require("node-fetch");
-const express = require("express");
-const cors = require("cors");
-const crypto = require("crypto");
-const http = require("http");
-const https = require("https");
-const fs = require("fs");
+const fetch        = require("node-fetch");
+const express      = require("express");
+const cors         = require("cors");
+const crypto       = require("crypto");
+const http         = require("http");
+const https        = require("https");
+const fs           = require("fs");
+const helmet       = require("helmet");
+const rateLimit    = require("express-rate-limit");
+const jwt          = require("jsonwebtoken");
+const sanitizeHtml = require("sanitize-html");
+const Redis        = require("ioredis");
 const { WebSocketServer, WebSocket } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
-const BOT_TOKEN    = "8507862760:AAFfOVKJRJeVL10WA55nKsTofxmSu2y7GCk";
-const NEWS_CHANNEL = "@sb7games";
-const PORT         = 3000;
-const PORT_SSL     = 3443;
+const BOT_TOKEN       = "8507862760:AAFfOVKJRJeVL10WA55nKsTofxmSu2y7GCk";
+const JWT_SECRET      = process.env.JWT_SECRET || crypto.randomBytes(48).toString("hex");
+const NEWS_CHANNEL    = "@sb7games";
+const PORT            = 3000;
+const PORT_SSL        = 3443;
 const ADMIN_USERNAMES = ["efseea"];
 
 const SSL_KEY  = "/etc/ssl/private/sbgames.key";
 const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
 
+// ─── Redis ────────────────────────────────────────────────────────────────────
+const redis = new Redis({ host: "127.0.0.1", port: 6379, lazyConnect: true });
+redis.connect().catch(() => console.warn("[redis] not available, using memory"));
+
+// Хелперы Redis с fallback на Map
+const redisAccounts = { _map: new Map(),
+  async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
+  async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
+  values()        { return this._map.values(); },
+};
+
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// ─── Security middleware ──────────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false, // Tauri не использует браузерный CSP
+}));
+app.use(cors({
+  origin: (origin, cb) => {
+    // Разрешаем: Tauri (null origin), наш домен
+    const allowed = [null, undefined, "https://api.sbgames.hyperionsearch.xyz:8443", "http://localhost:1420"];
+    if (!origin || allowed.includes(origin)) return cb(null, true);
+    cb(new Error("CORS: not allowed"));
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: "32kb" })); // Ограничение размера тела
+
+// Rate limiters
+const authLimiter = rateLimit({ windowMs: 60_000, max: 10,  message: { message: "Слишком много запросов" }, standardHeaders: true, legacyHeaders: false });
+const apiLimiter  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+app.use("/auth", authLimiter);
+app.use("/api",  apiLimiter);
+
+// ─── Input sanitizer ──────────────────────────────────────────────────────────
+function sanitize(str, max = 500) {
+  if (typeof str !== "string") return "";
+  return sanitizeHtml(str.slice(0, max), { allowedTags: [], allowedAttributes: {} }).trim();
+}
+
+// ─── JWT helpers ─────────────────────────────────────────────────────────────
+function signToken(userId) {
+  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "30d" });
+}
+function verifyToken(token) {
+  try { return jwt.verify(token, JWT_SECRET); } catch { return null; }
+}
+
+// ─── WS token auth middleware ─────────────────────────────────────────────────
+function wsAuthenticate(token) {
+  const payload = verifyToken(token);
+  return payload ? payload.sub : null;
+}
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -71,34 +127,40 @@ function isAdmin(username) {
 
 // ─── REST ─────────────────────────────────────────────────────────────────────
 
-app.post("/auth/tg-login", (req, res) => {
+app.post("/auth/tg-login", async (req, res) => {
   const { tgUser, username } = req.body;
-  if (!tgUser || !username) return res.status(400).json({ message: "tgUser и username обязательны" });
-  const cleanNick = username.trim().replace(/^@/, "");
-  if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) return res.status(400).json({ message: "Некорректный ник" });
+  if (!tgUser || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
 
-  // Пропускаем HMAC-проверку если авторизация пришла через бот (bot-flow)
-  // или dev-режим. Widget-flow всё равно не используется в Tauri-десктоп.
-  const isDev = tgUser.id === 99999;
+  // Валидация ника
+  const cleanNick = sanitize(username).replace(/^@/, "");
+  if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick))
+    return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
 
+  // tgUser должен прийти через бот-flow (нет hash — значит через наш код)
+  // Проверяем что id реальный (не 99999 и не отрицательный)
   const tgId = String(tgUser.id);
-  let account = accounts.get(tgId);
+  if (!tgUser.id || tgUser.id <= 0)
+    return res.status(401).json({ message: "Невалидный пользователь" });
+
+  let account = await redisAccounts.get(tgId);
   if (!account) {
     account = {
       id: tgId,
       username: cleanNick,
       telegram: tgUser.username || null,
-      firstName: tgUser.first_name || "",
+      firstName: sanitize(tgUser.first_name || "", 64),
       balance: 0,
       role: isAdmin(tgUser.username || cleanNick) ? "admin" : "user",
       createdAt: Date.now(),
     };
-    accounts.set(tgId, account);
   } else {
     account.username = cleanNick;
     account.role = isAdmin(tgUser.username || cleanNick) ? "admin" : "user";
   }
-  res.json({ user: account });
+  await redisAccounts.set(tgId, account);
+
+  const token = signToken(tgId);
+  res.json({ user: account, token });
 });
 
 app.get("/health", (_, res) => res.json({ ok: true, accounts: accounts.size, tickets: tickets.size, ws: wsClients.size }));
@@ -160,15 +222,19 @@ app.get("/support/ticket/:id", (req, res) => {
 
 // Создать тикет (REST — с первым сообщением)
 app.post("/support/ticket", (req, res) => {
-  const { userId, username, category, message } = req.body;
-  if (!category || !message) return res.status(400).json({ message: "Заполните все поля" });
+  const rawCategory = sanitize(req.body.category || "", 80);
+  const rawMessage  = sanitize(req.body.message  || "", 2000);
+  const rawUsername = sanitize(req.body.username || "Player", 32);
+  const userId      = sanitize(req.body.userId || "anon", 64);
+  if (!rawCategory || !rawMessage || rawMessage.length < 5)
+    return res.status(400).json({ message: "Заполните все поля (минимум 5 символов)" });
   const ticketId = ++ticketCounter;
   const ticket = {
     id: ticketId,
-    userId: userId || "anon",
-    username: username || "Player",
-    category,
-    preview: message.slice(0, 60),
+    userId,
+    username: rawUsername,
+    category: rawCategory,
+    preview: rawMessage.slice(0, 60),
     status: "open",
     unread: 0,
     createdAt: Date.now(),
@@ -177,9 +243,9 @@ app.post("/support/ticket", (req, res) => {
       text: `Тикет #${ticketId} создан. Ожидайте ответа администратора.`,
       time: Date.now(),
     }, {
-      id: uuidv4(), from: userId || "anon",
-      username: username || "Player",
-      text: message,
+      id: uuidv4(), from: userId,
+      username: rawUsername,
+      text: rawMessage,
       time: Date.now(),
     }],
   };
@@ -203,10 +269,17 @@ wss.on("connection", (ws) => {
     const client = wsClients.get(clientId);
 
     switch (msg.type) {
-      // Клиент идентифицируется при подключении
+      // Клиент идентифицируется при подключении — требуем JWT
       case "auth": {
-        client.userId = msg.userId;
-        client.username = msg.username;
+        // Проверяем токен
+        const userId = msg.token ? wsAuthenticate(msg.token) : null;
+        if (!userId) {
+          send(ws, { type: "auth_error", message: "Необходима авторизация" });
+          ws.close();
+          return;
+        }
+        client.userId = userId;
+        client.username = sanitize(msg.username || "", 32);
         client.role = isAdmin(msg.username) ? "admin" : "user";
         wsClients.set(clientId, client);
 
@@ -286,8 +359,9 @@ wss.on("connection", (ws) => {
 
       // Отправить личное сообщение другу
       case "dm_send": {
-        const { toId, text } = msg;
-        if (!text?.trim()) break;
+        const { toId } = msg;
+        const text = sanitize(msg.text || "", 2000);
+        if (!text) break;
         const key  = dmKey(client.userId, toId);
         const msgs = dms.get(key) || [];
         const dm   = { id: uuidv4(), from: client.userId, fromUsername: client.username, text: text.trim(), time: Date.now() };
@@ -310,13 +384,14 @@ wss.on("connection", (ws) => {
       case "message": {
         const ticket = tickets.get(Number(msg.ticketId));
         if (!ticket) return;
-
+        const cleanText = sanitize(msg.text || "", 2000);
+        if (!cleanText) return;
         const message = {
           id: uuidv4(),
           from: client.userId || "anon",
           username: client.username || "Player",
           role: client.role,
-          text: msg.text,
+          text: cleanText,
           time: Date.now(),
         };
         ticket.messages.push(message);

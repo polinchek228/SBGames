@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 
-import { API_URL, WS_URL } from "../lib/api.js";
+import { API_URL, WS_URL, getToken } from "../lib/api.js";
 
 const CATEGORIES = [
   "Технические проблемы",
@@ -39,6 +39,7 @@ function useWS(url, user, onMessage) {
         type: "auth",
         userId: user?.id,
         username: user?.username || user?.telegram,
+        token: getToken(),
       }));
     };
     socket.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch {} };

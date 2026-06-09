@@ -6,21 +6,21 @@ import CustomCursor from "./components/CustomCursor.jsx";
 
 export default function App() {
   const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem("sbgames_user");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(localStorage.getItem("sbgames_user") || "null"); } catch { return null; }
   });
 
-  const handleLogin = (userData) => {
+  const handleLogin = (data) => {
+    // data может быть { user, token } или просто user
+    const userData = data?.user || data;
+    const token    = data?.token;
     localStorage.setItem("sbgames_user", JSON.stringify(userData));
+    if (token) localStorage.setItem("sbgames_token", token);
     setUser(userData);
   };
 
   const handleLogout = () => {
     localStorage.removeItem("sbgames_user");
+    localStorage.removeItem("sbgames_token");
     setUser(null);
   };
 

@@ -5,7 +5,7 @@ import {
   WifiHigh, WifiSlash, PaperPlaneTilt, Check, Checks,
   CaretLeft,
 } from "@phosphor-icons/react";
-import { WS_URL } from "../lib/api.js";
+import { WS_URL, getToken } from "../lib/api.js";
 
 const STATUS_DOT = {
   online:  "#4ade80",
@@ -34,7 +34,7 @@ export function useCommunityWS(user, onEvent) {
         if (dead) { socket.close(); return; }
         setConnected(true);
         const u = userRef.current;
-        socket.send(JSON.stringify({ type: "auth", userId: u.id, username: u.username || u.telegram }));
+        socket.send(JSON.stringify({ type: "auth", userId: u.id, username: u.username || u.telegram, token: getToken() }));
       };
       socket.onmessage = (e) => {
         try { onRef.current?.(JSON.parse(e.data)); } catch {}
