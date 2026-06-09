@@ -96,97 +96,59 @@ export default function CustomCursor() {
         willChange:"transform",
       }}/>
 
-      {/* Lightsaber — острие сверху, рукоять снизу */}
+      {/* Lightsaber — под углом ~35°, острие вверху-слева */}
       <div ref={saberRef} style={{
         position:"fixed", top:0, left:0, zIndex:9999,
         pointerEvents:"none", opacity:0,
         willChange:"transform",
       }}>
-        <svg width="22" height="88" viewBox="0 0 22 88" fill="none"
+        {/*
+          SVG 48×48, всё повёрнуто на -35deg относительно центра.
+          Острие меча находится в точке (4, 4) внутри SVG.
+        */}
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          style={{ display:"block", overflow:"visible" }}
+          style={{ display:"block", overflow:"visible", transform:"rotate(-35deg)", transformOrigin:"4px 4px" }}
         >
           <defs>
-            {/* Glow фильтр для клинка */}
-            <filter id="lsglow" x="-500%" y="-20%" width="1100%" height="140%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="b1"/>
-              <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="b2"/>
-              <feMerge>
-                <feMergeNode in="b1"/>
-                <feMergeNode in="b2"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
+            <filter id="g1" x="-400%" y="-10%" width="900%" height="120%">
+              <feGaussianBlur stdDeviation="2.5"/>
             </filter>
-            <filter id="lscore" x="-500%" y="-20%" width="1100%" height="140%">
-              <feGaussianBlur stdDeviation="0.6"/>
+            <filter id="g2" x="-400%" y="-10%" width="900%" height="120%">
+              <feGaussianBlur stdDeviation="1.2"/>
             </filter>
           </defs>
 
-          {/* ── Клинок ── */}
-          {/* Дальнее свечение (самый широкий, самый прозрачный) */}
-          <rect x="5.5" y="5" width="11" height="54" rx="5.5"
-            fill="#7c6be8" opacity="0.18"
-            style={{ filter:"blur(5px)" }}
+          {/* Внешнее свечение */}
+          <line x1="4" y1="4" x2="4" y2="34"
+            stroke="#818cf8" strokeWidth="9" strokeLinecap="round"
+            opacity="0.18" filter="url(#g1)"
           />
           {/* Среднее свечение */}
-          <rect x="7.5" y="5" width="7" height="54" rx="3.5"
-            fill="#818cf8" opacity="0.55"
-            filter="url(#lsglow)"
+          <line x1="4" y1="4" x2="4" y2="34"
+            stroke="#a5b4fc" strokeWidth="4" strokeLinecap="round"
+            opacity="0.55" filter="url(#g2)"
           />
-          {/* Основной клинок */}
-          <rect x="9" y="5" width="4" height="54" rx="2"
-            fill="#a5b4fc" opacity="0.95"
+          {/* Клинок */}
+          <line x1="4" y1="4" x2="4" y2="34"
+            stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round"
           />
-          {/* Белое ядро */}
-          <rect x="10" y="6" width="2" height="52" rx="1"
-            fill="white" opacity="0.9"
+          {/* Ядро */}
+          <line x1="4" y1="5" x2="4" y2="33"
+            stroke="white" strokeWidth="0.8" strokeLinecap="round"
+            opacity="0.9"
           />
           {/* Острие */}
-          <ellipse cx="11" cy="5" rx="2" ry="3.5"
-            fill="white" opacity="0.95"
-          />
-          {/* Мягкий конец клинка */}
-          <ellipse cx="11" cy="59" rx="2" ry="1.5"
-            fill="#818cf8" opacity="0.7"
-          />
+          <circle cx="4" cy="4" r="1.5" fill="white" opacity="0.95"/>
 
-          {/* ── Гарда ── */}
-          <rect x="3" y="59" width="16" height="4" rx="2"
-            fill="#94a3b8"
-          />
-          <rect x="3" y="60" width="16" height="1.5" rx="0.75"
-            fill="#cbd5e1" opacity="0.4"
-          />
+          {/* Гарда */}
+          <rect x="-2" y="34" width="12" height="3" rx="1.5" fill="#94a3b8"/>
 
-          {/* ── Рукоять ── */}
-          {/* Основа */}
-          <rect x="7.5" y="63" width="7" height="20" rx="3"
-            fill="#374151"
-          />
-          {/* Металлические кольца */}
-          <rect x="7.5" y="66" width="7" height="2" rx="1"
-            fill="#4b5563"
-          />
-          <rect x="7.5" y="71" width="7" height="2" rx="1"
-            fill="#4b5563"
-          />
-          <rect x="7.5" y="76" width="7" height="2" rx="1"
-            fill="#4b5563"
-          />
-          {/* Боковые детали */}
-          <rect x="6.5" y="68" width="2" height="5" rx="1"
-            fill="#1f2937"
-          />
-          <rect x="13.5" y="68" width="2" height="5" rx="1"
-            fill="#1f2937"
-          />
-          {/* Помол */}
-          <rect x="8" y="83" width="6" height="3" rx="1.5"
-            fill="#6b7280"
-          />
-          <ellipse cx="11" cy="86" rx="3" ry="1.5"
-            fill="#374151"
-          />
+          {/* Рукоять */}
+          <rect x="1.5" y="37" width="5" height="13" rx="2" fill="#374151"/>
+          <rect x="1.5" y="40" width="5" height="1.5" rx="0.75" fill="#4b5563"/>
+          <rect x="1.5" y="44" width="5" height="1.5" rx="0.75" fill="#4b5563"/>
+          <ellipse cx="4" cy="50" rx="2.5" ry="1.2" fill="#1f2937"/>
         </svg>
       </div>
     </>
