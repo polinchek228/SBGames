@@ -43,7 +43,7 @@ export default function HowToPlayPage() {
       <div className="flex flex-col gap-3">
         {STEPS.map((step, i) => (
           <div key={step.n} className="rounded-2xl p-6 flex gap-5"
-            style={{ background: "rgba(10,10,10,0.95)" }}
+            style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
           >
             <div className="flex-shrink-0">
               <span className="text-[28px] font-black tabular-nums" style={{ color: "rgba(255,255,255,0.08)" }}>

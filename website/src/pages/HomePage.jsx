@@ -14,7 +14,7 @@ export default function HomePage() {
       {/* ── Hero ── */}
       <section className="flex flex-col items-center justify-center text-center py-16">
         <div className="w-full max-w-3xl rounded-2xl overflow-hidden"
-          style={{ background: "rgba(10,10,10,0.95)", padding: "72px 48px" }}
+          style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", padding: "72px 48px" }}
         >
           <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             className="text-[64px] font-black leading-none tracking-tight text-white mb-2"
@@ -83,7 +83,7 @@ export default function HomePage() {
 
       {/* ── Комьюнити + Новости ── */}
       <section className="grid grid-cols-2 gap-4 mb-8">
-        <div className="rounded-2xl p-6" style={{ background: "rgba(10,10,10,0.95)" }}>
+        <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
           <h2 className="text-[18px] font-black tracking-widest uppercase text-white mb-1">Комьюнити</h2>
           <p className="text-[10px] tracking-widest uppercase mb-4" style={{ color: "rgba(255,255,255,0.2)" }}>Становись частью команды</p>
           <a href="https://t.me/sb7games" target="_blank" rel="noreferrer"
@@ -96,7 +96,7 @@ export default function HomePage() {
           </a>
         </div>
 
-        <div className="rounded-2xl p-6" style={{ background: "rgba(10,10,10,0.95)" }}>
+        <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
           <span className="text-[9px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-lg mb-4 inline-block"
             style={{ background: "rgba(37,99,235,0.15)", color: "#60a5fa" }}
           >
@@ -106,13 +106,11 @@ export default function HomePage() {
           <p className="text-[12px] mb-5" style={{ color: "rgba(255,255,255,0.35)" }}>
             Следи за проектом в соцсетях. Там мы выкладываем анонсы ивентов.
           </p>
-          <div className="flex gap-3">
-            <a href="https://t.me/sb7games" target="_blank" rel="noreferrer"
-              className="px-4 py-2 rounded-xl text-[12px] font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
-            >
-              Читать новости
-            </a>
-          </div>
+          <a href="https://t.me/sb7games" target="_blank" rel="noreferrer"
+            className="px-4 py-2 rounded-xl text-[12px] font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors inline-block"
+          >
+            Читать новости
+          </a>
         </div>
       </section>
 

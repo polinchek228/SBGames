@@ -68,7 +68,7 @@ export default function LoginPage({ onLogin }) {
     <main className="relative z-10 flex items-center justify-center min-h-[80vh] px-4">
       <div className="w-full max-w-[380px]">
         <div className="rounded-2xl p-8 flex flex-col gap-6"
-          style={{ background: "rgba(10,10,10,0.97)", boxShadow: "0 8px 60px rgba(0,0,0,0.8)" }}
+          style={{ background: "rgba(255,255,255,0.05)", boxShadow: "0 8px 60px rgba(0,0,0,0.8)" }}
         >
           <div className="flex flex-col items-center gap-3">
             <div className="w-14 h-14 rounded-2xl overflow-hidden">

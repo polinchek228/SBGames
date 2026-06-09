@@ -105,7 +105,7 @@ export default function DownloadPage() {
       </div>
 
       {/* Download button */}
-      <div className="rounded-2xl p-6 flex items-center gap-5" style={{ background: "rgba(10,10,10,0.95)" }}>
+      <div className="rounded-2xl p-6 flex items-center gap-5" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
           style={{ background: `${selectedPlatform.color}15` }}
         >
@@ -151,7 +151,7 @@ export default function DownloadPage() {
       </div>
 
       {/* Notes */}
-      <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(10,10,10,0.95)" }}>
+      <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
         <p className="text-[13px] font-bold text-white mb-3">Примечания</p>
         <div className="flex flex-col gap-2">
           {[

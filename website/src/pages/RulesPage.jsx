@@ -51,7 +51,7 @@ export default function RulesPage() {
         {/* Sidebar */}
         <div className="flex flex-col gap-2">
           <div className="rounded-2xl p-4 mb-1"
-            style={{ background: "rgba(12,12,12,0.95)" }}
+            style={{ background: "rgba(255,255,255,0.05)" }}
           >
             <div className="flex items-center gap-2 mb-1">
               <Shield size={14} style={{ color: "rgba(255,255,255,0.6)" }} />
@@ -89,7 +89,7 @@ export default function RulesPage() {
 
         {/* Content */}
         <div className="rounded-2xl p-6"
-          style={{ background: "rgba(12,12,12,0.95)" }}
+          style={{ background: "rgba(255,255,255,0.05)" }}
         >
           {section && (
             <>

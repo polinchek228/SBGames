@@ -103,7 +103,7 @@ export default function SupportPage({ user }) {
             <button key={t.id} onClick={() => openTicket(t)}
               className="rounded-2xl p-4 text-left transition-colors"
               style={{
-                background: active?.id === t.id ? "rgba(255,255,255,0.07)" : "rgba(12,12,12,0.95)",
+                background: active?.id === t.id ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.05)",
                 border: "1px solid rgba(255,255,255,0.07)"
               }}
             >
@@ -119,7 +119,7 @@ export default function SupportPage({ user }) {
 
         {/* Right: chat / new form */}
         <div className="col-span-2 rounded-2xl overflow-hidden flex flex-col"
-          style={{ background: "rgba(12,12,12,0.95)", minHeight: 400 }}
+          style={{ background: "rgba(255,255,255,0.05)", minHeight: 400 }}
         >
           <AnimatePresence mode="wait">
             {view === "list" && (

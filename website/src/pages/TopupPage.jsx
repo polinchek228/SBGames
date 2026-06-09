@@ -56,7 +56,7 @@ export default function TopupPage({ user }) {
 
           {/* Amount */}
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)" }}
+            style={{ background: "rgba(255,255,255,0.05)" }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
               Сумма пополнения
@@ -91,7 +91,7 @@ export default function TopupPage({ user }) {
 
           {/* Method */}
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)" }}
+            style={{ background: "rgba(255,255,255,0.05)" }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
               Способ оплаты
@@ -117,7 +117,7 @@ export default function TopupPage({ user }) {
         {/* Right: summary */}
         <div className="flex flex-col gap-3">
           <div className="rounded-2xl p-5"
-            style={{ background: "rgba(12,12,12,0.95)" }}
+            style={{ background: "rgba(255,255,255,0.05)" }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(255,255,255,0.3)" }}>
               Итог
