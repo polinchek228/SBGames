@@ -102,6 +102,22 @@ app.post("/auth/tg-login", (req, res) => {
 
 app.get("/health", (_, res) => res.json({ ok: true, accounts: accounts.size, tickets: tickets.size, ws: wsClients.size }));
 
+// Поиск юзера по нику (для отладки)
+app.get("/user/search", (req, res) => {
+  const q = (req.query.nick || "").toLowerCase();
+  const found = [...accounts.values()].find(a => (a.username || "").toLowerCase() === q);
+  if (!found) return res.json({ found: false });
+  res.json({ found: true, id: found.id, username: found.username });
+});
+
+// Список онлайн юзеров
+app.get("/online", (_, res) => {
+  const users = [...wsClients.values()]
+    .filter(c => c.userId && c.username)
+    .map(c => ({ id: c.userId, username: c.username }));
+  res.json({ users });
+});
+
 // Список всех тикетов (для админа)
 app.get("/support/tickets", (req, res) => {
   const list = [...tickets.values()].map(t => ({
@@ -193,8 +209,9 @@ wss.on("connection", (ws) => {
 
       // Отправить заявку в друзья по нику
       case "friend_request_send": {
+        const searchNick = (msg.toUsername || "").trim().toLowerCase();
         const target = [...accounts.values()].find(
-          a => a.username?.toLowerCase() === (msg.toUsername || "").toLowerCase()
+          a => (a.username || "").toLowerCase() === searchNick
         );
         if (!target) {
           send(ws, { type: "friend_error", message: "Пользователь не найден" });
@@ -462,65 +479,306 @@ app.get("/news", async (req, res) => {
 setInterval(fetchNewsPublic, 5 * 60 * 1000);
 fetchNewsPublic(); // первый запрос при старте
 
-// ─── Telegram Bot — команды для пользователей ────────────────────────────────
+// ─── CryptoBot (pay.crypt.bot) ─────────────────────────────────────────────────
+// Получи токен здесь: https://t.me/CryptoBot → /pay → Apps → Create App
+const CRYPTO_BOT_TOKEN = process.env.CRYPTO_BOT_TOKEN || "REPLACE_WITH_CRYPTOBOT_TOKEN";
+const CRYPTO_BOT_API   = "https://pay.crypt.bot/api";
+
+async function createCryptoInvoice(amount, userId) {
+  try {
+    const r = await fetch(`${CRYPTO_BOT_API}/createInvoice`, {
+      method: "POST",
+      headers: { "Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currency_type: "fiat",
+        fiat: "RUB",
+        amount: String(amount),
+        description: `Пополнение СБТ · ${amount} руб · ID:${userId}`,
+        paid_btn_name: "callback",
+        paid_btn_url: `https://api.sbgames.hyperionsearch.xyz:8443/cryptobot/paid?userId=${userId}&amount=${amount}`,
+        allow_comments: false,
+        allow_anonymous: false,
+      }),
+    });
+    const d = await r.json();
+    if (d.ok) return d.result;
+    return null;
+  } catch (e) {
+    console.error("CryptoBot invoice error:", e.message);
+    return null;
+  }
+}
+
+// Webhook от CryptoBot когда оплата прошла
+app.get("/cryptobot/paid", (req, res) => {
+  const { userId, amount } = req.query;
+  if (!userId || !amount) return res.status(400).send("bad request");
+  const acc = accounts.get(String(userId));
+  if (acc) {
+    acc.balance = (acc.balance || 0) + parseInt(amount, 10);
+    // Уведомить пользователя в боте
+    bot.sendMessage(userId,
+      `✅ *Пополнение успешно!*\n\n💰 +${amount} СБТ\nНовый баланс: *${acc.balance} СБТ*`,
+      { parse_mode: "Markdown" }
+    );
+  }
+  res.send("ok");
+});
+
+// ─── Telegram Bot ──────────────────────────────────────────────────────────────
 const TelegramBot = require("node-telegram-bot-api");
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-bot.onText(/\/start/, async (msg) => {
-  const tgId = String(msg.from.id);
-  const account = accounts.get(tgId);
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: "💰 Мой баланс", callback_data: "balance" }],
-      [{ text: "🎫 Мои обращения", callback_data: "tickets" }],
-      [{ text: "📋 Реквизиты для пополнения", callback_data: "topup" }],
-    ]
-  };
-  const name = account ? `*${account.username}*` : "незнакомец";
-  bot.sendMessage(msg.chat.id,
-    `👋 Привет, ${name}!\n\n🎮 *SB Games Launcher*\n\nВыбери действие:`,
-    { parse_mode: "Markdown", reply_markup: keyboard }
+// Состояния диалога: chatId -> { state, data }
+const botSessions = new Map();
+
+function mainMenu(chatId, account) {
+  const name = account ? account.username : "игрок";
+  const bal  = account ? account.balance : 0;
+  bot.sendMessage(chatId,
+    `🎮 *SB Games Launcher*\n\nПривет, *${name}*!\n💰 Баланс: *${bal} СБТ*\n\nВыбери действие:`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "👤 Профиль",          callback_data: "profile" },
+           { text: "💰 Пополнить баланс", callback_data: "topup" }],
+          [{ text: "🎫 Мои обращения",    callback_data: "tickets" },
+           { text: "✏️ Новое обращение",  callback_data: "new_ticket" }],
+          [{ text: "🔗 Открыть лаунчер",  url: "https://t.me/sbgamessupport_bot?startapp=launcher" }],
+        ]
+      }
+    }
   );
+}
+
+// /start [deeplink]
+bot.onText(/\/start(.*)/, async (msg, match) => {
+  const tgId   = String(msg.from.id);
+  const param  = (match[1] || "").trim();
+  const account = accounts.get(tgId);
+
+  // Deeplink: /start link_XXXX — привязать аккаунт
+  if (param.startsWith("link_")) {
+    const linkCode = param.slice(5);
+    const target = [...accounts.values()].find(a => a.linkCode === linkCode);
+    if (target) {
+      target.telegramId = tgId;
+      target.telegram   = msg.from.username || null;
+      delete target.linkCode;
+      bot.sendMessage(msg.chat.id,
+        `✅ *Telegram привязан!*\n\nАккаунт *${target.username}* успешно связан.`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+  }
+
+  mainMenu(msg.chat.id, account);
 });
 
 bot.on("callback_query", async (q) => {
-  const tgId = String(q.from.id);
+  const tgId    = String(q.from.id);
+  const chatId  = q.message.chat.id;
   const account = accounts.get(tgId);
   bot.answerCallbackQuery(q.id);
 
-  if (q.data === "balance") {
-    const bal = account ? account.balance : 0;
-    bot.sendMessage(q.message.chat.id,
-      `💰 *Баланс*\n\nСБТ: \`${bal}\`\n\nДля пополнения нажми кнопку ниже.`,
-      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "📋 Реквизиты", callback_data: "topup" }]] } }
+  // ── Профиль ──
+  if (q.data === "profile") {
+    if (!account) {
+      bot.sendMessage(chatId,
+        "❗ Аккаунт не найден. Сначала войди в лаунчер через Telegram.",
+        { reply_markup: { inline_keyboard: [[{ text: "◀️ Назад", callback_data: "back" }]] } }
+      );
+      return;
+    }
+    bot.sendMessage(chatId,
+      `👤 *Профиль*\n\n` +
+      `Ник: *${account.username}*\n` +
+      `ID: \`${account.id}\`\n` +
+      `💰 Баланс: *${account.balance} СБТ*\n` +
+      `📅 Регистрация: ${new Date(account.createdAt).toLocaleDateString("ru-RU")}\n` +
+      `🔗 Telegram: ${account.telegram ? `@${account.telegram}` : "не привязан"}`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: [[{ text: "◀️ Назад", callback_data: "back" }]] }
+      }
     );
   }
 
+  // ── Пополнить (суммы) ──
   if (q.data === "topup") {
-    bot.sendMessage(q.message.chat.id,
-      `📋 *Реквизиты для пополнения*\n\n` +
-      `Переведи нужную сумму и напиши в поддержку:\n\n` +
-      `🏦 Сбербанк: \`2202 2020 2020 2020\`\n` +
-      `💳 USDT TRC20: \`Txxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\`\n\n` +
-      `После оплаты отправь чек в поддержку — баланс будет пополнен в течение 10 минут.\n\n` +
-      `_1 СБТ = 1 ₽_`,
+    bot.sendMessage(chatId,
+      "💰 *Пополнение баланса*\n\nВыбери сумму или введи свою (в рублях):",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "50 ₽", callback_data: "topup_50"  }, { text: "100 ₽", callback_data: "topup_100" }],
+            [{ text: "250 ₽", callback_data: "topup_250" }, { text: "500 ₽", callback_data: "topup_500" }],
+            [{ text: "1000 ₽", callback_data: "topup_1000" }],
+            [{ text: "◀️ Назад", callback_data: "back" }],
+          ]
+        }
+      }
+    );
+  }
+
+  // ── Создать инвойс через CryptoBot ──
+  if (q.data.startsWith("topup_")) {
+    const amount = parseInt(q.data.split("_")[1], 10);
+    if (!account) {
+      bot.sendMessage(chatId, "❗ Сначала войди в лаунчер.");
+      return;
+    }
+    const invoice = await createCryptoInvoice(amount, tgId);
+    if (invoice) {
+      bot.sendMessage(chatId,
+        `💳 *Счёт на оплату*\n\nСумма: *${amount} ₽ = ${amount} СБТ*\n\nНажми кнопку для оплаты через CryptoBot:`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: `💳 Оплатить ${amount} ₽`, url: invoice.pay_url }],
+              [{ text: "◀️ Назад", callback_data: "topup" }],
+            ]
+          }
+        }
+      );
+    } else {
+      // CryptoBot не настроен — показываем реквизиты
+      bot.sendMessage(chatId,
+        `💰 *Пополнение на ${amount} СБТ*\n\n` +
+        `Переведи *${amount} ₽* на реквизиты:\n\n` +
+        `🏦 СБП / Сбербанк: \`+7 (___) ___-__-__\`\n` +
+        `💎 USDT TRC20: \`T...\`\n\n` +
+        `После оплаты пришли скриншот — пополним в течение 10 мин.\n` +
+        `_Укажи свой ник: ${account?.username || "?"}_`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard: [[{ text: "◀️ Назад", callback_data: "topup" }]] }
+        }
+      );
+    }
+  }
+
+  // ── Мои тикеты ──
+  if (q.data === "tickets") {
+    const userTickets = [...tickets.values()]
+      .filter(t => t.userId === tgId || (account && t.userId === account.id))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 8);
+    if (userTickets.length === 0) {
+      bot.sendMessage(chatId,
+        "🎫 Нет обращений.\n\nСоздай новое — мы поможем!",
+        { reply_markup: { inline_keyboard: [
+          [{ text: "✏️ Создать обращение", callback_data: "new_ticket" }],
+          [{ text: "◀️ Назад", callback_data: "back" }],
+        ]}}
+      );
+      return;
+    }
+    const STATUS_EMOJI = { open: "🟡", answered: "🟢", closed: "⚫" };
+    const lines = userTickets.map(t =>
+      `${STATUS_EMOJI[t.status] || "⚪"} *#${t.id}* — ${t.category}\n└ _${t.preview?.slice(0, 50)}_`
+    ).join("\n\n");
+    bot.sendMessage(chatId,
+      `🎫 *Твои обращения:*\n\n${lines}`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: [
+          [{ text: "✏️ Новое обращение", callback_data: "new_ticket" }],
+          [{ text: "◀️ Назад", callback_data: "back" }],
+        ]}
+      }
+    );
+  }
+
+  // ── Новый тикет: выбор категории ──
+  if (q.data === "new_ticket") {
+    botSessions.set(chatId, { state: "awaiting_ticket_desc", category: null });
+    bot.sendMessage(chatId,
+      "✏️ *Новое обращение*\n\nВыбери категорию:",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔧 Технические проблемы", callback_data: "tcat_tech"    }],
+            [{ text: "👤 Вопрос по аккаунту",   callback_data: "tcat_account" }],
+            [{ text: "💳 Вопрос по покупке",     callback_data: "tcat_pay"     }],
+            [{ text: "🐛 Баг / ошибка",          callback_data: "tcat_bug"     }],
+            [{ text: "⚠️ Жалоба на игрока",      callback_data: "tcat_report"  }],
+            [{ text: "❓ Другое",                 callback_data: "tcat_other"   }],
+            [{ text: "◀️ Назад",                  callback_data: "back"         }],
+          ]
+        }
+      }
+    );
+  }
+
+  const CAT_MAP = {
+    tcat_tech: "Технические проблемы", tcat_account: "Вопрос по аккаунту",
+    tcat_pay: "Вопрос по покупке",     tcat_bug: "Баг / ошибка в игре",
+    tcat_report: "Жалоба на игрока",   tcat_other: "Другое",
+  };
+  if (q.data in CAT_MAP) {
+    const category = CAT_MAP[q.data];
+    botSessions.set(chatId, { state: "awaiting_ticket_desc", category });
+    bot.sendMessage(chatId,
+      `📝 Категория: *${category}*\n\nОпиши проблему подробно — напиши сообщение:`,
       { parse_mode: "Markdown" }
     );
   }
 
-  if (q.data === "tickets") {
-    const userTickets = [...tickets.values()]
-      .filter(t => t.userId === tgId)
-      .slice(-5);
-    if (userTickets.length === 0) {
-      bot.sendMessage(q.message.chat.id, "🎫 У тебя нет активных обращений.");
+  // ── Назад в меню ──
+  if (q.data === "back") {
+    botSessions.delete(chatId);
+    mainMenu(chatId, accounts.get(tgId));
+  }
+});
+
+// Текстовые сообщения — обработка состояний диалога
+bot.on("message", async (msg) => {
+  if (msg.text?.startsWith("/")) return; // команды обрабатываются отдельно
+  const chatId  = msg.chat.id;
+  const tgId    = String(msg.from.id);
+  const account = accounts.get(tgId);
+  const session = botSessions.get(chatId);
+
+  if (session?.state === "awaiting_ticket_desc") {
+    const text = msg.text?.trim();
+    if (!text || text.length < 5) {
+      bot.sendMessage(chatId, "❗ Слишком короткое описание. Напиши хотя бы несколько слов.");
       return;
     }
-    const STATUS_EMOJI = { open: "🟡", answered: "🟢", closed: "⚫" };
-    const text = userTickets.map(t =>
-      `${STATUS_EMOJI[t.status] || "⚪"} #${t.id} — ${t.category}\n_${t.preview}_`
-    ).join("\n\n");
-    bot.sendMessage(q.message.chat.id, `🎫 *Твои обращения:*\n\n${text}`, { parse_mode: "Markdown" });
+    const ticketId = ++ticketCounter;
+    const ticket = {
+      id: ticketId,
+      userId: tgId,
+      username: account?.username || msg.from.username || "Telegram",
+      category: session.category || "Другое",
+      preview: text.slice(0, 60),
+      status: "open",
+      unread: 0,
+      createdAt: Date.now(),
+      messages: [
+        { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан через Telegram бот.`, time: Date.now() },
+        { id: uuidv4(), from: tgId, username: account?.username || "Telegram", text, time: Date.now() },
+      ],
+    };
+    tickets.set(ticketId, ticket);
+    botSessions.delete(chatId);
+    broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
+    bot.sendMessage(chatId,
+      `✅ *Обращение #${ticketId} создано!*\n\nКатегория: ${ticket.category}\n\nМы ответим как можно скорее. Следи за статусом здесь.`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: [
+          [{ text: "🎫 Мои обращения", callback_data: "tickets" }],
+          [{ text: "◀️ В меню",         callback_data: "back"    }],
+        ]}
+      }
+    );
   }
 });
 
