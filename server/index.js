@@ -25,12 +25,34 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // ─── In-memory stores ─────────────────────────────────────────────────────────
-const accounts = new Map();   // tgId -> account
-const tickets  = new Map();   // ticketId -> ticket
+const accounts      = new Map();  // tgId -> account
+const tickets       = new Map();  // ticketId -> ticket
+const friendships   = new Map();  // userId -> Set<friendId>
+const friendRequests = new Map(); // toUserId -> [{fromId, fromUsername, time}]
+const dms           = new Map();  // `${a}_${b}` -> [{id,from,fromUsername,text,time}]
 let ticketCounter = 1000;
 
-// WS connections: clientId -> { ws, userId, role: "user"|"admin" }
+// WS connections: clientId -> { ws, userId, username, role }
 const wsClients = new Map();
+
+// ─── Friends helpers ──────────────────────────────────────────────────────────
+function getFriends(userId) {
+  return friendships.get(userId) || new Set();
+}
+function areFriends(a, b) {
+  return getFriends(a).has(b);
+}
+function dmKey(a, b) {
+  return [a, b].sort().join("_");
+}
+function getPendingRequests(userId) {
+  return (friendRequests.get(userId) || []);
+}
+function sendToUser(userId, data) {
+  for (const c of wsClients.values()) {
+    if (c.userId === userId) send(c.ws, data);
+  }
+}
 
 // ─── TG Widget verification ───────────────────────────────────────────────────
 function verifyTelegramAuth(data) {
@@ -152,11 +174,95 @@ wss.on("connection", (ws) => {
         // Отправить список онлайн-пользователей всем
         broadcastOnlineUsers();
 
+        // Отправить себе список друзей и входящих запросов
+        const myFriends = [...getFriends(client.userId)].map(fid => {
+          const fa = [...accounts.values()].find(a => a.id === fid);
+          return fa ? { id: fa.id, username: fa.username } : null;
+        }).filter(Boolean);
+        const myRequests = getPendingRequests(client.userId);
+        send(ws, { type: "friends_list", friends: myFriends });
+        send(ws, { type: "friend_requests", requests: myRequests });
+
         // Отправить статус — сколько открытых тикетов если админ
         if (client.role === "admin") {
           const openCount = [...tickets.values()].filter(t => t.status !== "closed").length;
           send(ws, { type: "admin_ready", openTickets: openCount });
         }
+        break;
+      }
+
+      // Отправить заявку в друзья по нику
+      case "friend_request_send": {
+        const target = [...accounts.values()].find(
+          a => a.username?.toLowerCase() === (msg.toUsername || "").toLowerCase()
+        );
+        if (!target) {
+          send(ws, { type: "friend_error", message: "Пользователь не найден" });
+          break;
+        }
+        if (target.id === client.userId) {
+          send(ws, { type: "friend_error", message: "Нельзя добавить себя" });
+          break;
+        }
+        if (areFriends(client.userId, target.id)) {
+          send(ws, { type: "friend_error", message: "Уже в друзьях" });
+          break;
+        }
+        // Проверяем дубль
+        const existing = getPendingRequests(target.id);
+        if (existing.find(r => r.fromId === client.userId)) {
+          send(ws, { type: "friend_error", message: "Заявка уже отправлена" });
+          break;
+        }
+        const req = { fromId: client.userId, fromUsername: client.username, time: Date.now() };
+        friendRequests.set(target.id, [...existing, req]);
+        // Уведомить получателя если онлайн
+        sendToUser(target.id, { type: "friend_request_received", request: req });
+        send(ws, { type: "friend_request_sent", toUsername: target.username });
+        break;
+      }
+
+      // Принять или отклонить заявку
+      case "friend_request_respond": {
+        const { fromId, accept } = msg;
+        const reqs = getPendingRequests(client.userId).filter(r => r.fromId !== fromId);
+        friendRequests.set(client.userId, reqs);
+        if (accept) {
+          if (!friendships.has(client.userId)) friendships.set(client.userId, new Set());
+          if (!friendships.has(fromId))         friendships.set(fromId,         new Set());
+          friendships.get(client.userId).add(fromId);
+          friendships.get(fromId).add(client.userId);
+          // Оба получают обновлённые списки
+          const meFriends = [...getFriends(client.userId)].map(fid => {
+            const fa = [...accounts.values()].find(a => a.id === fid);
+            return fa ? { id: fa.id, username: fa.username } : null;
+          }).filter(Boolean);
+          send(ws, { type: "friends_list", friends: meFriends });
+          sendToUser(fromId, { type: "friend_accepted", byId: client.userId, byUsername: client.username });
+        }
+        send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+        break;
+      }
+
+      // Отправить личное сообщение другу
+      case "dm_send": {
+        const { toId, text } = msg;
+        if (!text?.trim()) break;
+        const key  = dmKey(client.userId, toId);
+        const msgs = dms.get(key) || [];
+        const dm   = { id: uuidv4(), from: client.userId, fromUsername: client.username, text: text.trim(), time: Date.now() };
+        msgs.push(dm);
+        dms.set(key, msgs.slice(-200)); // хранить последние 200
+        send(ws, { type: "dm_message", with: toId, message: dm });
+        sendToUser(toId, { type: "dm_message", with: client.userId, message: dm });
+        break;
+      }
+
+      // Запросить историю DM с другом
+      case "dm_history": {
+        const key  = dmKey(client.userId, msg.withId);
+        const msgs = dms.get(key) || [];
+        send(ws, { type: "dm_history", with: msg.withId, messages: msgs });
         break;
       }
 

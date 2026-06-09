@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PlayCircle, Users, Lightning, UsersThree } from "@phosphor-icons/react";
+import { PlayCircle, Lightning, UsersThree } from "@phosphor-icons/react";
 
 const SERVERS = [
   {
@@ -8,19 +8,27 @@ const SERVERS = [
     name: "STARWARS",
     subtitle: "Звёздные Войны",
     version: "1.16.5",
-    online: 8420,
     tag: "PvP · Sci-Fi",
     description: "Встань на сторону Ордена Джедаев или Тёмной стороны. Уникальные Force-способности, космические бои и захват планет. Каждый выбор меняет судьбу галактики.",
     bg: "linear-gradient(160deg, #0a0a1f 0%, #050510 60%, #000 100%)",
     accent: "#818cf8",
-    emoji: "⚔️",
   },
 ];
 
 export default function PlayPage({ user, onOpenCommunity }) {
-  const [selected, setSelected] = useState(SERVERS[0]);
+  const [selected,  setSelected]  = useState(SERVERS[0]);
   const [launching, setLaunching] = useState(false);
   const [launched,  setLaunched]  = useState(false);
+
+  // Оповещаем курсор о смене сервера
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
+  }, [selected.id]);
+
+  // При размонтировании — сбрасываем курсор
+  useEffect(() => () => {
+    window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } }));
+  }, []);
 
   const handlePlay = async () => {
     setLaunching(true);
@@ -30,10 +38,12 @@ export default function PlayPage({ user, onOpenCommunity }) {
     setTimeout(() => setLaunched(false), 3000);
   };
 
+  const selectServer = (srv) => setSelected(srv);
+
   return (
     <div className="relative h-full bg-black overflow-hidden">
 
-      {/* ── Background ── */}
+      {/* Background */}
       <AnimatePresence mode="wait">
         <motion.div key={selected.id + "_bg"} className="absolute inset-0"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -48,7 +58,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
         </motion.div>
       </AnimatePresence>
 
-      {/* ── Floating sidebar island — centered vertically ── */}
+      {/* Sidebar */}
       <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center" style={{ width: 210, paddingLeft: 16 }}>
         <div className="w-full rounded-2xl overflow-hidden flex flex-col"
           style={{
@@ -63,7 +73,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
             {SERVERS.map(srv => {
               const active = selected.id === srv.id;
               return (
-                <button key={srv.id} onClick={() => setSelected(srv)} className="w-full text-left focus:outline-none">
+                <button key={srv.id} onClick={() => selectServer(srv)} className="w-full text-left focus:outline-none">
                   <motion.div
                     animate={{ opacity: active ? 1 : 0.4 }}
                     whileHover={{ opacity: active ? 1 : 0.72 }}
@@ -99,98 +109,82 @@ export default function PlayPage({ user, onOpenCommunity }) {
         </div>
       </div>
 
-      {/* ── Main content ── */}
+      {/* Main content — заголовок ВВЕРХУ, кнопка внизу */}
       <AnimatePresence mode="wait">
         <motion.div
           key={selected.id + "_c"}
-          className="absolute inset-0 flex flex-col justify-end"
-          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          className="absolute inset-0 flex flex-col"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ delay: 0.07, duration: 0.3 }}
+          style={{ paddingLeft: 242 }}
         >
-          <div className="pb-6 pr-8 flex flex-col gap-0" style={{ paddingLeft: 242 }}>
-            {/* Tag */}
-            <div className="flex items-center gap-2 mb-4">
+          {/* Top — заголовок и описание */}
+          <div className="flex flex-col pt-7 pr-8">
+            <div className="flex items-center gap-2 mb-3">
               <span className="text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-lg"
                 style={{ background: `${selected.accent}18`, color: selected.accent, border: `1px solid ${selected.accent}30` }}
               >{selected.tag}</span>
               <span className="text-[10px] text-white/25 font-mono">{selected.version}</span>
             </div>
 
-            {/* Title */}
-            <h1 className="text-[54px] font-display font-black leading-none tracking-tight text-white mb-4" style={{ textShadow: "0 2px 40px rgba(0,0,0,0.8)" }}>
+            <h1 className="text-[58px] font-display font-black leading-none tracking-tight text-white mb-3"
+              style={{ textShadow: "0 2px 40px rgba(0,0,0,0.8)" }}
+            >
               {selected.name}
             </h1>
 
-            {/* Description */}
-            <p className="text-[13px] text-white/55 max-w-[480px] leading-[1.7] mb-7">
+            <p className="text-[13px] text-white/50 max-w-[480px] leading-[1.75]">
               {selected.description}
             </p>
+          </div>
 
-            {/* Bottom bar */}
-            <BottomBar
-              server={selected}
-              launching={launching}
-              launched={launched}
-              onPlay={handlePlay}
-              onCommunity={onOpenCommunity}
-            />
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Bottom — только кнопки */}
+          <div className="flex items-center gap-3 pb-8 pr-8">
+            {/* Сообщество */}
+            <button
+              onClick={onOpenCommunity}
+              className="flex items-center gap-2 rounded-2xl px-5 py-3.5 transition-all duration-150"
+              style={{ background: "rgba(255,255,255,0.06)" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+            >
+              <UsersThree size={16} weight="regular" style={{ color: "rgba(255,255,255,0.6)" }} />
+              <span className="text-[12px] font-medium text-white/50">Сообщество</span>
+            </button>
+
+            <div className="flex-1" />
+
+            {/* Play button — большой */}
+            <motion.button
+              onClick={handlePlay}
+              disabled={launching || launched}
+              whileTap={{ scale: 0.96 }}
+              className="flex items-center gap-3 rounded-2xl font-black text-[15px] tracking-widest transition-all duration-200 disabled:opacity-60"
+              style={{
+                padding: "14px 40px",
+                background: launched ? "#16a34a" : "#2563EB",
+                color: "#fff",
+                boxShadow: launched
+                  ? "0 0 30px rgba(22,163,74,0.45)"
+                  : "0 0 30px rgba(37,99,235,0.45)",
+              }}
+              onMouseEnter={e => { if (!launching && !launched) e.currentTarget.style.background = "#1d4ed8"; }}
+              onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = "#2563EB"; }}
+            >
+              {launching ? (
+                <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />ЗАПУСК...</>
+              ) : launched ? (
+                <><Lightning size={18} weight="fill" />ЗАПУЩЕНО!</>
+              ) : (
+                <><PlayCircle size={20} weight="fill" />ИГРАТЬ</>
+              )}
+            </motion.button>
           </div>
         </motion.div>
       </AnimatePresence>
-    </div>
-  );
-}
-
-function BottomBar({ server, launching, launched, onPlay, onCommunity }) {
-  return (
-    <div className="flex items-center gap-2.5">
-      {/* Online pill — стилизованный без зелёной хуйни */}
-      <div className="flex items-center gap-2.5 rounded-xl px-4 py-2.5"
-        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
-      >
-        <span className="text-[15px] font-black text-white tabular-nums leading-none">
-          {server.online.toLocaleString("ru-RU")}
-        </span>
-        <div className="flex flex-col">
-          <span className="text-[9px] font-semibold text-white/50 uppercase tracking-wider leading-none">онлайн</span>
-        </div>
-      </div>
-
-      {/* Community button — рабочая */}
-      <button
-        onClick={onCommunity}
-        className="flex items-center gap-2 rounded-xl px-4 py-2.5 transition-all duration-150"
-        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
-        onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; }}
-        onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
-      >
-        <UsersThree size={15} weight="regular" style={{ color: "rgba(255,255,255,0.55)" }} />
-        <span className="text-[11px] font-medium text-white/45">Сообщество</span>
-      </button>
-
-      <div className="flex-1" />
-
-      {/* Play button */}
-      <motion.button
-        onClick={onPlay}
-        disabled={launching || launched}
-        whileTap={{ scale: 0.96 }}
-        className="flex items-center gap-2.5 rounded-xl px-7 py-2.5 font-bold text-[13px] tracking-wider transition-all duration-200 disabled:opacity-60"
-        style={launched
-          ? { background: "#16a34a", color: "#fff", boxShadow: "0 0 20px rgba(22,163,74,0.4)" }
-          : { background: "#2563EB", color: "#fff", boxShadow: "0 0 20px rgba(37,99,235,0.4)" }
-        }
-        onMouseEnter={e => { if (!launching && !launched) e.currentTarget.style.background = "#1d4ed8"; }}
-        onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = "#2563EB"; }}
-      >
-        {launching ? (
-          <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Запуск...</>
-        ) : launched ? (
-          <><Lightning size={15} weight="fill" />Запущено!</>
-        ) : (
-          <><PlayCircle size={16} weight="fill" />ИГРАТЬ</>
-        )}
-      </motion.button>
     </div>
   );
 }

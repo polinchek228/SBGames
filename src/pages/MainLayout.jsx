@@ -25,6 +25,7 @@ const NAV_ITEMS = [
 export default function MainLayout({ user, onLogout }) {
   const [page, setPage] = useState("play");
   const [showCommunity, setShowCommunity] = useState(false);
+  const [friendBadge, setFriendBadge] = useState(0);
 
   const renderPage = () => {
     switch (page) {
@@ -99,13 +100,18 @@ export default function MainLayout({ user, onLogout }) {
           </div>
           <button
             onClick={() => setShowCommunity(v => !v)}
-            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150"
+            className="relative w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150"
             style={showCommunity
               ? { background: "#2563EB", color: "#fff" }
               : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }
             }
           >
             <UsersThree size={15} weight={showCommunity ? "fill" : "regular"} />
+            {friendBadge > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center">
+                {friendBadge}
+              </span>
+            )}
           </button>
           <button
             onClick={onLogout}
@@ -139,7 +145,7 @@ export default function MainLayout({ user, onLogout }) {
               transition={{ type: "spring", damping: 32, stiffness: 320 }}
               className="absolute top-0 right-0 bottom-0 z-30"
             >
-              <CommunityPage onClose={() => setShowCommunity(false)} user={user} />
+              <CommunityPage onClose={() => setShowCommunity(false)} user={user} onBadgeChange={setFriendBadge} />
             </motion.div>
           )}
         </AnimatePresence>
