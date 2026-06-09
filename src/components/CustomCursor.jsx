@@ -6,6 +6,17 @@ export default function CustomCursor() {
   const saberRef = useRef(null);
 
   useEffect(() => {
+    // Скрываем системный курсор через Tauri (нужно для macOS — там CSS cursor:none не работает)
+    async function hideCursor() {
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          await getCurrentWindow().setCursorVisible(false);
+        }
+      } catch {}
+    }
+    hideCursor();
+
     const dot   = dotRef.current;
     const ring  = ringRef.current;
     const saber = saberRef.current;
@@ -73,6 +84,14 @@ export default function CustomCursor() {
       document.removeEventListener("mouseover",  onOver);
       document.removeEventListener("mouseout",   onOut);
       window.removeEventListener("serverChange", onSrv);
+      // Возвращаем системный курсор при размонтировании
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+            getCurrentWindow().setCursorVisible(true).catch(() => {});
+          });
+        }
+      } catch {}
     };
   }, []);
 
