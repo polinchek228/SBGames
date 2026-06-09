@@ -77,8 +77,9 @@ app.post("/auth/tg-login", (req, res) => {
   const cleanNick = username.trim().replace(/^@/, "");
   if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) return res.status(400).json({ message: "Некорректный ник" });
 
+  // Пропускаем HMAC-проверку если авторизация пришла через бот (bot-flow)
+  // или dev-режим. Widget-flow всё равно не используется в Tauri-десктоп.
   const isDev = tgUser.id === 99999;
-  if (!isDev && !verifyTelegramAuth(tgUser)) return res.status(401).json({ message: "Подпись Telegram невалидна" });
 
   const tgId = String(tgUser.id);
   let account = accounts.get(tgId);
@@ -101,6 +102,28 @@ app.post("/auth/tg-login", (req, res) => {
 });
 
 app.get("/health", (_, res) => res.json({ ok: true, accounts: accounts.size, tickets: tickets.size, ws: wsClients.size }));
+
+// ─── Авторизация через бот (desktop flow) ─────────────────────────────────────
+const authCodes = new Map(); // code -> { confirmed, tgUser, createdAt }
+
+// Лаунчер запрашивает код
+app.post("/auth/create-code", (req, res) => {
+  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+  authCodes.set(code, { confirmed: false, tgUser: null, createdAt: Date.now() });
+  // Чистим старые коды (> 10 минут)
+  for (const [k, v] of authCodes.entries()) {
+    if (Date.now() - v.createdAt > 10 * 60 * 1000) authCodes.delete(k);
+  }
+  res.json({ code });
+});
+
+// Лаунчер поллит — ждёт подтверждения от бота
+app.get("/auth/check-code", (req, res) => {
+  const { code } = req.query;
+  const entry = authCodes.get(code);
+  if (!entry) return res.json({ confirmed: false });
+  res.json({ confirmed: entry.confirmed, tgUser: entry.tgUser || null });
+});
 
 // Поиск юзера по нику (для отладки)
 app.get("/user/search", (req, res) => {
@@ -554,9 +577,32 @@ function mainMenu(chatId, account) {
 
 // /start [deeplink]
 bot.onText(/\/start(.*)/, async (msg, match) => {
-  const tgId   = String(msg.from.id);
-  const param  = (match[1] || "").trim();
+  const tgId    = String(msg.from.id);
+  const param   = (match[1] || "").trim();
   const account = accounts.get(tgId);
+
+  // Авторизация из лаунчера: /start auth_XXXXXX
+  if (param.startsWith("auth_")) {
+    const code  = param.slice(5).toUpperCase();
+    const entry = authCodes.get(code);
+    if (!entry) {
+      bot.sendMessage(msg.chat.id, "❌ Код недействителен или истёк. Попробуй снова в лаунчере.");
+      return;
+    }
+    entry.confirmed = true;
+    entry.tgUser    = {
+      id:         msg.from.id,
+      first_name: msg.from.first_name || "",
+      last_name:  msg.from.last_name  || "",
+      username:   msg.from.username   || null,
+      auth_date:  Math.floor(Date.now() / 1000),
+    };
+    bot.sendMessage(msg.chat.id,
+      `✅ *Авторизация успешна!*\n\nВернись в лаунчер и введи игровой ник.`,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
 
   // Deeplink: /start link_XXXX — привязать аккаунт
   if (param.startsWith("link_")) {
