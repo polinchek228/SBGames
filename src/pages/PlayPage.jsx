@@ -156,20 +156,25 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
           <div className="flex-1" />
 
-          {/* ── Bottom bar — как в референсе ── */}
+          {/* ── Bottom bar ── */}
           <div className="flex items-center gap-2.5 pb-8 pr-8">
 
-            {/* Кнопка сообщества — СЛЕВА */}
+            {/* Сообщество — СЛЕВА, широкая с текстом */}
             <button onClick={onOpenCommunity}
-              className="flex items-center justify-center w-[44px] h-[44px] rounded-2xl transition-all duration-150 flex-shrink-0"
+              className="flex items-center gap-2.5 h-[44px] px-5 rounded-2xl transition-all duration-150 flex-shrink-0"
               style={{ background: "rgba(255,255,255,0.08)" }}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.14)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
             >
-              <UsersThree size={18} weight="regular" style={{ color: "rgba(255,255,255,0.7)" }} />
+              <UsersThree size={17} weight="regular" style={{ color: "rgba(255,255,255,0.7)" }} />
+              <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.6)" }}>
+                Сообщество
+              </span>
             </button>
 
-            {/* СБТ баланс */}
+            <div className="flex-1" />
+
+            {/* СБТ баланс — СПРАВА */}
             <div className="flex items-center gap-2 rounded-2xl px-4 h-[44px]"
               style={{ background: "rgba(255,255,255,0.08)" }}
             >
@@ -183,8 +188,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 СБТ
               </span>
             </div>
-
-            <div className="flex-1" />
 
             {/* ИГРАТЬ */}
             <motion.button
