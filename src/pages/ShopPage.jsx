@@ -136,27 +136,62 @@ export default function ShopPage() {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className="flex flex-col rounded-2xl overflow-hidden"
-                  style={{ background: r.bg }}
+                  onClick={() => setDetail(item)}
+                  className="flex flex-col rounded-2xl overflow-hidden group"
+                  style={{ background: "#0e0e0e", cursor: "pointer" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#141414"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "#0e0e0e"; }}
                 >
-                  <div className="h-[2px] flex-shrink-0"
-                    style={{ background: `linear-gradient(90deg, transparent, ${r.color}60, transparent)` }}
-                  />
-
-                  <div className="p-4 flex flex-col gap-3 flex-1">
-                    <div className="flex items-start justify-between">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: `${r.color}18` }}
-                      >
-                        <ItemIcon size={20} weight="fill" style={{ color: r.color }} />
-                      </div>
-                      <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded-lg"
-                        style={{ color: r.color, background: `${r.color}15` }}
+                  {/* ── Обложка-баннер ── */}
+                  <div className="relative h-[110px] flex-shrink-0 overflow-hidden"
+                    style={{
+                      background: `radial-gradient(ellipse at 50% 120%, ${r.color}30 0%, transparent 70%), linear-gradient(160deg, ${r.color}12 0%, #000 100%)`,
+                    }}
+                  >
+                    {/* Glow */}
+                    <div className="absolute inset-0"
+                      style={{ background: `radial-gradient(circle at 50% 100%, ${r.color}20, transparent 65%)` }}
+                    />
+                    {/* Большая иконка по центру */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <ItemIcon
+                        size={52}
+                        weight="fill"
+                        style={{
+                          color: r.color,
+                          opacity: 0.85,
+                          filter: `drop-shadow(0 0 16px ${r.color}60)`,
+                          transition: "transform 0.2s",
+                        }}
+                        className="group-hover:scale-110"
+                      />
+                    </div>
+                    {/* Rarity badge */}
+                    <div className="absolute top-2.5 right-2.5">
+                      <span className="text-[9px] font-bold tracking-wider px-2 py-1 rounded-lg"
+                        style={{ color: r.color, background: `rgba(0,0,0,0.7)`, border: `1px solid ${r.color}30` }}
                       >
                         {r.label.toUpperCase()}
                       </span>
                     </div>
+                    {/* Server badge */}
+                    {server === "all" && (() => {
+                      const srvColor = SERVERS.find(s => s.id === item.server)?.color;
+                      const srvLabel = SERVERS.find(s => s.id === item.server)?.label;
+                      return srvColor ? (
+                        <div className="absolute top-2.5 left-2.5">
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md"
+                            style={{ color: srvColor, background: `rgba(0,0,0,0.7)`, border: `1px solid ${srvColor}30` }}
+                          >{srvLabel}</span>
+                        </div>
+                      ) : null;
+                    })()}
+                    {/* Bottom fade */}
+                    <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#0e0e0e] to-transparent" />
+                  </div>
 
+                  {/* ── Контент ── */}
+                  <div className="px-4 pb-4 pt-2 flex flex-col gap-2.5 flex-1">
                     <div>
                       <p className="text-[13px] font-bold text-white leading-tight">{item.name}</p>
                       <p className="text-[10px] mt-1 leading-relaxed line-clamp-2"
@@ -166,37 +201,36 @@ export default function ShopPage() {
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between mt-auto pt-2"
+                    {/* ── Нижняя строка: цена | Подробнее | Купить ── */}
+                    <div className="flex items-center gap-2 mt-auto pt-2"
                       style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
                     >
-                      <div className="flex items-center gap-1.5">
+                      {/* Цена */}
+                      <div className="flex items-center gap-1 flex-1">
                         <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span className="text-[15px] font-black text-white tabular-nums">{item.price}</span>
+                        <span className="text-[14px] font-black text-white tabular-nums">{item.price}</span>
                         <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.28)" }}>СБТ</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        {/* Подробнее */}
-                        <button
-                          onClick={() => setDetail(item)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[10px] font-semibold transition-all duration-150"
-                          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}
-                        >
-                          <Info size={11} />
-                          Подробнее
-                        </button>
-                        {/* Купить */}
-                        <button
-                          onClick={() => toggleCart(item.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-150"
-                          style={inCart
-                            ? { background: `${r.color}20`, color: r.color }
-                            : { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.5)" }
-                          }
-                        >
-                          <ShoppingCartSimple size={12} weight={inCart ? "fill" : "regular"} />
-                          {inCart ? "В корзине" : "Купить"}
-                        </button>
-                      </div>
+                      {/* Подробнее */}
+                      <button
+                        onClick={e => { e.stopPropagation(); setDetail(item); }}
+                        className="text-[10px] font-semibold px-2.5 py-1.5 rounded-xl transition-all duration-150"
+                        style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}
+                      >
+                        Подробнее
+                      </button>
+                      {/* Купить */}
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleCart(item.id); }}
+                        className="flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all duration-150"
+                        style={inCart
+                          ? { background: `${r.color}22`, color: r.color }
+                          : { background: "rgba(37,99,235,0.2)", color: "#93c5fd" }
+                        }
+                      >
+                        <ShoppingCartSimple size={12} weight={inCart ? "fill" : "regular"} />
+                        {inCart ? "В корзине" : "Купить"}
+                      </button>
                     </div>
                   </div>
                 </motion.div>
