@@ -1,24 +1,24 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TelegramLogo, PaperPlaneTilt, Plus } from "@phosphor-icons/react";
+import { TelegramLogo, Plus } from "@phosphor-icons/react";
 import { Send } from "lucide-react";
 import { API_URL, WS_URL, getToken } from "../lib/api.js";
 
-const CATEGORIES = ["Технические проблемы","Вопрос по аккаунту","Вопрос по покупке","Баг / ошибка","Жалоба на игрока","Другое"];
+const card = { background: "#0d0d0d", borderRadius: 16 };
 const STATUS_COLORS = { open: "#facc15", answered: "#4ade80", closed: "rgba(255,255,255,0.2)" };
+const CATEGORIES = ["Технические проблемы","Вопрос по аккаунту","Вопрос по покупке","Баг / ошибка","Жалоба на игрока","Другое"];
 
 export default function SupportPage({ user }) {
   const [tickets,  setTickets]  = useState([]);
   const [active,   setActive]   = useState(null);
   const [messages, setMessages] = useState([]);
   const [input,    setInput]    = useState("");
-  const [view,     setView]     = useState("list"); // list | new | chat
+  const [view,     setView]     = useState("list");
   const [cat,      setCat]      = useState(CATEGORIES[0]);
   const [desc,     setDesc]     = useState("");
-  const wsRef   = useRef(null);
+  const wsRef    = useRef(null);
   const bottomRef = useRef(null);
 
-  // Simple WS connect
   useEffect(() => {
     if (!user?.id) return;
     const socket = new WebSocket(WS_URL);
@@ -70,154 +70,227 @@ export default function SupportPage({ user }) {
   };
 
   return (
-    <main className="relative z-10 max-w-5xl mx-auto px-4 pb-16">
-      <div className="text-center mb-8">
-        <h1 className="text-[28px] font-black text-white mb-2">Поддержка</h1>
-        <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-          Мы отвечаем быстро и по делу. Опиши проблему — поможем и вернёмся с решением.
-        </p>
-      </div>
+    <main style={{ background: "#000", minHeight: "100vh", color: "#fff", fontFamily: "inherit" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px 64px" }}>
 
-      <div className="grid grid-cols-3 gap-4">
-        {/* Left: sidebar */}
-        <div className="flex flex-col gap-3">
-          <a href="https://t.me/sbgamessupport_bot" target="_blank" rel="noreferrer"
-            className="rounded-2xl p-4 flex items-center gap-3 transition-colors"
-            style={{ background: "rgba(44,165,224,0.1)", border: "1px solid rgba(44,165,224,0.2)" }}
-          >
-            <TelegramLogo size={20} style={{ color: "#2CA5E0" }} />
-            <div>
-              <p className="text-[13px] font-semibold text-white">Telegram поддержка</p>
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Напиши напрямую — быстрый ответ.</p>
-            </div>
-          </a>
-
-          <button onClick={() => setView("new")}
-            className="flex items-center gap-2 rounded-xl py-2.5 px-4 text-[12px] font-semibold text-white transition-colors"
-            style={{ background: "rgba(37,99,235,0.2)", border: "1px solid rgba(37,99,235,0.3)" }}
-          >
-            <Plus size={14} /> Новое обращение
-          </button>
-
-          {tickets.map(t => (
-            <button key={t.id} onClick={() => openTicket(t)}
-              className="rounded-2xl p-4 text-left transition-colors"
-              style={{
-                background: active?.id === t.id ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.07)"
-              }}
-            >
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <p className="text-[12px] font-semibold text-white/80 truncate">{t.category}</p>
-                <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{ background: STATUS_COLORS[t.status] }} />
-              </div>
-              <p className="text-[10px] truncate" style={{ color: "rgba(255,255,255,0.3)" }}>{t.preview}</p>
-              <p className="text-[9px] mt-1" style={{ color: "rgba(255,255,255,0.15)" }}>#{t.id}</p>
-            </button>
-          ))}
+        {/* Header */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Поддержка</h1>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>
+            Мы отвечаем быстро и по делу. Опиши проблему — поможем.
+          </p>
         </div>
 
-        {/* Right: chat / new form */}
-        <div className="col-span-2 rounded-2xl overflow-hidden flex flex-col"
-          style={{ background: "rgba(255,255,255,0.05)", minHeight: 400 }}
-        >
-          <AnimatePresence mode="wait">
-            {view === "list" && (
-              <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="flex flex-col items-center justify-center flex-1 gap-4 p-8 h-full"
-              >
-                <p className="text-[28px]">💬</p>
-                <p className="text-white/40 text-[14px]">Выберите обращение или создайте новое</p>
-              </motion.div>
-            )}
+        <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16, alignItems: "start" }}>
 
-            {view === "new" && (
-              <motion.div key="new" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="flex flex-col gap-4 p-6"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-[15px] font-bold text-white">Новое обращение</p>
-                  <button onClick={() => setView("list")} className="text-white/30 hover:text-white/60 text-[11px]">Отмена</button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {CATEGORIES.map(c => (
-                    <button key={c} onClick={() => setCat(c)}
-                      className="rounded-xl px-3 py-2 text-left text-[12px] transition-all"
-                      style={cat === c
-                        ? { background: "rgba(37,99,235,0.2)", border: "1px solid rgba(37,99,235,0.4)", color: "#93c5fd" }
-                        : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)" }
-                      }
-                    >{c}</button>
-                  ))}
-                </div>
-                <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={5}
-                  placeholder="Опиши проблему подробно..."
-                  className="w-full rounded-xl px-4 py-3 text-[13px] resize-none"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)", color: "#fff" }}
-                />
-                <button onClick={createTicket} disabled={!desc.trim()}
-                  className="py-3 rounded-xl font-bold text-[13px] text-white disabled:opacity-30 transition-colors bg-blue-600 hover:bg-blue-500"
-                >
-                  Отправить заявку
-                </button>
-              </motion.div>
-            )}
+          {/* SIDEBAR */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-            {view === "chat" && active && (
-              <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="flex flex-col h-full"
+            {/* Telegram card */}
+            <motion.a
+              initial={{ opacity: 0, x: -14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.35 }}
+              href="https://t.me/sbgamessupport_bot" target="_blank" rel="noreferrer"
+              style={{
+                ...card, padding: "16px 16px", display: "flex", alignItems: "center", gap: 12,
+                textDecoration: "none", color: "#fff",
+              }}
+            >
+              <div style={{
+                width: 38, height: 38, borderRadius: 9, flexShrink: 0,
+                background: "rgba(41,182,246,0.12)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <TelegramLogo size={20} color="#29b6f6" weight="fill" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Telegram поддержка</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Напиши напрямую — быстрый ответ</div>
+              </div>
+            </motion.a>
+
+            {/* Tickets panel */}
+            <motion.div
+              initial={{ opacity: 0, x: -14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.35, delay: 0.05 }}
+              style={{ ...card, padding: "16px 14px" }}
+            >
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>
+                Тикеты
+              </div>
+
+              <button onClick={() => setView("new")}
+                style={{
+                  width: "100%", background: "rgba(37,99,235,0.15)", border: "1px solid rgba(37,99,235,0.28)",
+                  color: "#93c5fd", borderRadius: 9, padding: "10px 12px",
+                  fontWeight: 600, fontSize: 12, cursor: "pointer", marginBottom: 8, textAlign: "left",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}
               >
-                <div className="px-5 py-4 flex items-center justify-between"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                <Plus size={12} /> Новое обращение
+              </button>
+
+              {tickets.length === 0 && view !== "new" && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "10px 0" }}>
+                  Нет тикетов
+                </div>
+              )}
+
+              {tickets.map(t => (
+                <button key={t.id} onClick={() => openTicket(t)}
+                  style={{
+                    width: "100%", textAlign: "left", cursor: "pointer", borderRadius: 9,
+                    padding: "11px 12px", marginBottom: 4,
+                    background: active?.id === t.id ? "#1a1a1a" : "transparent",
+                    border: active?.id === t.id ? "1px solid rgba(59,130,246,0.35)" : "1px solid transparent",
+                    color: "#fff",
+                  }}
                 >
-                  <div>
-                    <p className="text-[14px] font-bold text-white">Обращение #{active.id}</p>
-                    <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>{active.category}</p>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                    <span style={{ fontWeight: 600, fontSize: 12 }}>{t.category}</span>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: STATUS_COLORS[t.status] ?? STATUS_COLORS.open, flexShrink: 0 }} />
                   </div>
-                  <button onClick={() => setView("list")} className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>← Назад</button>
-                </div>
-                <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3" style={{ minHeight: 0 }}>
-                  {messages.map(msg => {
-                    const isMe = msg.from === user.id || msg.role === "user";
-                    if (msg.from === "system") return (
-                      <p key={msg.id} className="text-center text-[11px]" style={{ color: "rgba(255,255,255,0.25)" }}>{msg.text}</p>
-                    );
-                    return (
-                      <div key={msg.id} className={`flex flex-col gap-1 max-w-[75%] ${isMe ? "self-end items-end" : "self-start items-start"}`}>
-                        {!isMe && <span className="text-[9px] px-1" style={{ color: "rgba(255,255,255,0.3)" }}>{msg.username}</span>}
-                        <div className="px-4 py-2.5 rounded-2xl text-[13px] leading-relaxed"
-                          style={isMe
-                            ? { background: "#2563EB", color: "#fff", borderBottomRightRadius: 4 }
-                            : { background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.85)", borderBottomLeftRadius: 4 }
-                          }
-                        >{msg.text}</div>
-                        <span className="text-[9px] px-1" style={{ color: "rgba(255,255,255,0.2)" }}>
-                          {new Date(msg.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  <div ref={bottomRef} />
-                </div>
-                <form onSubmit={e => { e.preventDefault(); sendMsg(); }}
-                  className="flex items-end gap-2 px-4 py-3"
-                  style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 2 }}>{t.preview}</div>
+                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>#{t.id}</div>
+                </button>
+              ))}
+            </motion.div>
+          </div>
+
+          {/* CHAT AREA */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.08 }}
+            style={{ ...card, display: "flex", flexDirection: "column", height: 540, overflow: "hidden" }}
+          >
+            <AnimatePresence mode="wait">
+
+              {/* Empty state */}
+              {view === "list" && (
+                <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}
                 >
-                  <input value={input} onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMsg())}
-                    placeholder="Напиши сообщение..."
-                    className="flex-1 rounded-xl px-4 py-2.5 text-[13px]"
-                    style={{ background: "rgba(255,255,255,0.06)", color: "#fff" }}
+                  <span style={{ fontSize: 28 }}>💬</span>
+                  <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>Выберите обращение или создайте новое</span>
+                </motion.div>
+              )}
+
+              {/* New ticket form */}
+              {view === "new" && (
+                <motion.div key="new" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  style={{ flex: 1, overflow: "auto", padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14 }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>Новое обращение</span>
+                    <button onClick={() => setView("list")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: 12 }}>
+                      Отмена
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {CATEGORIES.map(c => (
+                      <button key={c} onClick={() => setCat(c)}
+                        style={{
+                          borderRadius: 9, padding: "9px 11px", textAlign: "left", fontSize: 12, cursor: "pointer",
+                          ...(cat === c
+                            ? { background: "rgba(37,99,235,0.2)", border: "1px solid rgba(37,99,235,0.4)", color: "#93c5fd" }
+                            : { background: "#111", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.55)" }),
+                        }}
+                      >{c}</button>
+                    ))}
+                  </div>
+                  <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={5}
+                    placeholder="Опиши проблему подробно..."
+                    style={{
+                      width: "100%", background: "#111", border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 13,
+                      resize: "none", outline: "none", boxSizing: "border-box",
+                    }}
                   />
-                  <button type="submit" disabled={!input.trim()}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-600 hover:bg-blue-500 disabled:opacity-30 transition-colors"
+                  <button onClick={createTicket} disabled={!desc.trim()}
+                    style={{
+                      background: "#3b82f6", color: "#fff", border: "none", borderRadius: 10,
+                      padding: "13px 0", fontWeight: 700, fontSize: 13, cursor: desc.trim() ? "pointer" : "not-allowed",
+                      opacity: desc.trim() ? 1 : 0.4, transition: "opacity 0.12s",
+                    }}
                   >
-                    <Send size={14} className="text-white" />
+                    Отправить заявку
                   </button>
-                </form>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                </motion.div>
+              )}
+
+              {/* Chat */}
+              {view === "chat" && active && (
+                <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+                >
+                  {/* Header */}
+                  <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>Обращение #{active.id}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{active.category}</div>
+                    </div>
+                    <button onClick={() => setView("list")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 11 }}>
+                      ← Назад
+                    </button>
+                  </div>
+
+                  {/* Messages */}
+                  <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px", display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+                    {messages.map(msg => {
+                      const isMe = msg.from === user?.id || msg.role === "user";
+                      if (msg.from === "system") return (
+                        <p key={msg.id} style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{msg.text}</p>
+                      );
+                      return (
+                        <div key={msg.id} style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "74%", alignSelf: isMe ? "flex-end" : "flex-start", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                          {!isMe && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", paddingLeft: 2 }}>{msg.username}</span>}
+                          <div style={{
+                            padding: "10px 14px", fontSize: 13, lineHeight: 1.5,
+                            ...(isMe
+                              ? { background: "#2563eb", color: "#fff", borderRadius: "14px 14px 4px 14px" }
+                              : { background: "#111", color: "rgba(255,255,255,0.85)", borderRadius: "14px 14px 14px 4px", border: "1px solid rgba(255,255,255,0.06)" }),
+                          }}>
+                            {msg.text}
+                          </div>
+                          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", paddingLeft: 2, paddingRight: 2 }}>
+                            {new Date(msg.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div ref={bottomRef} />
+                  </div>
+
+                  {/* Input */}
+                  <form onSubmit={e => { e.preventDefault(); sendMsg(); }}
+                    style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}
+                  >
+                    <input value={input} onChange={e => setInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMsg())}
+                      placeholder="Напиши сообщение..."
+                      style={{
+                        flex: 1, background: "#111", border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 10, padding: "11px 15px", color: "#fff", fontSize: 13, outline: "none",
+                      }}
+                    />
+                    <button type="submit" disabled={!input.trim()}
+                      style={{
+                        width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                        background: "#3b82f6", border: "none", cursor: input.trim() ? "pointer" : "not-allowed",
+                        opacity: input.trim() ? 1 : 0.35, display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "opacity 0.12s",
+                      }}
+                    >
+                      <Send size={16} color="#fff" />
+                    </button>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
         </div>
       </div>
     </main>

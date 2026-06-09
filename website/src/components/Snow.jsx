@@ -1,39 +1,22 @@
-import React, { useEffect, useRef } from "react";
+import React from "react";
+
+const FLAKES = Array.from({ length: 28 }, (_, i) => ({
+  id: i,
+  left:     10 + (i * 3.2) % 85,
+  size:     8 + (i * 7) % 8,
+  delay:    (i * 1.3) % 12,
+  duration: 12 + (i * 2.1) % 14,
+  sym:      ["❄", "✦", "✲", "❊"][i % 4],
+}));
 
 export default function Snow() {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    let W = canvas.width = window.innerWidth;
-    let H = canvas.height = window.innerHeight;
-    const flakes = Array.from({ length: 60 }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      r: Math.random() * 2 + 0.5,
-      s: Math.random() * 0.4 + 0.1,
-      w: Math.random() * 0.3 - 0.15,
-    }));
-    let raf;
-    const draw = () => {
-      ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      flakes.forEach(f => {
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-        ctx.fill();
-        f.y += f.s;
-        f.x += f.w;
-        if (f.y > H) { f.y = -f.r; f.x = Math.random() * W; }
-        if (f.x > W) f.x = 0;
-        if (f.x < 0) f.x = W;
-      });
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    const onResize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
-    window.addEventListener("resize", onResize);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); };
-  }, []);
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.35 }} />;
+  return (
+    <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:0, overflow:"hidden" }}>
+      {FLAKES.map(f => (
+        <span key={f.id} className="snowflake"
+          style={{ left:`${f.left}%`, fontSize:`${f.size}px`, animationDelay:`${f.delay}s`, animationDuration:`${f.duration}s` }}
+        >{f.sym}</span>
+      ))}
+    </div>
+  );
 }

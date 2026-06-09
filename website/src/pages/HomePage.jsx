@@ -1,122 +1,220 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { DownloadSimple, ArrowRight, TelegramLogo, ArrowUpRight } from "@phosphor-icons/react";
+import { GameController, TelegramLogo, YoutubeLogo } from "@phosphor-icons/react";
 
-const SERVERS = [
-  { id: "starwars", name: "STARWARS", sub: "Звёздные Войны", bg: "linear-gradient(160deg,#0a0a1f,#000)", accent: "#818cf8" },
+const card = { background: "#0d0d0d", borderRadius: 16 };
+const innerCard = { background: "#111", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" };
+
+const sectionMeta = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.15em",
+  textTransform: "uppercase",
+  color: "rgba(255,255,255,0.3)",
+  marginBottom: 4,
+};
+
+const STEPS = [
+  { label: "ШАГ 1", title: "Скачайте лаунчер",  desc: "Загрузите наш лаунчер с официального сайта и установите его на своё устройство." },
+  { label: "ШАГ 2", title: "Создайте аккаунт",  desc: "Зарегистрируйтесь или войдите в существующий аккаунт через лаунчер." },
+  { label: "ШАГ 3", title: "Выберите режим",    desc: "Выберите понравившийся игровой мир и подключитесь к серверу." },
+  { label: "ШАГ 4", title: "Начните играть",    desc: "Погрузитесь в игровой процесс и станьте частью нашего комьюнити." },
 ];
 
 export default function HomePage() {
   return (
-    <main className="relative z-10 max-w-5xl mx-auto px-4 pb-20">
+    <main style={{ background: "#000", minHeight: "100vh", color: "#fff", fontFamily: "inherit" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px 64px" }}>
 
-      {/* ── Hero ── */}
-      <section className="flex flex-col items-center justify-center text-center py-16">
-        <div className="w-full max-w-3xl rounded-2xl overflow-hidden"
-          style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", padding: "72px 48px" }}
+        {/* HERO */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+          style={{ ...card, borderRadius: 20, padding: "72px 48px", textAlign: "center", marginBottom: 20 }}
         >
-          <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            className="text-[64px] font-black leading-none tracking-tight text-white mb-2"
-          >
+          <div style={{ fontSize: 68, fontWeight: 900, letterSpacing: "0.03em", lineHeight: 1, marginBottom: 10 }}>
             SB GAMES
-          </motion.h1>
-          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-            className="text-[40px] font-black tracking-widest uppercase mb-4"
-            style={{ color: "rgba(255,255,255,0.15)" }}
-          >
-            Комплекс серверов
-          </motion.p>
-          <p className="text-[15px] mb-8" style={{ color: "rgba(255,255,255,0.4)" }}>
+          </div>
+          <div style={{ fontSize: 52, fontWeight: 800, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(255,255,255,0.1)", marginBottom: 18 }}>
+            КОМПЛЕКС СЕРВЕРОВ
+          </div>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 15, maxWidth: 460, margin: "0 auto 32px" }}>
             Один аккаунт, быстрый старт и разные режимы.
           </p>
-          <div className="flex items-center justify-center gap-3">
-            <Link to="/download"
-              className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-[13px] bg-white text-black hover:bg-white/90 transition-colors"
-            >
-              <DownloadSimple size={16} weight="bold" />
-              Скачать лаунчер
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link to="/download" style={{
+              background: "#fff", color: "#000", padding: "14px 30px", borderRadius: 12,
+              fontWeight: 800, fontSize: 13, letterSpacing: "0.06em", textDecoration: "none",
+            }}>
+              СКАЧАТЬ ЛАУНЧЕР ↓
             </Link>
-            <Link to="/howtoplay"
-              className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-[13px] transition-colors"
-              style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.65)" }}
-            >
-              Как начать играть
-              <ArrowRight size={14} />
+            <Link to="/howtoplay" style={{
+              background: "#1a1a1a", color: "#fff", padding: "14px 30px", borderRadius: 12,
+              fontWeight: 800, fontSize: 13, letterSpacing: "0.06em", textDecoration: "none",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}>
+              КАК НАЧАТЬ ИГРАТЬ &gt;
             </Link>
           </div>
-        </div>
-      </section>
+        </motion.div>
 
-      {/* ── Серверы ── */}
-      <section className="mb-16">
-        <div className="flex items-end justify-between mb-4">
-          <div>
-            <h2 className="text-[18px] font-black tracking-widest uppercase text-white">Текущие режимы</h2>
-            <p className="text-[11px] uppercase tracking-widest mt-0.5" style={{ color: "rgba(255,255,255,0.2)" }}>Ваш выбор — ваша история</p>
-          </div>
-          <span className="text-[11px]" style={{ color: "#818cf8" }}>● 1 сервер онлайн</span>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {SERVERS.map(s => (
-            <motion.div key={s.id} whileHover={{ scale: 1.02 }}
-              className="rounded-2xl overflow-hidden relative"
-              style={{ background: s.bg, height: 140 }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-              <div className="absolute top-3 right-3">
-                <ArrowUpRight size={14} style={{ color: "rgba(255,255,255,0.25)" }} />
+        {/* ТЕКУЩИЕ РЕЖИМЫ */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.08 }}
+          style={{ ...card, padding: "24px 24px 20px", marginBottom: 20 }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+            <div>
+              <div style={sectionMeta}>Игровые миры</div>
+              <div style={{ fontSize: 17, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                ТЕКУЩИЕ РЕЖИМЫ
               </div>
-              <div className="absolute bottom-0 left-0 right-0 p-4">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2"
-                  style={{ background: `${s.accent}20` }}
-                >
-                  <div className="w-3 h-3 rounded-sm" style={{ background: s.accent }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#a855f7", fontSize: 11, fontWeight: 700 }}>
+              <span>●</span> 1 СЕРВЕР ОНЛАЙН
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            <div style={{ ...innerCard, padding: "18px 16px" }}>
+              <GameController size={26} color="#a855f7" weight="duotone" style={{ marginBottom: 10 }} />
+              <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: "0.04em" }}>STARWARS</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>Игровой мир</div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* КОМЬЮНИТИ + НОВОСТИ */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.55fr", gap: 20, marginBottom: 20 }}>
+
+          {/* КОМЬЮНИТИ */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.12 }}
+            style={{ ...card, padding: "24px 22px", display: "flex", flexDirection: "column", gap: 14 }}
+          >
+            <div>
+              <div style={sectionMeta}>Соцсети</div>
+              <div style={{ fontSize: 17, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+                КОМЬЮНИТИ
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)" }}>
+                СТАНОВИСЬ ЧАСТЬЮ КОМАНДЫ
+              </div>
+            </div>
+
+            <a href="https://t.me/sb7games" target="_blank" rel="noreferrer" style={{
+              ...innerCard, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12,
+              textDecoration: "none", color: "#fff",
+            }}>
+              <TelegramLogo size={24} color="#29b6f6" weight="fill" />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Telegram</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Новости и обновления</div>
+              </div>
+            </a>
+
+            <a href="https://youtube.com/@sbgames" target="_blank" rel="noreferrer" style={{
+              ...innerCard, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12,
+              textDecoration: "none", color: "#fff",
+            }}>
+              <YoutubeLogo size={24} color="#f44336" weight="fill" />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>YouTube</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Видео и трансляции</div>
+              </div>
+            </a>
+          </motion.div>
+
+          {/* НОВОСТИ И ОБНОВЛЕНИЯ */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.16 }}
+            style={{ ...card, padding: "28px 26px", display: "flex", flexDirection: "column" }}
+          >
+            <div style={{
+              display: "inline-block", background: "rgba(59,130,246,0.14)", color: "#3b82f6",
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
+              borderRadius: 20, padding: "4px 12px", marginBottom: 14, width: "fit-content",
+            }}>
+              ОБНОВЛЕНИЯ
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "0.03em", marginBottom: 10 }}>
+              НОВОСТИ И ОБНОВЛЕНИЯ
+            </div>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, lineHeight: 1.65, marginBottom: 24, flex: 1 }}>
+              Следите за последними новостями и обновлениями серверов SB Games. Мы регулярно добавляем новый контент и улучшаем игровой опыт.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Link to="/news" style={{
+                background: "#3b82f6", color: "#fff", padding: "11px 20px", borderRadius: 10,
+                fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textDecoration: "none",
+              }}>
+                ЧИТАТЬ НОВОСТИ
+              </Link>
+              <a href="https://discord.gg/sbgames" target="_blank" rel="noreferrer" style={{
+                background: "#1a1a1a", color: "#fff", padding: "11px 20px", borderRadius: 10,
+                fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textDecoration: "none",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}>
+                НАШ ДИСКОРД
+              </a>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* КАК НАЧАТЬ ИГРАТЬ */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          style={{ ...card, padding: "40px 32px", marginBottom: 20 }}
+        >
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "0.03em", marginBottom: 10 }}>
+              КАК НАЧАТЬ ИГРАТЬ
+            </h2>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, maxWidth: 480, margin: "0 auto 24px", lineHeight: 1.6 }}>
+              Начни своё путешествие в мире SB Games всего за несколько простых шагов.
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+              <Link to="/download" style={{
+                background: "#fff", color: "#000", padding: "12px 26px", borderRadius: 10,
+                fontWeight: 700, fontSize: 13, textDecoration: "none",
+              }}>
+                Скачать лаунчер
+              </Link>
+              <Link to="/topup" style={{
+                background: "#1a1a1a", color: "#fff", padding: "12px 26px", borderRadius: 10,
+                fontWeight: 700, fontSize: 13, textDecoration: "none",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}>
+                Пополнить баланс
+              </Link>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            {STEPS.map((s) => (
+              <div key={s.label} style={{ ...innerCard, padding: "18px 16px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 10 }}>
+                  {s.label}
                 </div>
-                <p className="text-[13px] font-black text-white">{s.name}</p>
-                <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>{s.sub}</p>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", lineHeight: 1.55 }}>{s.desc}</div>
               </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </motion.div>
 
-      {/* ── Комьюнити + Новости ── */}
-      <section className="grid grid-cols-2 gap-4 mb-8">
-        <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
-          <h2 className="text-[18px] font-black tracking-widest uppercase text-white mb-1">Комьюнити</h2>
-          <p className="text-[10px] tracking-widest uppercase mb-4" style={{ color: "rgba(255,255,255,0.2)" }}>Становись частью команды</p>
-          <a href="https://t.me/sb7games" target="_blank" rel="noreferrer"
-            className="flex items-center gap-3 rounded-xl px-4 py-3 mb-2 transition-colors group"
-            style={{ background: "rgba(255,255,255,0.04)" }}
-          >
-            <TelegramLogo size={18} style={{ color: "#2CA5E0" }} />
-            <span className="text-[13px] font-semibold" style={{ color: "rgba(255,255,255,0.65)" }}>Telegram</span>
-            <ArrowUpRight size={12} className="ml-auto" style={{ color: "rgba(255,255,255,0.15)" }} />
-          </a>
-        </div>
-
-        <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
-          <span className="text-[9px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-lg mb-4 inline-block"
-            style={{ background: "rgba(37,99,235,0.15)", color: "#60a5fa" }}
-          >
-            Обновления
-          </span>
-          <h2 className="text-[24px] font-black text-white leading-tight mb-2">Новости и<br/>обновления</h2>
-          <p className="text-[12px] mb-5" style={{ color: "rgba(255,255,255,0.35)" }}>
-            Следи за проектом в соцсетях. Там мы выкладываем анонсы ивентов.
-          </p>
-          <a href="https://t.me/sb7games" target="_blank" rel="noreferrer"
-            className="px-4 py-2 rounded-xl text-[12px] font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors inline-block"
-          >
-            Читать новости
-          </a>
-        </div>
-      </section>
-
-      <footer className="text-center text-[11px]" style={{ color: "rgba(255,255,255,0.15)" }}>
-        © 2026 SBGames. All rights reserved.
-      </footer>
+        <footer style={{ textAlign: "center", color: "rgba(255,255,255,0.18)", fontSize: 12, paddingTop: 8 }}>
+          © 2026 SBGames. All rights reserved.
+        </footer>
+      </div>
     </main>
   );
 }
