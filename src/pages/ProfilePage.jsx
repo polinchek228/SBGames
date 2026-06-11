@@ -4,12 +4,14 @@ import {
   User, Palette, Settings,
   Send, Check, ChevronRight, Moon, Bell, Shield, Trash2,
   RefreshCw, Cpu, Monitor, Zap, Download, Loader2,
-  Package, SlidersHorizontal, CheckCircle2,
+  Package, SlidersHorizontal, CheckCircle2, Images, X,
 } from "lucide-react";
 import {
   Clock, Star, GameController, TelegramLogo, Camera,
 } from "@phosphor-icons/react";
 import * as skinview3d from "skinview3d";
+import { invoke } from "../lib/tauri.js";
+import ScreenshotsModal from "./ScreenshotsPage.jsx";
 
 const TABS = [
   { id: "profile",       label: "Профиль",        icon: User },
@@ -54,22 +56,24 @@ export default function ProfilePage({ user }) {
         })}
       </div>
 
-      {/* Content */}
+      {/* Content — все табы всегда смонтированы, переключаем opacity */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
-        <AnimatePresence mode="wait">
+        {TABS.map(({ id }) => (
           <motion.div
-            key={tab}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+            key={id}
             className="absolute inset-0 overflow-y-auto"
+            animate={{
+              opacity:       tab === id ? 1 : 0,
+              pointerEvents: tab === id ? "auto" : "none",
+            }}
+            transition={{ duration: 0.15 }}
+            style={{ zIndex: tab === id ? 1 : 0 }}
           >
-            {tab === "profile"     && <ProfileTab user={user} />}
-            {tab === "personalize" && <PersonalizeTab user={user} />}
-            {tab === "settings"    && <SettingsTab />}
+            {id === "profile"     && <ProfileTab user={user} />}
+            {id === "personalize" && <PersonalizeTab user={user} />}
+            {id === "settings"    && <SettingsTab />}
           </motion.div>
-        </AnimatePresence>
+        ))}
       </div>
     </div>
   );
@@ -91,6 +95,7 @@ function ProfileTab({ user }) {
   const username = user?.username || "Player";
   const [avatar, setAvatar] = useState(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [showScreenshots, setShowScreenshots] = useState(false);
 
   const stats = [
     { label: "Часов",    value: "148", icon: Clock,          color: "#818cf8" },
@@ -215,6 +220,30 @@ function ProfileTab({ user }) {
         {/* 10. Session history */}
         <SessionHistory />
 
+        {/* Screenshots button */}
+        <motion.div variants={itemVariants}>
+          <motion.button
+            onClick={() => setShowScreenshots(true)}
+            whileTap={{ scale: 0.97 }}
+            className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-150"
+            style={{ background: "rgba(255,255,255,0.03)" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
+          >
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: "rgba(99,102,241,0.12)" }}>
+              <Images size={14} style={{ color: "#818cf8" }} />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-[12px] font-semibold text-white">Скриншоты</p>
+              <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+                Просмотр из .minecraft/screenshots
+              </p>
+            </div>
+            <ChevronRight size={13} style={{ color: "rgba(255,255,255,0.2)" }} />
+          </motion.button>
+        </motion.div>
+
         {/* Telegram card */}
         <motion.div variants={itemVariants}
           className="rounded-2xl px-4 py-3 flex items-center gap-3"
@@ -261,6 +290,10 @@ function ProfileTab({ user }) {
             onClose={() => setShowAvatarPicker(false)}
           />
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showScreenshots && <ScreenshotsModal onClose={() => setShowScreenshots(false)} />}
       </AnimatePresence>
     </div>
   );
