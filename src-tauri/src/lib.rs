@@ -396,6 +396,8 @@ async fn launch_minecraft(
         let ver = std::fs::read_to_string(&json).ok()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
             .ok_or("Парсинг manifest")?;
+
+        // 2a. Скачиваем client.jar
         let client_url = ver["downloads"]["client"]["url"].as_str()
             .ok_or("URL client.jar не найден")?.to_string();
         let client_size = ver["downloads"]["client"]["size"].as_u64().unwrap_or(21_000_000);
@@ -405,6 +407,31 @@ async fn launch_minecraft(
         });
         download_file(&client_url, &client_jar, &app)
             .await.map_err(|e| format!("Client.jar: {}", e))?;
+
+        // 2b. Скачиваем vanilla libraries (~88 шт: guava, gson, log4j, jna, lwjgl, и т.д.)
+        // Forge их требует через inheritsFrom — без них Forge падает.
+        let libs = ver["libraries"].as_array().cloned().unwrap_or_default();
+        let total = libs.len();
+        for (i, lib) in libs.iter().enumerate() {
+            if let Some(artifact) = lib.get("downloads").and_then(|d| d.get("artifact")) {
+                let path = artifact["path"].as_str().unwrap_or("");
+                let url  = artifact["url"].as_str().unwrap_or("");
+                let size = artifact["size"].as_u64().unwrap_or(0);
+                if path.is_empty() || url.is_empty() { continue; }
+                let dest = mc_dir.join("libraries").join(path);
+                if dest.exists() { continue; }
+                std::fs::create_dir_all(dest.parent().unwrap()).ok();
+                let _ = app.emit("download_progress", DownloadProgress {
+                    file:       format!("vanilla: {}", path.rsplit('/').next().unwrap_or(path)).into(),
+                    downloaded: i as u64, total: total as u64, speed_kbs: 0,
+                });
+                let _ = download_file(url, &dest, &app).await;
+            }
+        }
+        let _ = app.emit("download_progress", DownloadProgress {
+            file:       "Vanilla libraries готовы".into(),
+            downloaded: total as u64, total: total as u64, speed_kbs: 0,
+        });
     }
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -495,6 +522,23 @@ async fn launch_minecraft(
                 for lib in arr {
                     if let Some(path) = lib["path"].as_str() {
                         cp_parts.push(mc_dir.join("libraries").join(path));
+                    }
+                }
+            }
+
+            // Если Forge profile наследуется от vanilla 1.19.2 — добавляем
+            // vanilla libraries в classpath
+            if let Some(inherits) = profile["inheritsFrom"].as_str() {
+                let vanilla_json = mc_dir.join("versions").join(inherits).join(format!("{}.json", inherits));
+                if let Ok(v_text) = std::fs::read_to_string(&vanilla_json) {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&v_text) {
+                        if let Some(vlibs) = v["libraries"].as_array() {
+                            for lib in vlibs {
+                                if let Some(path) = lib["path"].as_str() {
+                                    cp_parts.push(mc_dir.join("libraries").join(path));
+                                }
+                            }
+                        }
                     }
                 }
             }
