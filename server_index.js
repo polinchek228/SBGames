@@ -481,7 +481,7 @@ wss.on("connection", (ws, req) => {
     }
   }, WS_AUTH_TIMEOUT);
 
-  ws.on("message", (raw) => {
+  ws.on("message", async (raw) => {
     if (raw.length > 8192) { ws.close(1009, "Message too large"); return; }
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     const client = wsClients.get(clientId);
