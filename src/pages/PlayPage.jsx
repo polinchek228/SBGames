@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, UsersThree } from "@phosphor-icons/react";
+import { invoke, notify, setDiscordPresence, clearDiscordPresence } from "../lib/tauri.js";
 
 const SERVERS = [
   {
@@ -20,19 +21,45 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
+    // Discord — смена сервера
+    setDiscordPresence(`Выбирает сервер: ${selected.name}`, "В лаунчере", "sbgames");
   }, [selected.id]);
 
-  useEffect(() => () => {
-    window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } }));
+  useEffect(() => {
+    // Discord RPC при открытии
+    setDiscordPresence("В лаунчере", "Выбирает сервер", "sbgames");
+    return () => {
+      window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } }));
+    };
   }, []);
 
   const handlePlay = async () => {
     setLaunching(true);
-    await new Promise(r => setTimeout(r, 2200));
+    // Discord — запуск
+    await setDiscordPresence(`Играет на ${selected.name}`, "В игре · SB Games", "sbgames");
+    // Запуск через Tauri (с прогрессом)
+    await invoke("launch_minecraft", {
+      serverId: selected.id,
+      username: user?.username || "Player",
+      token: localStorage.getItem("sbgames_token") || "",
+    });
     setLaunching(false);
     setLaunched(true);
-    setTimeout(() => setLaunched(false), 3000);
+    // Сохраняем сессию
+    saveSession(selected.id, user?.username);
+    // Системное уведомление
+    await notify("SB Games", `Сервер ${selected.name} запущен! Удачной игры, ${user?.username || "игрок"}`);
+    setTimeout(() => setLaunched(false), 4000);
   };
+
+  // ─── 10. Session history ──────────────────────────────────────────────────
+  function saveSession(serverId, username) {
+    try {
+      const sessions = JSON.parse(localStorage.getItem("sbgames_sessions") || "[]");
+      sessions.unshift({ serverId, username, time: Date.now() });
+      localStorage.setItem("sbgames_sessions", JSON.stringify(sessions.slice(0, 50)));
+    } catch {}
+  }
 
   return (
     <div className="relative h-full bg-black overflow-hidden">

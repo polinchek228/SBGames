@@ -212,6 +212,9 @@ function ProfileTab({ user }) {
           ))}
         </div>
 
+        {/* 10. Session history */}
+        <SessionHistory />
+
         {/* Telegram card */}
         <motion.div variants={itemVariants}
           className="rounded-2xl px-4 py-3 flex items-center gap-3"
@@ -260,6 +263,56 @@ function ProfileTab({ user }) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session History
+// ─────────────────────────────────────────────────────────────────────────────
+function SessionHistory() {
+  const sessions = (() => {
+    try { return JSON.parse(localStorage.getItem("sbgames_sessions") || "[]"); }
+    catch { return []; }
+  })();
+
+  if (sessions.length === 0) return null;
+
+  function ago(ts) {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60)      return "только что";
+    if (diff < 3600)    return `${Math.floor(diff/60)} мин назад`;
+    if (diff < 86400)   return `${Math.floor(diff/3600)} ч назад`;
+    return `${Math.floor(diff/86400)} д назад`;
+  }
+
+  const SERVER_COLORS = { starwars: "#818cf8" };
+
+  return (
+    <motion.div variants={itemVariants}
+      className="rounded-2xl p-4 flex flex-col gap-3"
+      style={{ background: "rgba(255,255,255,0.03)" }}
+    >
+      <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
+        style={{ color: "rgba(255,255,255,0.18)" }}>
+        История игр
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {sessions.slice(0, 5).map((s, i) => (
+          <div key={i} className="flex items-center gap-2.5">
+            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: SERVER_COLORS[s.serverId] || "#60a5fa",
+                       boxShadow: `0 0 6px ${SERVER_COLORS[s.serverId] || "#60a5fa"}60` }}
+            />
+            <span className="text-[11px] font-medium text-white capitalize flex-1">
+              {s.serverId}
+            </span>
+            <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+              {ago(s.time)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </motion.div>
   );
 }
 

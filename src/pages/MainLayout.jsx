@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   GameController, User, Trophy, ShoppingBag,
-  Newspaper, Headset, UsersThree, SignOut,
+  Newspaper, Headset, UsersThree, SignOut, Images,
 } from "@phosphor-icons/react";
 import Titlebar from "../components/Titlebar.jsx";
 import PlayPage from "./PlayPage.jsx";
@@ -12,6 +12,10 @@ import ShopPage from "./ShopPage.jsx";
 import SupportPage from "./SupportPage.jsx";
 import CommunityPage from "./CommunityPage.jsx";
 import LeaderboardPage from "./LeaderboardPage.jsx";
+import ScreenshotsPage from "./ScreenshotsPage.jsx";
+import DownloadProgress from "../components/DownloadProgress.jsx";
+import { notify, setDiscordPresence } from "../lib/tauri.js";
+import { WS_URL, getToken } from "../lib/api.js";
 
 const NAV_ITEMS = [
   { id: "play",        label: "ИГРАТЬ",      icon: GameController },
@@ -19,6 +23,7 @@ const NAV_ITEMS = [
   { id: "leaderboard", label: "ВОСХОЖДЕНИЕ", icon: Trophy },
   { id: "shop",        label: "МАГАЗИН",     icon: ShoppingBag },
   { id: "news",        label: "НОВОСТИ",     icon: Newspaper },
+  { id: "screenshots", label: "СКРИНШОТЫ",   icon: Images },
   { id: "support",     label: "ПОМОЩЬ",      icon: Headset },
 ];
 
@@ -26,6 +31,42 @@ export default function MainLayout({ user, onLogout }) {
   const [page, setPage] = useState("play");
   const [showCommunity, setShowCommunity] = useState(false);
   const [friendBadge, setFriendBadge] = useState(0);
+  const [balance, setBalance] = useState(user?.balance ?? 0);
+
+  // ─── 8. WS-уведомления (баланс, друзья, тикеты) ──────────────────────────
+  useEffect(() => {
+    const ws = new WebSocket(WS_URL);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: "auth",
+        userId: user?.id,
+        username: user?.username,
+        token: getToken(),
+      }));
+    };
+    ws.onmessage = async (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "balance_update") {
+          setBalance(msg.balance);
+          await notify("SB Games", `Баланс пополнен: ${msg.balance} СБТ`);
+        }
+        if (msg.type === "friend_accepted") {
+          await notify("SB Games", `${msg.byUsername} принял заявку в друзья`);
+        }
+        if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
+          await notify("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
+        }
+      } catch {}
+    };
+    ws.onerror = () => {};
+    return () => ws.close();
+  }, [user]);
+
+  // Discord — в лаунчере
+  useEffect(() => {
+    setDiscordPresence("В лаунчере", "SB Games", "sbgames");
+  }, []);
 
   const renderPage = (id) => {
     switch (id) {
@@ -34,6 +75,7 @@ export default function MainLayout({ user, onLogout }) {
       case "leaderboard": return <LeaderboardPage />;
       case "news":        return <NewsPage />;
       case "shop":        return <ShopPage />;
+      case "screenshots": return <ScreenshotsPage />;
       case "support":     return <SupportPage user={user} />;
       default:            return null;
     }
@@ -111,7 +153,7 @@ export default function MainLayout({ user, onLogout }) {
             }}
           >
             <img src="/money.png" alt="coin" className="w-4 h-4 object-contain" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
-            <span className="text-[12px] font-bold text-white tabular-nums">{user.balance ?? 0}</span>
+            <span className="text-[12px] font-bold text-white tabular-nums">{balance}</span>
           </div>
 
           {/* Community toggle */}
@@ -172,6 +214,9 @@ export default function MainLayout({ user, onLogout }) {
           )}
         </AnimatePresence>
       </div>
+
+      {/* 6. Download progress overlay */}
+      <DownloadProgress />
     </motion.div>
   );
 }
