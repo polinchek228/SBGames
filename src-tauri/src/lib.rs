@@ -375,10 +375,8 @@ async fn launch_minecraft(
     // 2. Vanilla client 1.19.2 — резолвим URL через version_manifest_v2
     let client_jar = mc_dir.join("versions/1.19.2/1.19.2.jar");
     let json       = mc_dir.join("versions/1.19.2/1.19.2.json");
-    let json_nm    = mc_dir.join("versions/1.19.2/1.19.2-natives.json");
 
     if !client_jar.exists() || !json.exists() {
-        // Получаем manifest URL
         let _ = app.emit("download_progress", DownloadProgress {
             file:       "Mojang manifest".into(), downloaded: 0, total: 5000, speed_kbs: 0,
         });
@@ -392,21 +390,15 @@ async fn launch_minecraft(
             let v = arr.iter().find(|v| v["id"] == "1.19.2").ok_or("1.19.2 not in manifest")?;
             v["url"].as_str().ok_or("manifest url missing")?.to_string()
         };
-
-        // Скачиваем манифест версии
         std::fs::create_dir_all(json.parent().unwrap()).ok();
         download_file(&v1192_url, &json, &app)
             .await.map_err(|e| format!("Manifest version: {}", e))?;
-
-        // Парсим URL/size client jar
         let ver = std::fs::read_to_string(&json).ok()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
             .ok_or("Парсинг manifest")?;
         let client_url = ver["downloads"]["client"]["url"].as_str()
             .ok_or("URL client.jar не найден")?.to_string();
         let client_size = ver["downloads"]["client"]["size"].as_u64().unwrap_or(21_000_000);
-
-        // Скачиваем client.jar
         let _ = app.emit("download_progress", DownloadProgress {
             file:       "minecraft-1.19.2-client.jar".into(),
             downloaded: 0, total: client_size, speed_kbs: 0,
@@ -417,100 +409,69 @@ async fn launch_minecraft(
 
     let _ = app.emit("download_progress", DownloadProgress {
         file:       "Vanilla клиент готов".into(),
-        downloaded: 30, total: 100, speed_kbs: 0,
+        downloaded: 25, total: 100, speed_kbs: 0,
     });
 
-    // 3. Forge 1.19.2 (43.2.21) — installer.jar
-    // Installer — это zip-файл с распакованными модами. Запускаем java -jar installer.jar,
-    // он распаковывает libraries + universal jar в указанную директорию.
+    // 3. Forge install через installer.jar — он сам качает все libraries
+    // и создаёт version.json для Forge профиля.
     let forge_version = "43.2.21";
-    let forge_universal = mc_dir.join(format!("libraries/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar", forge_version, forge_version));
-    let forge_installer = mc_dir.join("forge-installer.jar");
+    let forge_version_id = format!("1.19.2-forge-{}", forge_version);
+    let forge_profile_json = mc_dir.join("versions").join(&forge_version_id).join(format!("{}.json", forge_version_id));
     let forge_marker    = mc_dir.join(".forge_installed");
 
-    if !forge_universal.exists() || !forge_marker.exists() {
-        // 3a. Скачиваем installer
+    if !forge_profile_json.exists() || !forge_marker.exists() {
         let installer_url = format!(
             "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-installer.jar",
             forge_version, forge_version
         );
+        let installer_jar = mc_dir.join("forge-installer.jar");
         let _ = app.emit("download_progress", DownloadProgress {
             file:       "forge-installer.jar".into(),
             downloaded: 0, total: 2_630_062, speed_kbs: 0,
         });
-        if let Err(e) = download_file(&installer_url, &forge_installer, &app).await {
-            return Err(format!("Не удалось скачать Forge installer: {}", e));
-        }
+        download_file(&installer_url, &installer_jar, &app)
+            .await.map_err(|e| format!("Не удалось скачать Forge installer: {}", e))?;
 
-        // 3b. Запускаем installer — он распаковывает всё в mc_dir
+        // Headless installer ждёт ввод — пробуем отправить "1\n1\n" в stdin,
+        // иначе installer упадёт и ничего не распакует.
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "Установка Forge...".into(),
-            downloaded: 50, total: 100, speed_kbs: 0,
+            file:       "Установка Forge (libraries)...".into(),
+            downloaded: 30, total: 100, speed_kbs: 0,
         });
-        // Forge installer принимает: java -jar installer.jar -installClient <mc_dir>
-        let _ = Command::new(&java)
-            .arg("-jar").arg(&forge_installer)
-            .arg("-installClient").arg(&mc_dir)
-            .output();
-
-        // 3c. Если installer не помог (headless проблемы) — качаем universal jar напрямую
-        if !forge_universal.exists() {
-            let direct_url = format!(
-                "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar",
-                forge_version, forge_version
-            );
-            std::fs::create_dir_all(forge_universal.parent().unwrap()).ok();
-            let _ = app.emit("download_progress", DownloadProgress {
-                file:       "forge-1.19.2-universal.jar".into(),
-                downloaded: 0, total: 2_630_062, speed_kbs: 0,
-            });
-            download_file(&direct_url, &forge_universal, &app)
-                .await
-                .map_err(|e| format!("Forge universal: {}", e))?;
+        use std::io::Write;
+        use std::process::Stdio;
+        let mut child = Command::new(&java)
+            .arg("-jar").arg(&installer_jar)
+            .arg("--installClient").arg(&mc_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn().ok();
+        if let Some(mut c) = child.take() {
+            if let Some(stdin) = c.stdin.as_mut() {
+                // 1 = "Install client" (default), потом enter
+                let _ = stdin.write_all(b"1\n");
+            }
+            let _ = c.wait();
         }
 
-        // 3d. Cleanup installer
-        let _ = std::fs::remove_file(&forge_installer);
-        std::fs::write(&forge_marker, forge_version).ok();
+        // Если headless installer не сработал (часто бывает) — извлекаем вручную
+        if !forge_profile_json.exists() {
+            let _ = app.emit("download_progress", DownloadProgress {
+                file:       "Ручная распаковка Forge...".into(),
+                downloaded: 60, total: 100, speed_kbs: 0,
+            });
+            install_forge_from_zip(&installer_jar, &mc_dir, &app).await
+                .map_err(|e| format!("Forge install: {}", e))?;
+        }
+
+        let _ = std::fs::remove_file(&installer_jar);
     }
 
     // 4. Forge требует libraries — если installer не распаковал, нужно скачать вручную.
     // Это основной момент: Forge Universal jar слинкован с cpw.mods.bootstraplauncher
     // и не требует отдельной загрузки Minecraft libraries — он сам подтянет.
-    // Но universal jar НЕ содержит всех зависимостей. Решение — extract libraries.
-    let libs_marker = mc_dir.join(".libs_extracted");
-    if !libs_marker.exists() {
-        // Достаём libraries из installer.jar (он содержит install_profile.json со списком)
-        let _ = app.emit("download_progress", DownloadProgress {
-            file:       "Извлечение libraries...".into(),
-            downloaded: 70, total: 100, speed_kbs: 0,
-        });
-        // Простой подход: загружаем ключевые Forge libraries напрямую с Maven Central
-        let libs: &[(&str, &str, &str, &str)] = &[
-            // (group, artifact, version, classifier)
-            ("net.minecraftforge", "forge", &forge_version, "client"),
-            ("net.minecraftforge", "fmlloader", "1.19.2-43.2.21", ""),
-            ("cpw.mods",          "securejarhandler", "2.1.4", ""),
-        ];
-        for (group, artifact, ver, classifier) in libs {
-            let path = format!(
-                "libraries/{}/{}/{}/{}-{}{}.jar",
-                group.replace('.', "/"), artifact, ver, artifact, ver,
-                if classifier.is_empty() { String::new() } else { format!("-{}", classifier) }
-            );
-            let url = format!(
-                "https://maven.minecraftforge.net/{}/{}/{}/{}-{}{}.jar",
-                group.replace('.', "/"), artifact, ver, artifact, ver,
-                if classifier.is_empty() { String::new() } else { format!("-{}", classifier) }
-            );
-            let dest = mc_dir.join(&path);
-            if !dest.exists() {
-                std::fs::create_dir_all(dest.parent().unwrap()).ok();
-                let _ = download_file(&url, &dest, &app).await;
-            }
-        }
-        std::fs::write(&libs_marker, "ok").ok();
-    }
+    // Libraries уже распакованы через install_forge_from_zip
 
     let _ = app.emit("download_progress", DownloadProgress {
         file:       "Forge готов".into(),
@@ -522,21 +483,40 @@ async fn launch_minecraft(
     let mut cmd = Command::new(&java);
     cmd.arg(format!("-Xmx{}G", ram));
     cmd.arg(format!("-Xms{}G", (ram / 2).max(1)));
-    cmd.arg("-Dfile.encoding=UTF-8");
-    cmd.arg("-Dforge.logging.console.level=info");
-    cmd.arg("-Djava.awt.headless=false");
-
-    // Classpath: vanilla + forge universal
+    // Читаем forge profile.json и собираем classpath по нему
+    // Forge profile содержит полный libraries[] с name/path
     let cp_sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let classpath = format!("{}{}{}", client_jar.display(), cp_sep, forge_universal.display());
+    let mut cp_parts: Vec<PathBuf> = Vec::new();
+    cp_parts.push(client_jar.clone());
+
+    if let Ok(profile_text) = std::fs::read_to_string(&forge_profile_json) {
+        if let Ok(profile) = serde_json::from_str::<serde_json::Value>(&profile_text) {
+            if let Some(arr) = profile["libraries"].as_array() {
+                for lib in arr {
+                    if let Some(path) = lib["path"].as_str() {
+                        cp_parts.push(mc_dir.join("libraries").join(path));
+                    }
+                }
+            }
+        }
+    } else {
+        // Fallback — только universal
+        let forge_universal = mc_dir.join(format!("libraries/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar", forge_version, forge_version));
+        cp_parts.push(forge_universal);
+    }
+
+    let classpath = cp_parts.iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(cp_sep);
+
     cmd.arg("-cp").arg(classpath);
 
-    // Main class — Forge (он сам грузит vanilla + libraries + mods)
+    // Main class — Forge BootstrapLauncher (находится в universal jar)
     cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
 
-    // Forge args
     cmd.arg("--username").arg(&username);
-    cmd.arg("--version").arg("1.19.2-forge");
+    cmd.arg("--version").arg(format!("1.19.2-forge-{}", forge_version));
     cmd.arg("--gameDir").arg(&mc_dir);
     cmd.arg("--assetsDir").arg(mc_dir.join("assets"));
     cmd.arg("--assetIndex").arg("1.19");
@@ -810,9 +790,133 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+// ─── Manual Forge install: read install_profile.json from installer.zip ─────
+async fn install_forge_from_zip(
+    installer_jar: &PathBuf,
+    mc_dir: &PathBuf,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    use std::io::Read as _;
+    use std::io::Write as _;
+
+    // Открываем installer.jar как zip
+    let zipfile = std::fs::File::open(installer_jar).map_err(|e| format!("open installer: {}", e))?;
+    let mut zip = zip::ZipArchive::new(zipfile).map_err(|e| format!("zip open: {}", e))?;
+
+    // Читаем install_profile.json
+    let install_profile_str = {
+        let mut file = zip.by_name("install_profile.json").map_err(|e|
+            format!("install_profile.json not found in installer: {}", e))?;
+        let mut s = String::new();
+        file.read_to_string(&mut s).map_err(|e| e.to_string())?;
+        s
+    };
+    drop(zip);
+
+    let install_profile: serde_json::Value = serde_json::from_str(&install_profile_str)
+        .map_err(|e| format!("install_profile parse: {}", e))?;
+
+    // versionInfo содержит основной набор libraries + id + mainClass
+    let version_info = install_profile.get("versionInfo")
+        .ok_or("versionInfo missing in install_profile")?;
+
+    // 1. Скачиваем все libraries
+    let libraries = version_info["libraries"].as_array()
+        .ok_or("libraries[] missing")?;
+
+    let total_libs = libraries.len();
+    for (i, lib) in libraries.iter().enumerate() {
+        // Forge помечает OS-specific libraries через rules. Простая проверка для нашего ОС.
+        if let Some(rules) = lib.get("rules").and_then(|r| r.as_array()) {
+            let allowed = rules.iter().any(|r| {
+                let os_name = r["os"]["name"].as_str().unwrap_or("");
+                let action  = r["action"].as_str().unwrap_or("allow");
+                if action == "allow" {
+                    (os_name.is_empty() || os_name == "windows" || os_name == "osx" || os_name == "linux")
+                } else {
+                    !(os_name == "windows" || os_name == "osx" || os_name == "linux")
+                }
+            });
+            if !allowed { continue; }
+        }
+
+        if let Some(artifact) = lib.get("downloads").and_then(|d| d.get("artifact")) {
+            let path = artifact["path"].as_str().unwrap_or("");
+            let url  = artifact["url"].as_str().unwrap_or("");
+            let size = artifact["size"].as_u64().unwrap_or(0);
+            if path.is_empty() || url.is_empty() { continue; }
+
+            let dest = mc_dir.join("libraries").join(path);
+            if dest.exists() && dest.metadata().map(|m| m.len() as u64 == size).unwrap_or(false) {
+                continue;
+            }
+            std::fs::create_dir_all(dest.parent().unwrap()).ok();
+
+            let _ = app.emit("download_progress", DownloadProgress {
+                file:       path.rsplit('/').next().unwrap_or(path).to_string(),
+                downloaded: (i as u64) * 100_000,
+                total:      (total_libs as u64) * 100_000,
+                speed_kbs:  0,
+            });
+
+            let resp = reqwest::get(url).await.map_err(|e| format!("download {}: {}", url, e))?;
+            if !resp.status().is_success() { continue; }
+            let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+            let mut f = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
+            f.write_all(&bytes).map_err(|e| e.to_string())?;
+        }
+    }
+
+    // 2. Извлекаем universal jar — Forge кладёт его в корень installer.zip
+    let zipfile = std::fs::File::open(installer_jar).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(zipfile).map_err(|e| e.to_string())?;
+    let len = zip.len();
+    let mut universal_name: Option<String> = None;
+    for i in 0..len {
+        if let Ok(file) = zip.by_index(i) {
+            let n = file.name().to_string();
+            if n.ends_with("universal.jar") && n.contains("forge") {
+                universal_name = Some(n);
+                break;
+            }
+        }
+    }
+    let universal_name = universal_name.ok_or("universal.jar not found in installer")?;
+
+    let forge_version_id = version_info["id"].as_str().unwrap_or("1.19.2-forge-43.2.21");
+    let profile_dir = mc_dir.join("versions").join(forge_version_id);
+    let universal_dest = mc_dir.join("libraries").join("net/minecraftforge/forge").join(forge_version_id).join(format!("{}.jar", forge_version_id));
+    std::fs::create_dir_all(universal_dest.parent().unwrap()).ok();
+    let mut out = std::fs::File::create(&universal_dest).map_err(|e| e.to_string())?;
+    {
+        let mut entry = zip.by_name(&universal_name).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+    }
+
+    // 3. Создаём version.json для forge профиля
+    std::fs::create_dir_all(&profile_dir).ok();
+    let profile_json = serde_json::to_string_pretty(&version_info)
+        .map_err(|e| e.to_string())?;
+    std::fs::write(profile_dir.join(format!("{}.json", forge_version_id)), profile_json)
+        .map_err(|e| e.to_string())?;
+
+    // 4. Маркер
+    std::fs::write(mc_dir.join(".forge_installed"), forge_version_id).ok();
+
+    Ok(())
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(not(debug_assertions))]
+    {
+        if !verify_integrity() { std::process::exit(1); }
+        if check_debugger()    { std::process::exit(1); }
+        setup_dll_protection();
+        if scan_loaded_modules() { std::process::exit(1); }
+        start_guard_thread();
+    }
     #[cfg(not(debug_assertions))]
     {
         if !verify_integrity() { std::process::exit(1); }
