@@ -790,7 +790,9 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-// ─── Manual Forge install: read install_profile.json from installer.zip ─────
+// ─── Manual Forge install: read version.json from installer.zip ──────────────
+// Forge installer.jar contains a ready-to-use `version.json` with id, mainClass,
+// inheritsFrom and full libraries[] list. We extract it directly.
 async fn install_forge_from_zip(
     installer_jar: &PathBuf,
     mc_dir: &PathBuf,
@@ -803,28 +805,32 @@ async fn install_forge_from_zip(
     let zipfile = std::fs::File::open(installer_jar).map_err(|e| format!("open installer: {}", e))?;
     let mut zip = zip::ZipArchive::new(zipfile).map_err(|e| format!("zip open: {}", e))?;
 
-    // Читаем install_profile.json
-    let install_profile_str = {
-        let mut file = zip.by_name("install_profile.json").map_err(|e|
-            format!("install_profile.json not found in installer: {}", e))?;
+    // 1. Читаем version.json — это готовый Forge-профиль
+    let version_json_str = {
+        let mut file = zip.by_name("version.json")
+            .map_err(|e| format!("version.json not in installer: {}", e))?;
         let mut s = String::new();
         file.read_to_string(&mut s).map_err(|e| e.to_string())?;
         s
     };
-    drop(zip);
 
-    let install_profile: serde_json::Value = serde_json::from_str(&install_profile_str)
-        .map_err(|e| format!("install_profile parse: {}", e))?;
+    let version_info: serde_json::Value = serde_json::from_str(&version_json_str)
+        .map_err(|e| format!("version.json parse: {}", e))?;
 
-    // versionInfo содержит основной набор libraries + id + mainClass
-    let version_info = install_profile.get("versionInfo")
-        .ok_or("versionInfo missing in install_profile")?;
+    let forge_version_id = version_info["id"].as_str()
+        .ok_or("id missing in version.json")?
+        .to_string();
 
-    // 1. Скачиваем все libraries
+    // 2. Скачиваем все libraries
     let libraries = version_info["libraries"].as_array()
-        .ok_or("libraries[] missing")?;
+        .ok_or("libraries[] missing in version.json")?;
 
     let total_libs = libraries.len();
+    let _ = app.emit("download_progress", DownloadProgress {
+        file:       "Forge libraries...".into(),
+        downloaded: 0, total: total_libs as u64, speed_kbs: 0,
+    });
+
     for (i, lib) in libraries.iter().enumerate() {
         // Forge помечает OS-specific libraries через rules. Простая проверка для нашего ОС.
         if let Some(rules) = lib.get("rules").and_then(|r| r.as_array()) {
@@ -832,14 +838,16 @@ async fn install_forge_from_zip(
                 let os_name = r["os"]["name"].as_str().unwrap_or("");
                 let action  = r["action"].as_str().unwrap_or("allow");
                 if action == "allow" {
-                    (os_name.is_empty() || os_name == "windows" || os_name == "osx" || os_name == "linux")
+                    os_name.is_empty() || os_name == "windows" || os_name == "linux" || os_name == "osx"
                 } else {
-                    !(os_name == "windows" || os_name == "osx" || os_name == "linux")
+                    !(os_name == "windows" || os_name == "linux" || os_name == "osx")
                 }
             });
             if !allowed { continue; }
         }
 
+        // Если library указан по name (как com.google.guava:guava:31.0.1-jre),
+        // резолвим path из Maven координат — это fallback для старого формата.
         if let Some(artifact) = lib.get("downloads").and_then(|d| d.get("artifact")) {
             let path = artifact["path"].as_str().unwrap_or("");
             let url  = artifact["url"].as_str().unwrap_or("");
@@ -854,9 +862,7 @@ async fn install_forge_from_zip(
 
             let _ = app.emit("download_progress", DownloadProgress {
                 file:       path.rsplit('/').next().unwrap_or(path).to_string(),
-                downloaded: (i as u64) * 100_000,
-                total:      (total_libs as u64) * 100_000,
-                speed_kbs:  0,
+                downloaded: i as u64, total: total_libs as u64, speed_kbs: 0,
             });
 
             let resp = reqwest::get(url).await.map_err(|e| format!("download {}: {}", url, e))?;
@@ -867,12 +873,9 @@ async fn install_forge_from_zip(
         }
     }
 
-    // 2. Извлекаем universal jar — Forge кладёт его в корень installer.zip
-    let zipfile = std::fs::File::open(installer_jar).map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipArchive::new(zipfile).map_err(|e| e.to_string())?;
-    let len = zip.len();
+    // 3. Извлекаем universal jar
     let mut universal_name: Option<String> = None;
-    for i in 0..len {
+    for i in 0..zip.len() {
         if let Ok(file) = zip.by_index(i) {
             let n = file.name().to_string();
             if n.ends_with("universal.jar") && n.contains("forge") {
@@ -883,9 +886,10 @@ async fn install_forge_from_zip(
     }
     let universal_name = universal_name.ok_or("universal.jar not found in installer")?;
 
-    let forge_version_id = version_info["id"].as_str().unwrap_or("1.19.2-forge-43.2.21");
-    let profile_dir = mc_dir.join("versions").join(forge_version_id);
-    let universal_dest = mc_dir.join("libraries").join("net/minecraftforge/forge").join(forge_version_id).join(format!("{}.jar", forge_version_id));
+    let universal_dest = mc_dir.join("libraries")
+        .join("net/minecraftforge/forge")
+        .join(&forge_version_id)
+        .join(format!("{}.jar", forge_version_id));
     std::fs::create_dir_all(universal_dest.parent().unwrap()).ok();
     let mut out = std::fs::File::create(&universal_dest).map_err(|e| e.to_string())?;
     {
@@ -893,15 +897,14 @@ async fn install_forge_from_zip(
         std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
     }
 
-    // 3. Создаём version.json для forge профиля
+    // 4. Сохраняем version.json в versions/{id}/
+    let profile_dir = mc_dir.join("versions").join(&forge_version_id);
     std::fs::create_dir_all(&profile_dir).ok();
-    let profile_json = serde_json::to_string_pretty(&version_info)
-        .map_err(|e| e.to_string())?;
-    std::fs::write(profile_dir.join(format!("{}.json", forge_version_id)), profile_json)
+    std::fs::write(profile_dir.join(format!("{}.json", forge_version_id)), &version_json_str)
         .map_err(|e| e.to_string())?;
 
-    // 4. Маркер
-    std::fs::write(mc_dir.join(".forge_installed"), forge_version_id).ok();
+    // 5. Маркер
+    std::fs::write(mc_dir.join(".forge_installed"), &forge_version_id).ok();
 
     Ok(())
 }
