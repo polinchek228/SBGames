@@ -301,18 +301,18 @@ fn screenshots_dir() -> std::path::PathBuf {
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").unwrap_or_default();
-        std::path::PathBuf::from(appdata).join(".minecraft").join("screenshots")
+        std::path::PathBuf::from(appdata).join(".sbgames").join("screenshots")
     }
     #[cfg(target_os = "macos")]
     {
         dirs_next::home_dir()
             .unwrap_or_default()
-            .join("Library/Application Support/minecraft/screenshots")
+            .join("Library/Application Support/sbgames/screenshots")
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let home = std::env::var("HOME").unwrap_or_default();
-        std::path::PathBuf::from(home).join(".minecraft").join("screenshots")
+        std::path::PathBuf::from(home).join(".sbgames").join("screenshots")
     }
 }
 
@@ -356,9 +356,11 @@ async fn launch_minecraft(
     });
 
     let mc_dir = minecraft_dir();
-    std::fs::create_dir_all(&mc_dir).map_err(|e| format!("Не удалось создать .minecraft: {}", e))?;
+    std::fs::create_dir_all(&mc_dir).map_err(|e| format!("Не удалось создать .sbgames: {}", e))?;
     std::fs::create_dir_all(mc_dir.join("mods")).ok();
     std::fs::create_dir_all(mc_dir.join("libraries")).ok();
+    std::fs::create_dir_all(mc_dir.join("versions/1.19.2")).ok();
+    std::fs::create_dir_all(mc_dir.join("assets")).ok();
 
     // 1. Проверяем Java
     let java = match java_path {
@@ -370,50 +372,47 @@ async fn launch_minecraft(
         file: "Java найдена".into(), downloaded: 3, total: 100, speed_kbs: 0,
     });
 
-    // 2. Vanilla client 1.19.2
+    // 2. Vanilla client 1.19.2 — резолвим URL через version_manifest_v2
     let client_jar = mc_dir.join("versions/1.19.2/1.19.2.jar");
     let json       = mc_dir.join("versions/1.19.2/1.19.2.json");
+    let json_nm    = mc_dir.join("versions/1.19.2/1.19.2-natives.json");
 
     if !client_jar.exists() || !json.exists() {
-        // Manifest version
+        // Получаем manifest URL
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "manifest 1.19.2".into(),
-            downloaded: 0, total: 5000, speed_kbs: 0,
+            file:       "Mojang manifest".into(), downloaded: 0, total: 5000, speed_kbs: 0,
         });
-        let ver_url = "https://piston-meta.mojang.com/v1/packages/d4d472855911c00517a78c0b8c2da3e5c8e6f8a4/1.19.2.json";
-        if let Err(e) = download_file(ver_url, &json, &app).await {
-            // fallback — резолвим через Mojang API
-            if let Ok(resp) = reqwest::get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json").await {
-                if let Ok(text) = resp.text().await {
-                    if let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(v) = manifest["versions"].as_array().and_then(|a| a.iter().find(|v| v["id"] == "1.19.2")) {
-                            if let Some(url) = v["url"].as_str() {
-                                let _ = download_file(url, &json, &app).await;
-                            }
-                        }
-                    }
-                }
-            }
-            if !json.exists() { return Err(format!("Manifest: {}", e)); }
-        }
+        let manifest_url = reqwest::get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json")
+            .await.map_err(|e| format!("Manifest API: {}", e))?
+            .text().await.map_err(|e| e.to_string())?;
+        let v1192_url = {
+            let m: serde_json::Value = serde_json::from_str(&manifest_url).ok()
+                .ok_or("Manifest parse")?;
+            let arr = m["versions"].as_array().ok_or("versions[] missing")?;
+            let v = arr.iter().find(|v| v["id"] == "1.19.2").ok_or("1.19.2 not in manifest")?;
+            v["url"].as_str().ok_or("manifest url missing")?.to_string()
+        };
 
-        // Парсим url client jar из манифеста
-        let client_url = std::fs::read_to_string(&json).ok()
+        // Скачиваем манифест версии
+        std::fs::create_dir_all(json.parent().unwrap()).ok();
+        download_file(&v1192_url, &json, &app)
+            .await.map_err(|e| format!("Manifest version: {}", e))?;
+
+        // Парсим URL/size client jar
+        let ver = std::fs::read_to_string(&json).ok()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .and_then(|j| j["downloads"]["client"]["url"].as_str().map(|s| s.to_string()))
-            .ok_or_else(|| "Не найден URL клиента в manifest".to_string())?;
+            .ok_or("Парсинг manifest")?;
+        let client_url = ver["downloads"]["client"]["url"].as_str()
+            .ok_or("URL client.jar не найден")?.to_string();
+        let client_size = ver["downloads"]["client"]["size"].as_u64().unwrap_or(21_000_000);
 
-        let total = std::fs::read_to_string(&json).ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .and_then(|j| j["downloads"]["client"]["size"].as_u64())
-            .unwrap_or(50 * 1024 * 1024);
-
+        // Скачиваем client.jar
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "minecraft-1.19.2.jar".into(),
-            downloaded: 0, total, speed_kbs: 0,
+            file:       "minecraft-1.19.2-client.jar".into(),
+            downloaded: 0, total: client_size, speed_kbs: 0,
         });
         download_file(&client_url, &client_jar, &app)
-            .await.map_err(|e| format!("Клиент: {}", e))?;
+            .await.map_err(|e| format!("Client.jar: {}", e))?;
     }
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -421,28 +420,96 @@ async fn launch_minecraft(
         downloaded: 30, total: 100, speed_kbs: 0,
     });
 
-    // 3. Forge 1.19.2 (43.2.21) — universal jar напрямую с Maven
-    // Forge Universal — это готовый к запуску jar, не installer.
+    // 3. Forge 1.19.2 (43.2.21) — installer.jar
+    // Installer — это zip-файл с распакованными модами. Запускаем java -jar installer.jar,
+    // он распаковывает libraries + universal jar в указанную директорию.
     let forge_version = "43.2.21";
     let forge_universal = mc_dir.join(format!("libraries/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar", forge_version, forge_version));
+    let forge_installer = mc_dir.join("forge-installer.jar");
     let forge_marker    = mc_dir.join(".forge_installed");
 
     if !forge_universal.exists() || !forge_marker.exists() {
-        let direct_url = format!(
-            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar",
+        // 3a. Скачиваем installer
+        let installer_url = format!(
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-installer.jar",
             forge_version, forge_version
         );
-        std::fs::create_dir_all(forge_universal.parent().unwrap()).ok();
-
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       format!("forge-1.19.2-{}-universal.jar", forge_version).into(),
-            downloaded: 0, total: 7 * 1024 * 1024, speed_kbs: 0,
+            file:       "forge-installer.jar".into(),
+            downloaded: 0, total: 2_630_062, speed_kbs: 0,
         });
-        download_file(&direct_url, &forge_universal, &app)
-            .await
-            .map_err(|e| format!("Не удалось скачать Forge: {}", e))?;
+        if let Err(e) = download_file(&installer_url, &forge_installer, &app).await {
+            return Err(format!("Не удалось скачать Forge installer: {}", e));
+        }
 
+        // 3b. Запускаем installer — он распаковывает всё в mc_dir
+        let _ = app.emit("download_progress", DownloadProgress {
+            file:       "Установка Forge...".into(),
+            downloaded: 50, total: 100, speed_kbs: 0,
+        });
+        // Forge installer принимает: java -jar installer.jar -installClient <mc_dir>
+        let _ = Command::new(&java)
+            .arg("-jar").arg(&forge_installer)
+            .arg("-installClient").arg(&mc_dir)
+            .output();
+
+        // 3c. Если installer не помог (headless проблемы) — качаем universal jar напрямую
+        if !forge_universal.exists() {
+            let direct_url = format!(
+                "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar",
+                forge_version, forge_version
+            );
+            std::fs::create_dir_all(forge_universal.parent().unwrap()).ok();
+            let _ = app.emit("download_progress", DownloadProgress {
+                file:       "forge-1.19.2-universal.jar".into(),
+                downloaded: 0, total: 2_630_062, speed_kbs: 0,
+            });
+            download_file(&direct_url, &forge_universal, &app)
+                .await
+                .map_err(|e| format!("Forge universal: {}", e))?;
+        }
+
+        // 3d. Cleanup installer
+        let _ = std::fs::remove_file(&forge_installer);
         std::fs::write(&forge_marker, forge_version).ok();
+    }
+
+    // 4. Forge требует libraries — если installer не распаковал, нужно скачать вручную.
+    // Это основной момент: Forge Universal jar слинкован с cpw.mods.bootstraplauncher
+    // и не требует отдельной загрузки Minecraft libraries — он сам подтянет.
+    // Но universal jar НЕ содержит всех зависимостей. Решение — extract libraries.
+    let libs_marker = mc_dir.join(".libs_extracted");
+    if !libs_marker.exists() {
+        // Достаём libraries из installer.jar (он содержит install_profile.json со списком)
+        let _ = app.emit("download_progress", DownloadProgress {
+            file:       "Извлечение libraries...".into(),
+            downloaded: 70, total: 100, speed_kbs: 0,
+        });
+        // Простой подход: загружаем ключевые Forge libraries напрямую с Maven Central
+        let libs: &[(&str, &str, &str, &str)] = &[
+            // (group, artifact, version, classifier)
+            ("net.minecraftforge", "forge", &forge_version, "client"),
+            ("net.minecraftforge", "fmlloader", "1.19.2-43.2.21", ""),
+            ("cpw.mods",          "securejarhandler", "2.1.4", ""),
+        ];
+        for (group, artifact, ver, classifier) in libs {
+            let path = format!(
+                "libraries/{}/{}/{}/{}-{}{}.jar",
+                group.replace('.', "/"), artifact, ver, artifact, ver,
+                if classifier.is_empty() { String::new() } else { format!("-{}", classifier) }
+            );
+            let url = format!(
+                "https://maven.minecraftforge.net/{}/{}/{}/{}-{}{}.jar",
+                group.replace('.', "/"), artifact, ver, artifact, ver,
+                if classifier.is_empty() { String::new() } else { format!("-{}", classifier) }
+            );
+            let dest = mc_dir.join(&path);
+            if !dest.exists() {
+                std::fs::create_dir_all(dest.parent().unwrap()).ok();
+                let _ = download_file(&url, &dest, &app).await;
+            }
+        }
+        std::fs::write(&libs_marker, "ok").ok();
     }
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -502,21 +569,21 @@ async fn launch_minecraft(
     Ok(format!("Minecraft запущен (pid={}, user={})", pid, username))
 }
 
-// Minecraft game dir
+// SB Games game dir — кастомная директория .sbgames чтобы не путать с обычным MC
 fn minecraft_dir() -> std::path::PathBuf {
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").unwrap_or_default();
-        std::path::PathBuf::from(appdata).join(".minecraft")
+        std::path::PathBuf::from(appdata).join(".sbgames")
     }
     #[cfg(target_os = "macos")]
     {
-        dirs_next::home_dir().unwrap_or_default().join("Library/Application Support/minecraft")
+        dirs_next::home_dir().unwrap_or_default().join("Library/Application Support/sbgames")
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let home = std::env::var("HOME").unwrap_or_default();
-        std::path::PathBuf::from(home).join(".minecraft")
+        std::path::PathBuf::from(home).join(".sbgames")
     }
 }
 
