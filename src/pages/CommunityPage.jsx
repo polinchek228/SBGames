@@ -5,7 +5,7 @@ import {
   WifiHigh, WifiSlash, PaperPlaneTilt, Check, Checks,
   CaretLeft,
 } from "@phosphor-icons/react";
-import { WS_URL, getToken } from "../lib/api.js";
+import { WS_URL, getToken, authFetch } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
 
 // Подсвечивает совпадение в строке
@@ -77,9 +77,28 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
   const [onlineIds,   setOnlineIds]   = useState(new Set());
   const [addNick,     setAddNick]     = useState("");
   const [addStatus,   setAddStatus]   = useState(null);
-  const [showSuggest, setShowSuggest] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching,  setSearching]  = useState(false);
   const [chatWith,    setChatWith]    = useState(null);
   const [messages,    setMessages]    = useState([]);
+
+  // Debounced поиск по всем зарегистрированным игрокам
+  useEffect(() => {
+    if (tab !== "add" || addNick.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await authFetch(`/auth/search?q=${encodeURIComponent(addNick)}&limit=20`);
+        const d = await r.json();
+        setSearchResults(d.users || []);
+      } catch { setSearchResults([]); }
+      finally { setSearching(false); }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [addNick, tab]);
 
   const { push: pushNotif } = useNotifications() || {};
 
@@ -261,100 +280,32 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
           </motion.div>
         )}
 
-        {/* ADD FRIEND с автокомплитом */}
+        {/* ADD FRIEND с глобальным поиском по всем игрокам */}
         {tab === "add" && (
           <motion.div key="add" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="flex-1 px-3 py-3 flex flex-col gap-3"
           >
             <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-              Начни вводить ник — подберём из онлайна
+              Введи ник — найдём среди всех зарегистрированных
             </p>
 
-            {/* Input + suggestions */}
-            <div className="relative">
-              <div className="flex gap-2">
-                <input
-                  value={addNick}
-                  onChange={e => {
-                    setAddNick(e.target.value);
-                    setAddStatus(null);
-                    setShowSuggest(e.target.value.length > 0);
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") { sendFriendRequest(); setShowSuggest(false); }
-                    if (e.key === "Escape") setShowSuggest(false);
-                  }}
-                  onFocus={() => addNick.length > 0 && setShowSuggest(true)}
-                  onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
-                  placeholder="Ник игрока..."
-                  className="flex-1 rounded-xl text-[12px] px-3 py-2 outline-none"
-                  style={{ background: "rgba(255,255,255,0.06)", color: "#fff", caretColor: "#60a5fa" }}
-                />
-                <motion.button onClick={() => { sendFriendRequest(); setShowSuggest(false); }}
-                  whileTap={{ scale: 0.9 }}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
-                  style={{ background: "rgba(37,99,235,0.7)", color: "#fff" }}
-                >
-                  <UserCirclePlus size={16} />
-                </motion.button>
-              </div>
-
-              {/* Dropdown suggestions */}
-              <AnimatePresence>
-                {showSuggest && (() => {
-                  const q = addNick.toLowerCase();
-                  const suggestions = onlineUsers.filter(u =>
-                    u.username?.toLowerCase().includes(q) &&
-                    u.id !== user?.id &&
-                    !friends.some(f => f.id === u.id)
-                  ).slice(0, 6);
-                  if (!suggestions.length) return null;
-                  return (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.12 }}
-                      className="absolute left-0 right-10 top-full mt-1.5 rounded-xl overflow-hidden z-20"
-                      style={{
-                        background: "rgba(12,12,16,0.98)",
-                        boxShadow: "0 8px 32px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07)",
-                      }}
-                    >
-                      {suggestions.map((u, i) => (
-                        <motion.button
-                          key={u.id}
-                          initial={{ opacity: 0, x: -6 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.04 }}
-                          onMouseDown={() => {
-                            setAddNick(u.username);
-                            setShowSuggest(false);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all duration-100"
-                          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
-                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        >
-                          {/* Avatar initials */}
-                          <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 text-[9px] font-black"
-                            style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}
-                          >
-                            {u.username?.slice(0, 2).toUpperCase()}
-                          </div>
-                          {/* Username с подсветкой совпадения */}
-                          <span className="text-[11px] font-medium flex-1 min-w-0 truncate" style={{ color: "rgba(255,255,255,0.85)" }}>
-                            {highlight(u.username, addNick)}
-                          </span>
-                          {/* Online dot */}
-                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                            style={{ background: "#4ade80", boxShadow: "0 0 5px rgba(74,222,128,0.6)" }}
-                          />
-                        </motion.button>
-                      ))}
-                    </motion.div>
-                  );
-                })()}
-              </AnimatePresence>
+            {/* Input */}
+            <div className="flex gap-2">
+              <input
+                value={addNick}
+                onChange={e => { setAddNick(e.target.value); setAddStatus(null); }}
+                onKeyDown={e => e.key === "Enter" && sendFriendRequest()}
+                placeholder="Ник игрока..."
+                className="flex-1 rounded-xl text-[12px] px-3 py-2 outline-none"
+                style={{ background: "rgba(255,255,255,0.06)", color: "#fff", caretColor: "#60a5fa" }}
+              />
+              <motion.button onClick={sendFriendRequest}
+                whileTap={{ scale: 0.9 }}
+                className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
+                style={{ background: "rgba(37,99,235,0.7)", color: "#fff" }}
+              >
+                <UserCirclePlus size={16} />
+              </motion.button>
             </div>
 
             {addStatus && (
@@ -366,38 +317,83 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
               </motion.p>
             )}
 
-            {/* Все онлайн игроки */}
-            {!addNick && (
+            {/* Результаты поиска */}
+            {addNick.length >= 2 && (
+              <div className="flex flex-col gap-1 mt-1">
+                <p className="text-[9px] uppercase tracking-widest px-1 flex items-center gap-2"
+                  style={{ color: "rgba(255,255,255,0.18)" }}>
+                  {searching ? "Поиск..." :
+                    searchResults.length === 0 ? "Не найдено" :
+                    `Найдено · ${searchResults.length}`}
+                  {searching && (
+                    <div className="w-3 h-3 border border-white/20 border-t-white/60 rounded-full animate-spin" />
+                  )}
+                </p>
+
+                <AnimatePresence>
+                  {searchResults.map((u, i) => {
+                    const isFriend   = friends.some(f => f.id === u.id);
+                    const isMe       = u.id === user?.id;
+                    const online     = onlineIds.has(u.id);
+                    return (
+                      <motion.div key={u.id}
+                        initial={{ opacity: 0, x: -6 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.03 }}
+                        className="flex items-center gap-2.5 px-2 py-2 rounded-xl"
+                        style={{ background: "rgba(255,255,255,0.03)" }}
+                      >
+                        <div className="relative flex-shrink-0">
+                          <div className="w-7 h-7 rounded-xl flex items-center justify-center text-[10px] font-black"
+                            style={{
+                              background: u.role === "admin" ? "rgba(239,68,68,0.15)" : "rgba(37,99,235,0.15)",
+                              color: u.role === "admin" ? "#fca5a5" : "#93c5fd",
+                            }}
+                          >
+                            {u.username?.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-black"
+                            style={{ background: online ? "#4ade80" : "rgba(255,255,255,0.15)" }}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold truncate" style={{ color: "rgba(255,255,255,0.85)" }}>
+                            {highlight(u.username, addNick)}
+                            {u.role === "admin" && <span className="ml-1 text-[8px] text-red-400/60">ADMIN</span>}
+                          </p>
+                          <p className="text-[9px]" style={{ color: online ? "rgba(74,222,128,0.6)" : "rgba(255,255,255,0.2)" }}>
+                            {isMe ? "это ты" : online ? "в сети" : isFriend ? "уже в друзьях" : "не в сети"}
+                          </p>
+                        </div>
+                        {!isMe && !isFriend && (
+                          <motion.button
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => {
+                              setAddNick(u.username);
+                              setTimeout(sendFriendRequest, 50);
+                            }}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-150"
+                            style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.4)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.2)"}
+                          >
+                            <UserCirclePlus size={12} />
+                          </motion.button>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Подсказка при пустом поле */}
+            {addNick.length < 2 && (
               <div className="flex flex-col gap-1 mt-1">
                 <p className="text-[9px] uppercase tracking-widest px-1"
                   style={{ color: "rgba(255,255,255,0.18)" }}>
-                  Онлайн · {onlineUsers.filter(u => u.id !== user?.id).length}
+                  Начни вводить ник (мин. 2 символа)
                 </p>
-                {onlineUsers
-                  .filter(u => u.id !== user?.id && !friends.some(f => f.id === u.id))
-                  .slice(0, 8)
-                  .map((u, i) => (
-                    <motion.button key={u.id}
-                      initial={{ opacity: 0, x: -6 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.04 }}
-                      onClick={() => { setAddNick(u.username); setShowSuggest(false); }}
-                      className="flex items-center gap-2.5 px-2 py-2 rounded-xl transition-all duration-100 text-left w-full"
-                      style={{ background: "rgba(255,255,255,0.03)" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
-                    >
-                      <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 text-[10px] font-black"
-                        style={{ background: "rgba(37,99,235,0.15)", color: "#93c5fd" }}
-                      >
-                        {u.username?.slice(0, 2).toUpperCase()}
-                      </div>
-                      <span className="text-[11px] font-medium flex-1 text-white truncate">{u.username}</span>
-                      <div className="w-1.5 h-1.5 rounded-full"
-                        style={{ background: "#4ade80", boxShadow: "0 0 5px rgba(74,222,128,0.5)" }}/>
-                    </motion.button>
-                  ))
-                }
               </div>
             )}
           </motion.div>

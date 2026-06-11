@@ -14,7 +14,7 @@ import CommunityPage from "./CommunityPage.jsx";
 import LeaderboardPage from "./LeaderboardPage.jsx";
 import DownloadProgress from "../components/DownloadProgress.jsx";
 import { NotificationBell, useNotifications } from "../components/NotificationSystem.jsx";
-import { notify, setDiscordPresence } from "../lib/tauri.js";
+import { notify, setDiscordPresence, invoke } from "../lib/tauri.js";
 import { WS_URL, getToken } from "../lib/api.js";
 
 const NAV_ITEMS = [
@@ -31,7 +31,7 @@ export default function MainLayout({ user, onLogout }) {
   const [showCommunity, setShowCommunity] = useState(false);
   const [friendBadge, setFriendBadge] = useState(0);
   const [balance, setBalance] = useState(user?.balance ?? 0);
-  const { push: pushNotif } = useNotifications() || {};
+  const { push: pushNotif, inbox } = useNotifications() || {};
 
   // ─── 8. WS-уведомления (баланс, друзья, тикеты) ──────────────────────────
   useEffect(() => {
@@ -77,8 +77,33 @@ export default function MainLayout({ user, onLogout }) {
       const valid = NAV_ITEMS.find(n => n.id === id);
       if (valid) setPage(id);
     };
-    return () => { delete window.__navigateTo; };
-  }, []);
+    // IPC с треем: пушим актуальный стейт в popup
+    const pushTrayState = () => {
+      invoke("tray_update_state", {
+        user:    user ? { id: user.id, username: user.username, role: user.role, balance } : null,
+        notifs:  null, // notifs обновляются ниже отдельно
+        playing: false,
+      });
+    };
+    window.__requestTrayState = pushTrayState;
+    window.__launchGame = () => {
+      const playBtn = document.querySelector('[data-launch-btn]');
+      if (playBtn) playBtn.click();
+    };
+    window.__logout = () => onLogout();
+    pushTrayState();
+    return () => {
+      delete window.__navigateTo;
+      delete window.__requestTrayState;
+      delete window.__launchGame;
+      delete window.__logout;
+    };
+  }, [user, balance, onLogout]);
+
+  // Синхронизируем уведомления в трей
+  useEffect(() => {
+    invoke("tray_update_state", { user: null, notifs: inbox, playing: false });
+  }, [inbox]);
 
   const renderPage = (id) => {
     switch (id) {

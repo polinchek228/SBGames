@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir && node -e \"require('fs').cpSync('dist-tray', 'dist', { recursive: true });\"",
+    "build:main": "vite build",
+    "build:tray": "cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -26,6 +28,7 @@
     "@tauri-apps/cli": "^2.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.5.0",
+    "cross-env": "^10.1.0",
     "javascript-obfuscator": "^5.4.3",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",

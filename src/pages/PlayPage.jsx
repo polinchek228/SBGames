@@ -219,6 +219,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
             {/* ИГРАТЬ */}
             <motion.button
               onClick={handlePlay}
+              data-launch-btn
               disabled={launching || launched}
               whileTap={{ scale: 0.96 }}
               className="flex items-center gap-3 h-[44px] rounded-2xl font-black text-[14px] tracking-widest uppercase disabled:opacity-60 transition-colors duration-150"

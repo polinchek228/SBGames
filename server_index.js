@@ -46,6 +46,35 @@ const redisAccounts = { _map: new Map(),
   async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
   async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
   values()        { return this._map.values(); },
+  // Поиск по всем аккаунтам в Redis + memory
+  async search(q, limit = 30) {
+    if (!q || q.length < 2) return [];
+    const ql = q.toLowerCase();
+    const results = [];
+    // Memory
+    for (const acc of this._map.values()) {
+      if (acc.username?.toLowerCase().includes(ql)) results.push(acc);
+    }
+    // Redis scan (на случай если в memory нет, а в redis есть)
+    if (results.length < limit) {
+      try {
+        const stream = redis.scanStream({ match: "acc:*", count: 200 });
+        for await (const keys of stream) {
+          for (const k of keys) {
+            const id = k.slice(4);
+            if (this._map.has(id)) continue;
+            const v = await redis.get(k);
+            if (!v) continue;
+            const acc = JSON.parse(v);
+            if (acc.username?.toLowerCase().includes(ql)) results.push(acc);
+            if (results.length >= limit) break;
+          }
+          if (results.length >= limit) break;
+        }
+      } catch {}
+    }
+    return results.slice(0, limit);
+  },
 };
 
 const app = express();
@@ -283,6 +312,27 @@ app.get("/auth/me", async (req, res) => {
     await redisAccounts.set(payload.sub, acc);
   }
   res.json({ user: acc });
+});
+
+// Поиск игроков по нику — работает по всем зарегистрированным (не только онлайн)
+app.get("/auth/search", async (req, res) => {
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ message: "Unauthorized" });
+
+  const q = (req.query.q || "").trim();
+  if (q.length < 2) return res.json({ users: [] });
+
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const results = await redisAccounts.search(q, limit);
+  res.json({
+    users: results.map(a => ({
+      id:       a.id,
+      username: a.username,
+      telegram: a.telegram,
+      role:     a.role || "user",
+    }))
+  });
 });
 
 app.get("/health", (_, res) => res.json({ ok: true, tickets: tickets.size, ws: wsClients.size }));

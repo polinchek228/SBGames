@@ -13,6 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
+        "label": "main",
         "title": "SB Games Launcher",
         "width": 1100,
         "height": 680,
@@ -23,7 +24,23 @@
         "decorations": false,
         "transparent": false,
         "center": true,
-        "shadow": true
+        "shadow": true,
+        "visible": true
+      },
+      {
+        "label": "tray",
+        "title": "SB Games Tray",
+        "width": 360,
+        "height": 520,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "center": false,
+        "shadow": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {

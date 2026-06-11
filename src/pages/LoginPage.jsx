@@ -50,6 +50,29 @@ export default function LoginPage({ onLogin }) {
     if (pollRef.current) clearInterval(pollRef.current);
   };
 
+  const tryAutoLogin = async (tgUser) => {
+    // Пробуем залогиниться без ника — если аккаунт уже есть, сервер вернёт {user, token}
+    try {
+      const res = await fetch(`${API_URL}/auth/widget-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tgUser }),
+      });
+      const data = await res.json();
+      if (data.user && data.token) {
+        setStep("success");
+        setTimeout(() => onLogin(data), 700);
+        return true;
+      }
+      if (data.needNick) {
+        setTgUser(data.tgUser);
+        setStep("nick");
+        return false;
+      }
+    } catch {}
+    return false;
+  };
+
   const startPolling = (authCode) => {
     stopPolling();
     pollRef.current = setInterval(async () => {
@@ -58,8 +81,8 @@ export default function LoginPage({ onLogin }) {
         const data = await res.json();
         if (data.confirmed && data.tgUser) {
           clearInterval(pollRef.current);
-          setTgUser(data.tgUser);
-          setStep("nick");
+          // Пробуем автологин — если ник уже сохранён, не спрашиваем повторно
+          await tryAutoLogin(data.tgUser);
         }
       } catch {}
     }, 2000);

@@ -343,8 +343,6 @@ async fn launch_minecraft(
     username: String,
     token: String,
 ) -> Result<String, String> {
-    // Имитируем прогресс загрузки пока реальный запуск не готов
-    // TODO: реальный запуск через java -jar
     for i in 0..=10u64 {
         std::thread::sleep(std::time::Duration::from_millis(150));
         let _ = app.emit("download_progress", DownloadProgress {
@@ -357,17 +355,102 @@ async fn launch_minecraft(
     Ok(format!("Launched {} for {}", server_id, username))
 }
 
-// ─── 2. System Tray ──────────────────────────────────────────────────────────
-fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let header  = MenuItem::with_id(app, "header",  "SB Games Launcher",      false, None::<&str>)?;
-    let sep0    = tauri::menu::PredefinedMenuItem::separator(app)?;
-    let show    = MenuItem::with_id(app, "show",    "⬛  Открыть",             true,  None::<&str>)?;
-    let play    = MenuItem::with_id(app, "play",    "▶  Играть на STARWARS",  true,  None::<&str>)?;
-    let support = MenuItem::with_id(app, "support", "💬  Поддержка",           true,  None::<&str>)?;
-    let sep1    = tauri::menu::PredefinedMenuItem::separator(app)?;
-    let quit    = MenuItem::with_id(app, "quit",    "✕  Выйти",               true,  None::<&str>)?;
+// ─── Tray popup (custom UI) ──────────────────────────────────────────────────
+#[derive(Default, Clone)]
+struct TrayState {
+    user:        Option<serde_json::Value>,
+    notifs:      Vec<serde_json::Value>,
+    playing:     bool,
+}
 
-    let menu = Menu::with_items(app, &[&header, &sep0, &show, &play, &support, &sep1, &quit])?;
+#[tauri::command]
+fn tray_get_state(state: tauri::State<'_, TrayState>) -> serde_json::Value {
+    serde_json::json!({
+        "user":    state.user,
+        "notifs":  state.notifs,
+        "playing": state.playing,
+    })
+}
+
+#[tauri::command]
+fn tray_update_state(
+    app: tauri::AppHandle,
+    user:    Option<serde_json::Value>,
+    notifs:  Option<Vec<serde_json::Value>>,
+    playing: Option<bool>,
+) -> Result<(), String> {
+    let state = app.state::<TrayState>();
+    let mut s = state.inner().clone();
+    if user.is_some()    { s.user    = user; }
+    if let Some(n) = notifs  { s.notifs  = n; }
+    if let Some(p) = playing { s.playing = p; }
+    // Бродкаст в popup
+    let _ = app.emit("tray_state_update", serde_json::json!({
+        "user":    s.user,
+        "notifs":  s.notifs,
+        "playing": s.playing,
+    }));
+    Ok(())
+}
+
+#[tauri::command]
+async fn tray_show_popup(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(tray_win) = app.get_webview_window("tray") {
+        // Запросить свежий state у main окна
+        if let Some(main_win) = app.get_webview_window("main") {
+            let _ = main_win.eval("window.__requestTrayState && window.__requestTrayState()");
+        }
+        let _ = tray_win.show();
+        let _ = tray_win.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn tray_hide(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("tray") {
+        let _ = w.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn navigate_to(app: tauri::AppHandle, page: String) -> Result<(), String> {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+        let _ = main.eval(&format!("window.__navigateTo && window.__navigateTo('{}')", page));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn tray_launch_game(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+        let _ = main.eval("window.__launchGame && window.__launchGame()");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn tray_logout(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.eval("window.__logout && window.__logout()");
+    }
+    Ok(())
+}
+
+// Показать popup при клике ЛКМ по иконке трея
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show    = MenuItem::with_id(app, "show",    "Открыть",                true,  None::<&str>)?;
+    let play    = MenuItem::with_id(app, "play",    "Играть на STARWARS",     true,  None::<&str>)?;
+    let support = MenuItem::with_id(app, "support", "Поддержка",              true,  None::<&str>)?;
+    let sep     = tauri::menu::PredefinedMenuItem::separator(app)?;
+    let quit    = MenuItem::with_id(app, "quit",    "Выйти",                  true,  None::<&str>)?;
+    let menu    = Menu::with_items(app, &[&show, &play, &support, &sep, &quit])?;
 
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
@@ -381,10 +464,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 }
             }
             "play" | "support" => {
+                let page = if event.id.as_ref() == "play" { "play" } else { "support" };
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.show();
                     let _ = w.set_focus();
-                    let page = if event.id.as_ref() == "play" { "play" } else { "support" };
                     let _ = w.eval(&format!("window.__navigateTo && window.__navigateTo('{}')", page));
                 }
             }
@@ -398,12 +481,16 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 ..
             } = event {
                 let app = tray.app_handle();
-                if let Some(w) = app.get_webview_window("main") {
-                    if w.is_visible().unwrap_or(false) {
-                        let _ = w.hide();
+                if let Some(tray_win) = app.get_webview_window("tray") {
+                    if tray_win.is_visible().unwrap_or(false) {
+                        let _ = tray_win.hide();
                     } else {
-                        let _ = w.show();
-                        let _ = w.set_focus();
+                        // Запросить свежий state у main
+                        if let Some(main_win) = app.get_webview_window("main") {
+                            let _ = main_win.eval("window.__requestTrayState && window.__requestTrayState()");
+                        }
+                        let _ = tray_win.show();
+                        let _ = tray_win.set_focus();
                     }
                 }
             }
@@ -426,6 +513,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(DiscordState(Mutex::new(None)))
+        .manage(TrayState::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
@@ -440,6 +528,14 @@ pub fn run() {
             read_screenshot_b64,
             // Notifications
             show_notification,
+            // Tray popup
+            tray_get_state,
+            tray_update_state,
+            tray_show_popup,
+            tray_hide,
+            navigate_to,
+            tray_launch_game,
+            tray_logout,
         ])
         .setup(|app| {
             // Трей

@@ -171,7 +171,7 @@ export function NotificationBell() {
 
   // Анимация звонка при новом уведомлении
   useEffect(() => {
-    if (unread > prevUnread.current) {
+    if (unread > prevUnread.current && prevUnread.current > 0) {
       controls.start({
         rotate: [0, -18, 18, -12, 12, -6, 6, 0],
         transition: { duration: 0.55, ease: "easeInOut" },
@@ -180,26 +180,31 @@ export function NotificationBell() {
     prevUnread.current = unread;
   }, [unread, controls]);
 
-  // Закрываем при клике вне
+  // Закрываем при клике вне (только если панель открыта)
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false);
+      if (panelRef.current && !panelRef.current.contains(e.target)) {
+        setOpen(false);
+      }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    // Используем click вместо mousedown — не конфликтует с onClick колокольчика
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
   }, [open]);
 
-  const toggle = () => {
+  const toggle = (e) => {
+    e?.stopPropagation();
     if (!open) markAllRead();
     setOpen(v => !v);
   };
 
   return (
-    <div className="relative" ref={panelRef}>
+    <div className="relative" ref={panelRef} style={{ zIndex: 100 }}>
       {/* Bell button */}
       <motion.button
         onClick={toggle}
+        onMouseDown={(e) => e.stopPropagation()}
         animate={controls}
         whileTap={{ scale: 0.88 }}
         className="relative w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
@@ -245,7 +250,8 @@ export function NotificationBell() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: -8 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
-            className="absolute top-9 right-0 w-[300px] rounded-2xl overflow-hidden z-50"
+            className="absolute top-9 right-0 w-[300px] rounded-2xl overflow-hidden"
+            style={{ zIndex: 10001 }}
             style={{
               background: "rgba(9,9,12,0.98)",
               boxShadow: "0 8px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07)",

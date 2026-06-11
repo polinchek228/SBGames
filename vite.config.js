@@ -59,24 +59,38 @@ function obfuscatePlugin() {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), obfuscatePlugin()],
-  clearScreen: false,
-  server: {
-    port: 1420,
-    strictPort: true,
-    host: host || false,
-    hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
-    watch: { ignored: ["**/src-tauri/**"] },
-  },
-  resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
-  },
-  build: {
-    sourcemap: false,
-    minify: "terser",
-    terserOptions: {
-      compress: { drop_console: true, drop_debugger: true },
+export default defineConfig(({ command, mode }) => {
+  if (process.env.TRAY_BUILD) {
+    return {
+      plugins: [react(), obfuscatePlugin()],
+      build: {
+        outDir: "dist-tray",
+        emptyOutDir: true,
+        rollupOptions: {
+          input: { main: path.resolve(__dirname, "tray.html") },
+        },
+        sourcemap: false,
+        minify: "terser",
+        terserOptions: { compress: { drop_console: true, drop_debugger: true } },
+      },
+      resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+    };
+  }
+  return {
+    plugins: [react(), obfuscatePlugin()],
+    clearScreen: false,
+    server: {
+      port: 1420,
+      strictPort: true,
+      host: host || false,
+      hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
+      watch: { ignored: ["**/src-tauri/**"] },
     },
-  },
+    resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+    build: {
+      sourcemap: false,
+      minify: "terser",
+      terserOptions: { compress: { drop_console: true, drop_debugger: true } },
+    },
+  };
 });
