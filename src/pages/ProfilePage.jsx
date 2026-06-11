@@ -23,34 +23,47 @@ export default function ProfilePage({ user }) {
   return (
     <div className="flex h-full bg-black overflow-hidden">
       {/* Left tab nav */}
-      <div className="w-[200px] flex-shrink-0 border-r border-white/[0.05] flex flex-col pt-5 px-3 gap-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-all duration-150 text-left ${
-              tab === id
-                ? "bg-white/[0.07] text-white"
-                : "text-white/35 hover:text-white/60 hover:bg-white/[0.04]"
-            }`}
-          >
-            <Icon size={14} strokeWidth={tab === id ? 2.2 : 1.8} />
-            {label}
-            {tab === id && <ChevronRight size={12} className="ml-auto text-white/30" />}
-          </button>
-        ))}
+      <div className="w-[180px] flex-shrink-0 flex flex-col pt-5 px-3 gap-0.5"
+        style={{ borderRight: "1px solid rgba(255,255,255,0.04)" }}
+      >
+        {TABS.map(({ id, label, icon: Icon }) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className="relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-colors duration-150 text-left"
+              style={{ color: active ? "#fff" : "rgba(255,255,255,0.32)" }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.32)"; }}
+            >
+              {active && (
+                <motion.div layoutId="tab-bg"
+                  className="absolute inset-0 rounded-xl"
+                  style={{ background: "rgba(255,255,255,0.06)" }}
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2.5 w-full">
+                <Icon size={14} strokeWidth={active ? 2.2 : 1.8} />
+                {label}
+                {active && <ChevronRight size={11} className="ml-auto" style={{ color: "rgba(255,255,255,0.25)" }} />}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div
             key={tab}
-            initial={{ opacity: 0, x: 8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ duration: 0.18 }}
-            className="h-full"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+            className="absolute inset-0 overflow-y-auto"
           >
             {tab === "profile"     && <ProfileTab user={user} />}
             {tab === "personalize" && <PersonalizeTab user={user} />}
@@ -65,107 +78,176 @@ export default function ProfilePage({ user }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Profile Tab
 // ─────────────────────────────────────────────────────────────────────────────
+const containerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
+const itemVariants = {
+  hidden: { opacity: 0, y: 14 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
 function ProfileTab({ user }) {
   const username = user?.username || "Player";
-  const [avatar, setAvatar]         = useState(null);
+  const [avatar, setAvatar] = useState(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   const stats = [
-    { label: "Часов в игре", value: "148", icon: Clock },
-    { label: "Уровень",      value: "37",  icon: Star },
-    { label: "Серверов",     value: "3",   icon: GameController },
+    { label: "Часов",    value: "148", icon: Clock,          color: "#818cf8" },
+    { label: "Уровень",  value: "37",  icon: Star,           color: "#fbbf24" },
+    { label: "Серверов", value: "3",   icon: GameController, color: "#34d399" },
   ];
 
+  const isAdmin = user?.role === "admin";
+
   return (
-    <div className="flex gap-5 p-5 h-full overflow-hidden">
+    <div className="flex gap-4 p-5">
       {/* Left col */}
-      <div className="flex-1 flex flex-col gap-4 min-w-0 overflow-y-auto">
-        {/* User card */}
-        <div className="rounded-2xl p-5" style={{ background: "#0d0d0d" }}>
-          <div className="flex items-center gap-4">
+      <motion.div
+        className="flex flex-col gap-3 min-w-0"
+        style={{ flex: 1 }}
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+      >
+        {/* Hero card */}
+        <motion.div variants={itemVariants}
+          className="relative rounded-3xl overflow-hidden"
+          style={{ background: "rgba(255,255,255,0.03)" }}
+        >
+          {/* Ambient glow */}
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ background: "radial-gradient(ellipse at 20% 50%, rgba(37,99,235,0.08) 0%, transparent 65%)" }}
+          />
+
+          <div className="relative flex items-center gap-4 p-5">
             {/* Avatar */}
-            <div className="relative flex-shrink-0 group cursor-pointer" onClick={() => setShowAvatarPicker(true)}>
-              <div className="w-[72px] h-[72px] rounded-2xl overflow-hidden"
-                style={{ background: "#111" }}
+            <div className="relative flex-shrink-0 cursor-pointer group" onClick={() => setShowAvatarPicker(true)}>
+              <div className="w-[80px] h-[80px] rounded-2xl overflow-hidden transition-all duration-300 group-hover:scale-95"
+                style={{ background: "rgba(255,255,255,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
               >
-                <img
-                  src={avatar || "/logo.jpg"}
-                  alt="avatar"
-                  className="w-full h-full object-cover transition-all duration-200 group-hover:brightness-50"
+                <img src={avatar || "/logo.jpg"} alt="avatar"
+                  className="w-full h-full object-cover transition-all duration-300 group-hover:brightness-50"
                 />
               </div>
-              <div className="absolute inset-0 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera size={20} weight="fill" className="text-white" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-black" />
+              <motion.div
+                initial={false}
+                className="absolute inset-0 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              >
+                <Camera size={22} weight="fill" className="text-white drop-shadow-lg" />
+              </motion.div>
+              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-green-400"
+                style={{ boxShadow: "0 0 0 2px #000, 0 0 8px rgba(74,222,128,0.5)" }}
+              />
             </div>
 
+            {/* Info */}
             <div className="flex-1 min-w-0">
-              <p className="text-[17px] font-black text-white truncate leading-tight">{username}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-[20px] font-black text-white leading-none truncate">{username}</p>
+                {isAdmin && (
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-widest"
+                    style={{ background: "rgba(239,68,68,0.15)", color: "rgba(252,165,165,0.9)" }}
+                  >ADMIN</span>
+                )}
+              </div>
+
               {user?.telegram && (
-                <p className="text-[12px] text-blue-400/80 flex items-center gap-1 mt-1">
+                <p className="flex items-center gap-1 mt-1.5 text-[12px]" style={{ color: "#60a5fa" }}>
                   <TelegramLogo size={12} weight="fill" />
                   @{user.telegram}
                 </p>
               )}
-              <div className="flex items-center gap-1.5 mt-2">
-                <span className="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded-md font-bold tracking-wider">
-                  ИГРОК
+
+              <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-xl tracking-wider"
+                  style={{ background: "rgba(37,99,235,0.18)", color: "#93c5fd" }}
+                >
+                  {isAdmin ? "АДМИНИСТРАТОР" : "ИГРОК"}
                 </span>
-                <span className="text-[10px] text-white/20 bg-white/[0.04] border border-white/[0.06] px-2 py-0.5 rounded-md">
-                  ID {user?.id || "12345"}
+                <span className="text-[10px] px-2.5 py-1 rounded-xl font-mono"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.25)" }}
+                >
+                  #{user?.id?.toString().slice(-6) || "000000"}
                 </span>
               </div>
             </div>
 
-            <div className="text-right flex-shrink-0">
-              <div className="flex items-center gap-1.5 justify-end">
-                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                <span className="text-[22px] font-black text-white tabular-nums">{user?.balance ?? 0}</span>
+            {/* Balance */}
+            <div className="flex-shrink-0 flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <img src="/money.png" alt="coin" className="w-5 h-5 object-contain"
+                  style={{ filter: "drop-shadow(0 0 6px rgba(37,99,235,0.7))" }}
+                />
+                <span className="text-[26px] font-black text-white tabular-nums leading-none">
+                  {(user?.balance ?? 0).toLocaleString("ru-RU")}
+                </span>
               </div>
-              <p className="text-[10px] text-white/20 mt-0.5">СБТ</p>
+              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.2)" }}>СБТ баланс</span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Stats — три карточки */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-2.5">
-          {stats.map(({ label, value, icon: Icon }, i) => (
-            <motion.div
-              key={label}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07 }}
-              className="rounded-xl p-4 flex flex-col gap-2.5" style={{ background: "#0d0d0d" }}
+          {stats.map(({ label, value, icon: Icon, color }, i) => (
+            <motion.div key={label} variants={itemVariants}
+              className="rounded-2xl p-4 flex flex-col gap-3 relative overflow-hidden"
+              style={{ background: "rgba(255,255,255,0.03)" }}
+              whileHover={{ scale: 1.02, transition: { duration: 0.15 } }}
             >
-              <div className="w-8 h-8 rounded-xl bg-blue-600/10 flex items-center justify-center">
-                <Icon size={15} weight="fill" className="text-blue-400" />
+              <div className="absolute top-0 right-0 w-16 h-16 rounded-full pointer-events-none"
+                style={{ background: `radial-gradient(circle, ${color}12 0%, transparent 70%)`, transform: "translate(20%, -20%)" }}
+              />
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: `${color}18` }}
+              >
+                <Icon size={15} weight="fill" style={{ color }} />
               </div>
-              <p className="text-[24px] font-black text-white leading-none tabular-nums">{value}</p>
-              <p className="text-[10px] text-white/30">{label}</p>
+              <div>
+                <p className="text-[26px] font-black leading-none tabular-nums text-white">{value}</p>
+                <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>{label}</p>
+              </div>
             </motion.div>
           ))}
         </div>
 
-        {/* TG badge */}
-        <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: "#0d0d0d" }}>
-          <div className="w-7 h-7 rounded-lg bg-blue-600/10 flex items-center justify-center flex-shrink-0">
-            <TelegramLogo size={14} weight="fill" className="text-blue-400" />
+        {/* Telegram card */}
+        <motion.div variants={itemVariants}
+          className="rounded-2xl px-4 py-3 flex items-center gap-3"
+          style={{ background: "rgba(255,255,255,0.03)" }}
+        >
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(37,99,235,0.15)" }}
+          >
+            <TelegramLogo size={15} weight="fill" style={{ color: "#60a5fa" }} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[12px] font-semibold text-white">Telegram привязан</p>
-            <p className="text-[10px] text-white/30 mt-0.5">@sbgamessupport_bot</p>
+            <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+              {user?.telegram ? `@${user.telegram}` : "@sbgamescbot"}
+            </p>
           </div>
-          <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-        </div>
-      </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-400"
+              style={{ boxShadow: "0 0 6px rgba(74,222,128,0.6)" }}
+            />
+            <span className="text-[10px]" style={{ color: "rgba(74,222,128,0.7)" }}>Активен</span>
+          </div>
+        </motion.div>
+      </motion.div>
 
       {/* Right col — 3D skin */}
-      <div className="w-[210px] flex-shrink-0">
+      <motion.div
+        className="flex-shrink-0"
+        style={{ width: 200 }}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.35, delay: 0.1 }}
+      >
         <SkinViewer username={username} />
-      </div>
+      </motion.div>
 
-      {/* Avatar picker */}
       <AnimatePresence>
         {showAvatarPicker && (
           <FilePicker
@@ -217,7 +299,7 @@ async function fetchSkinUrl(username) {
   }
 }
 
-function SkinViewer({ username }) {
+function SkinViewer({ username, customSkin }) {
   const canvasRef = useRef(null);
   const viewerRef = useRef(null);
   const [animIdx, setAnimIdx] = useState(1);
@@ -241,9 +323,9 @@ function SkinViewer({ username }) {
         canvas: canvasRef.current,
         width: 190,
         height: 290,
-        background: 0x000000,   // чёрный фон
+        background: 0x000000,
       });
-      viewer.renderer.setClearColor(0x000000, 0);  // прозрачный рендер
+      viewer.renderer.setClearColor(0x000000, 0);
       viewer.controls.enableRotate = true;
       viewer.controls.enableZoom = false;
       viewer.controls.autoRotate = true;
@@ -252,67 +334,68 @@ function SkinViewer({ username }) {
       viewer.zoom = 0.85;
       viewerRef.current = viewer;
 
-      // Грузим скин пользователя через minotar (не нужен CORS-прокси)
-      const skinUrl = `https://minotar.net/skin/${username}`;
       try {
-        await viewer.loadSkin(skinUrl);
+        await viewer.loadSkin(customSkin || `https://minotar.net/skin/${username}`);
       } catch {
         await viewer.loadSkin("https://minotar.net/skin/MHF_Steve");
       }
 
       if (!cancelled) {
-        applyAnimation(viewer, 1);
+        applyAnimation(viewer, animIdx);
         setLoading(false);
       }
     };
     init();
     return () => { cancelled = true; viewerRef.current?.dispose(); };
-  }, [username]);
+  }, [username, customSkin]);
 
   useEffect(() => {
     if (viewerRef.current && !loading) applyAnimation(viewerRef.current, animIdx);
   }, [animIdx, loading]);
 
   return (
-    <div
-      className="rounded-2xl border border-white/[0.06] p-4 flex flex-col gap-3 h-full"
-      style={{ background: "#080808" }}
+    <div className="rounded-2xl p-4 flex flex-col gap-3 h-full"
+      style={{ background: "rgba(255,255,255,0.03)" }}
     >
-      <p className="text-[11px] font-semibold text-white/50">3D Скин</p>
+      <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
+        style={{ color: "rgba(255,255,255,0.18)" }}>3D Скин</p>
 
-      {/* Canvas — чёрный фон снаружи тоже */}
-      <div
-        className="flex-1 flex items-center justify-center relative min-h-0 rounded-xl overflow-hidden"
-        style={{ background: "#000" }}
+      <div className="flex-1 flex items-center justify-center relative min-h-0 rounded-xl overflow-hidden"
+        style={{ background: "rgba(0,0,0,0.4)" }}
       >
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 bg-black">
-            <div className="w-5 h-5 border-2 border-white/10 border-t-white/40 rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center z-10"
+            style={{ background: "rgba(0,0,0,0.4)" }}
+          >
+            <div className="w-5 h-5 border-2 border-white/10 border-t-white/30 rounded-full animate-spin" />
           </div>
         )}
-        <canvas
+        <motion.canvas
           ref={canvasRef}
-          style={{ opacity: loading ? 0 : 1, transition: "opacity 0.4s", cursor: "grab", display: "block" }}
+          animate={{ opacity: loading ? 0 : 1 }}
+          transition={{ duration: 0.4 }}
+          style={{ cursor: "grab", display: "block" }}
         />
       </div>
 
-      {/* Animations */}
       <div className="flex flex-col gap-1.5">
-        <p className="text-[9px] text-white/20 uppercase tracking-widest">Анимация</p>
+        <p className="text-[9px] uppercase tracking-widest"
+          style={{ color: "rgba(255,255,255,0.18)" }}>Анимация</p>
         <div className="grid grid-cols-2 gap-1">
           {ANIMATIONS.map(({ label }, i) => (
-            <button
-              key={label}
-              onClick={() => setAnimIdx(i)}
-              className={`text-[10px] py-1.5 rounded-lg transition-all duration-150 border ${
-                animIdx === i
-                  ? "bg-blue-600/20 text-blue-400 border-blue-500/25"
-                  : "border-transparent text-white/25 hover:text-white/50"
-              }`}
-              style={{ background: animIdx === i ? undefined : "rgba(255,255,255,0.03)" }}
+            <motion.button key={label} onClick={() => setAnimIdx(i)} whileTap={{ scale: 0.94 }}
+              className="relative text-[10px] py-1.5 rounded-lg transition-colors duration-150 overflow-hidden"
+              style={{ color: animIdx === i ? "#93c5fd" : "rgba(255,255,255,0.25)" }}
             >
-              {label}
-            </button>
+              {animIdx === i && (
+                <motion.div layoutId="anim-bg"
+                  className="absolute inset-0 rounded-lg"
+                  style={{ background: "rgba(37,99,235,0.18)" }}
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              )}
+              <span className="relative z-10">{label}</span>
+            </motion.button>
           ))}
         </div>
       </div>
@@ -321,14 +404,23 @@ function SkinViewer({ username }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Personalize Tab — только смена скина
+// Personalize Tab
 // ─────────────────────────────────────────────────────────────────────────────
+const CAPE_PRESETS = [
+  { id: "none",    label: "Нет",       color: null },
+  { id: "blue",    label: "Синий",     color: "#1d4ed8" },
+  { id: "dark",    label: "Тёмный",    color: "#1e1b4b" },
+  { id: "red",     label: "Красный",   color: "#7f1d1d" },
+];
+
 function PersonalizeTab({ user }) {
   const username = user?.username || "Player";
-  const [skinFile, setSkinFile] = useState(null); // File object
-  const [skinPreview, setSkinPreview] = useState(null); // dataURL
-  const [showPicker, setShowPicker] = useState(false);
-  const [uploaded, setUploaded] = useState(false);
+  const [skinFile,    setSkinFile]    = useState(null);
+  const [skinPreview, setSkinPreview] = useState(null);
+  const [showPicker,  setShowPicker]  = useState(false);
+  const [uploaded,    setUploaded]    = useState(false);
+  const [cape,        setCape]        = useState("none");
+  const [dragging,    setDragging]    = useState(false);
 
   const handleSkinUpload = () => {
     if (!skinFile) return;
@@ -336,69 +428,209 @@ function PersonalizeTab({ user }) {
     setTimeout(() => setUploaded(false), 2500);
   };
 
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (!file || !file.name.endsWith(".png")) return;
+    const reader = new FileReader();
+    reader.onload = ev => setSkinPreview(ev.target.result);
+    reader.readAsDataURL(file);
+    setSkinFile(file);
+    setUploaded(false);
+  };
+
   return (
-    <div className="p-5 flex flex-col gap-5 max-w-[480px]">
-      <div>
-        <p className="text-[15px] font-bold text-white">Персонализация</p>
-        <p className="text-[12px] text-white/30 mt-0.5">Смена скина персонажа</p>
+    <motion.div
+      className="p-5 flex gap-5"
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+    >
+      {/* Left — skin upload */}
+      <div className="flex flex-col gap-3 flex-1 min-w-0">
+
+        {/* Drop zone */}
+        <motion.div variants={itemVariants}>
+          <p className="text-[10px] uppercase tracking-[0.14em] font-semibold mb-2"
+            style={{ color: "rgba(255,255,255,0.18)" }}>Скин Minecraft</p>
+
+          <div
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => setShowPicker(true)}
+            className="relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-200 flex items-center gap-4 p-4"
+            style={{
+              background: dragging ? "rgba(37,99,235,0.1)" : "rgba(255,255,255,0.03)",
+              outline: dragging ? "1.5px solid rgba(37,99,235,0.4)" : "1.5px solid transparent",
+            }}
+          >
+            {/* Skin preview box */}
+            <div className="relative w-16 h-24 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.05)" }}
+            >
+              {skinPreview ? (
+                <img src={skinPreview} alt="skin"
+                  className="w-full h-full object-contain"
+                  style={{ imageRendering: "pixelated" }}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-1 opacity-30">
+                  <Package size={18} className="text-white" />
+                  <span className="text-[8px] text-white font-medium">PNG</span>
+                </div>
+              )}
+              {skinPreview && (
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
+                  style={{ background: "rgba(0,0,0,0.5)" }}
+                >
+                  <Camera size={16} weight="fill" className="text-white" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <p className="text-[13px] font-semibold text-white">
+                {skinFile ? skinFile.name : "Загрузить скин"}
+              </p>
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                {dragging ? "Отпусти сюда" : "PNG · 64×64 или 64×32 · перетащи или нажми"}
+              </p>
+              {skinFile && (
+                <span className="text-[10px] px-2 py-0.5 rounded-lg self-start"
+                  style={{ background: "rgba(37,99,235,0.15)", color: "#93c5fd" }}
+                >
+                  Готово к загрузке
+                </span>
+              )}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Apply button */}
+        <AnimatePresence>
+          {skinFile && (
+            <motion.button
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              onClick={handleSkinUpload}
+              className="flex items-center justify-center gap-2 rounded-2xl py-3 text-[12px] font-semibold transition-all duration-200"
+              style={{
+                background: uploaded ? "rgba(34,197,94,0.15)" : "rgba(37,99,235,0.2)",
+                color: uploaded ? "rgba(74,222,128,0.95)" : "#93c5fd",
+              }}
+              whileTap={{ scale: 0.97 }}
+              onMouseEnter={e => { if (!uploaded) e.currentTarget.style.background = "rgba(37,99,235,0.35)"; }}
+              onMouseLeave={e => { if (!uploaded) e.currentTarget.style.background = "rgba(37,99,235,0.2)"; }}
+            >
+              <AnimatePresence mode="wait">
+                {uploaded ? (
+                  <motion.span key="done" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+                    className="flex items-center gap-2"
+                  >
+                    <CheckCircle2 size={14} />Скин применён!
+                  </motion.span>
+                ) : (
+                  <motion.span key="upload" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="flex items-center gap-2"
+                  >
+                    <Download size={14} />Применить скин
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Cape */}
+        <motion.div variants={itemVariants}>
+          <p className="text-[10px] uppercase tracking-[0.14em] font-semibold mb-2"
+            style={{ color: "rgba(255,255,255,0.18)" }}>Плащ</p>
+          <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+            <div className="grid grid-cols-4 gap-2">
+              {CAPE_PRESETS.map(({ id, label, color }) => (
+                <motion.button
+                  key={id}
+                  onClick={() => setCape(id)}
+                  whileTap={{ scale: 0.93 }}
+                  className="flex flex-col items-center gap-2 py-3 rounded-xl transition-all duration-150"
+                  style={{
+                    background: cape === id ? "rgba(37,99,235,0.15)" : "rgba(255,255,255,0.04)",
+                  }}
+                >
+                  <div className="w-6 h-8 rounded-md flex-shrink-0"
+                    style={{
+                      background: color || "rgba(255,255,255,0.08)",
+                      boxShadow: cape === id && color ? `0 0 10px ${color}60` : "none",
+                    }}
+                  />
+                  <span className="text-[9px] font-medium"
+                    style={{ color: cape === id ? "#93c5fd" : "rgba(255,255,255,0.3)" }}
+                  >{label}</span>
+                  {cape === id && (
+                    <motion.div layoutId="cape-dot"
+                      className="w-1 h-1 rounded-full bg-blue-400"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Nickname colour hint */}
+        <motion.div variants={itemVariants}
+          className="rounded-2xl px-4 py-3 flex items-center gap-3"
+          style={{ background: "rgba(255,255,255,0.03)" }}
+        >
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(250,204,21,0.1)" }}
+          >
+            <Star size={14} weight="fill" style={{ color: "#fbbf24" }} />
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-white">Цветной ник</p>
+            <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+              Доступен с уровня 10 — откройте в магазине
+            </p>
+          </div>
+          <span className="ml-auto text-[10px] px-2.5 py-1 rounded-xl"
+            style={{ background: "rgba(250,204,21,0.1)", color: "rgba(250,204,21,0.7)" }}
+          >Скоро</span>
+        </motion.div>
       </div>
 
-      <Section title="Скин Minecraft">
-        <div className="flex items-center gap-4">
-          {/* Preview */}
-          <div className="w-16 h-24 rounded-xl overflow-hidden bg-black flex items-center justify-center flex-shrink-0"
-            style={{ border: "1px solid rgba(255,255,255,0.07)" }}
-          >
-            {skinPreview ? (
-              <img src={skinPreview} alt="skin" className="w-full h-full object-contain" style={{ imageRendering: "pixelated" }} />
-            ) : (
-              <div className="text-[10px] text-white/20 text-center px-1">Нет скина</div>
-            )}
-          </div>
-          <div className="flex-1 flex flex-col gap-2">
-            <p className="text-[11px] text-white/50">
-              {skinFile ? skinFile.name : "Файл не выбран"}
-            </p>
-            <p className="text-[10px] text-white/20">PNG, 64×64 или 64×32</p>
-            <button
-              onClick={() => setShowPicker(true)}
-              className="flex items-center gap-2 text-[11px] font-semibold px-3.5 py-2 rounded-xl transition-all duration-150 self-start"
-              style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}
-            >
-              Выбрать файл
-            </button>
-          </div>
-        </div>
+      {/* Right — live 3D preview */}
+      <motion.div
+        className="flex-shrink-0"
+        style={{ width: 200 }}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.35, delay: 0.1 }}
+      >
+        <SkinViewer username={skinPreview ? "__custom__" : username} customSkin={skinPreview} />
+      </motion.div>
 
-        {skinFile && (
-          <button
-            onClick={handleSkinUpload}
-            className={`flex items-center justify-center gap-2 w-full rounded-xl py-2.5 text-[12px] font-bold transition-all duration-200 ${
-              uploaded ? "bg-green-600 text-white" : "bg-blue-600 hover:bg-blue-500 text-white"
-            }`}
-          >
-            {uploaded ? <><Check size={13} />Загружено!</> : "Применить скин"}
-          </button>
-        )}
-      </Section>
-
-      {/* Custom file picker modal */}
       <AnimatePresence>
         {showPicker && (
           <FilePicker
             accept=".png"
             title="Выбери скин"
-            hint="PNG файл · 64×64 или 64×32 пикселя"
+            hint="PNG · 64×64 или 64×32 пикселя"
             onSelect={(file, preview) => {
               setSkinFile(file);
               setSkinPreview(preview);
               setShowPicker(false);
+              setUploaded(false);
             }}
             onClose={() => setShowPicker(false)}
           />
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
@@ -479,34 +711,35 @@ function SettingsTab() {
 
   // Адаптивные метки: 1 ГБ шаг до 8, 2 ГБ до 16, 4 ГБ до 32
   const _step = totalRam <= 8 ? 1 : totalRam <= 16 ? 2 : 4;
-  const ramSteps = [...new Set([
-    1,
-    ...Array.from({ length: Math.floor(totalRam / _step) }, (_, i) => (i + 1) * _step),
-    totalRam,
-  ])].filter(v => v >= 1 && v <= totalRam).sort((a, b) => a - b);
+  const ramSteps = Array.from(
+    { length: Math.floor(totalRam / _step) },
+    (_, i) => (i + 1) * _step
+  ).filter(v => v <= totalRam);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col">
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-5 pt-5 pb-0 flex-shrink-0">
+      <div className="flex items-center gap-1 px-5 pt-5 pb-0 flex-shrink-0 sticky top-0 z-10" style={{ background: "#000" }}>
         {[
           { id: "game",    label: "Игра",    icon: SlidersHorizontal },
           { id: "mods",    label: "Моды",    icon: Package },
           { id: "shaders", label: "Шейдеры", icon: Zap },
         ].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setSettingTab(id)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
-              settingTab === id
-                ? "bg-white/[0.08] text-white"
-                : "text-white/35 hover:text-white/60 hover:bg-white/[0.04]"
-            }`}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all duration-150"
+            style={settingTab === id
+              ? { background: "rgba(255,255,255,0.07)", color: "#fff" }
+              : { color: "rgba(255,255,255,0.3)" }
+            }
+            onMouseEnter={e => { if (settingTab !== id) e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+            onMouseLeave={e => { if (settingTab !== id) e.currentTarget.style.color = "rgba(255,255,255,0.3)"; }}
           >
             <Icon size={12} />{label}
           </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
+      <div className="p-5 flex flex-col gap-5">
         <AnimatePresence mode="wait">
           {settingTab === "game" && (
             <motion.div key="game" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -555,11 +788,13 @@ function SettingsTab() {
                   <div className="flex flex-wrap gap-1.5 flex-1">
                     {RESOLUTIONS.map(r => (
                       <button key={r} onClick={() => setResolution(r)}
-                        className={`text-[11px] px-3 py-1.5 rounded-lg transition-all duration-150 border ${
-                          resolution === r
-                            ? "bg-blue-600/20 text-blue-400 border-blue-500/25"
-                            : "bg-white/[0.03] text-white/30 border-transparent hover:text-white/55"
-                        }`}
+                        className="text-[11px] px-3 py-1.5 rounded-lg transition-all duration-150"
+                        style={resolution === r
+                          ? { background: "rgba(37,99,235,0.22)", color: "#93c5fd" }
+                          : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.28)" }
+                        }
+                        onMouseEnter={e => { if (resolution !== r) e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+                        onMouseLeave={e => { if (resolution !== r) e.currentTarget.style.color = "rgba(255,255,255,0.28)"; }}
                       >{r}</button>
                     ))}
                   </div>
@@ -573,9 +808,10 @@ function SettingsTab() {
               </Section>
 
               <button onClick={handleSaveGame}
-                className={`self-start flex items-center gap-2 rounded-xl px-5 py-2.5 text-[12px] font-bold transition-all duration-200 ${
-                  savedOk ? "bg-green-600 text-white" : "bg-blue-600 hover:bg-blue-500 text-white"
-                }`}
+                className="self-start flex items-center gap-2 rounded-xl px-5 py-2.5 text-[12px] font-semibold transition-all duration-200 text-white"
+                style={{ background: savedOk ? "rgba(34,197,94,0.2)" : "rgba(37,99,235,0.22)", color: savedOk ? "rgba(74,222,128,0.95)" : "#fff" }}
+                onMouseEnter={e => { if (!savedOk) e.currentTarget.style.background = "rgba(37,99,235,0.38)"; }}
+                onMouseLeave={e => { if (!savedOk) e.currentTarget.style.background = "rgba(37,99,235,0.22)"; }}
               >
                 {savedOk ? <><CheckCircle2 size={13} />Сохранено</> : "Сохранить"}
               </button>
@@ -667,16 +903,31 @@ function RamSlider({ value, max, onChange, steps, pct }) {
   );
 }
 
+// ─── Описания модов для SB Games ─────────────────────────────────────────────
+const MOD_DESCRIPTIONS = {
+  "sodium":                   "Заменяет движок рендера Minecraft — убирает лаги и фризы. На сервере SB Games даёт +60–200% FPS без потери качества графики.",
+  "lithium":                  "Оптимизирует физику, ИИ мобов и тик-обновления мира. Снижает нагрузку на процессор и делает игру плавнее на нашем сервере.",
+  "ferritecore":              "Сокращает потребление оперативной памяти до 40%. Особенно помогает при игре на больших картах SB Games с множеством чанков.",
+  "lazydfu":                  "Ускоряет загрузку игры, откладывая инициализацию DataFixerUpper. Вход на сервер становится заметно быстрее.",
+  "modernfix":                "Комплексный патч производительности: быстрый старт, меньше вылетов, стабильнее соединение с сервером SB Games.",
+  "noisium":                  "Ускоряет генерацию чанков в несколько раз. Новые территории на сервере подгружаются мгновенно без зависания.",
+  "complementary-reimagined": "Премиальные шейдеры с реалистичным освещением, тенями и водой. Идеально подчёркивают визуал карт SB Games.",
+  "bsl-shaders":              "Популярные шейдеры с мягким светом и приятной цветокоррекцией. Хорошо работают даже на средних видеокартах.",
+  "rethinking-voxels":        "Экспериментальные шейдеры с трассировкой лучей на основе вокселей. Максимально реалистичное освещение для топовых ПК.",
+};
+
 // ─── Modrinth panel ───────────────────────────────────────────────────────────
 function ModrinthPanel({ type, allowedSlugs }) {
   const [projects,   setProjects]   = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [installed,  setInstalled]  = useState(new Set());
   const [installing, setInstalling] = useState(new Set());
+  const [selected,   setSelected]   = useState(null);
 
   useEffect(() => {
     setLoading(true);
     setProjects([]);
+    setSelected(null);
     Promise.all(
       allowedSlugs.map(slug =>
         fetch(`https://api.modrinth.com/v2/project/${slug}`)
@@ -697,51 +948,136 @@ function ModrinthPanel({ type, allowedSlugs }) {
   };
 
   if (loading) return (
-    <div className="flex items-center gap-2 text-white/30 text-[12px] py-6">
-      <Loader2 size={14} className="animate-spin" />
-      Загрузка...
+    <div className="flex flex-col gap-2 pt-2">
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="h-[68px] rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.03)" }} />
+      ))}
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-2.5 max-w-[580px]">
-      {projects.map(proj => {
-        const isInstalled  = installed.has(proj.id);
-        const isInstalling = installing.has(proj.id);
-        return (
-          <motion.div key={proj.id}
-            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-3 rounded-2xl bg-[#0c0c0c] border border-white/[0.06] p-4 hover:border-white/[0.1] transition-colors"
-          >
-            <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-white/[0.04]">
-              {proj.icon_url
-                ? <img src={proj.icon_url} alt="" className="w-full h-full object-cover" />
-                : <div className="w-full h-full flex items-center justify-center"><Package size={16} className="text-white/20" /></div>
-              }
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-bold text-white truncate">{proj.title}</p>
-              <p className="text-[11px] text-white/40 truncate mt-0.5">{proj.description}</p>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="text-[9px] text-white/20">⬇ {(proj.downloads||0).toLocaleString("ru-RU")}</span>
-              </div>
-            </div>
-            <button
-              onClick={() => !isInstalled && !isInstalling && handleInstall(proj)}
-              disabled={isInstalled || isInstalling}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-bold transition-all duration-200 border ${
-                isInstalled  ? "bg-green-600/20 text-green-400 border-green-500/20 cursor-default" :
-                isInstalling ? "bg-white/[0.05] text-white/35 border-white/[0.06] cursor-wait" :
-                               "bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 border-blue-500/20"
-              }`}
+    <div className="flex gap-4">
+      {/* List */}
+      <div className="flex flex-col gap-1.5" style={{ width: selected ? 240 : "100%", flexShrink: 0, transition: "width 0.25s" }}>
+        {projects.map((proj, i) => {
+          const isInstalled  = installed.has(proj.id);
+          const isActive     = selected?.id === proj.id;
+          return (
+            <motion.div key={proj.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              onClick={() => setSelected(isActive ? null : proj)}
+              className="flex items-center gap-3 rounded-2xl px-3.5 py-3 cursor-pointer transition-all duration-150"
+              style={{ background: isActive ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)" }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.055)"; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
             >
-              {isInstalled  ? <><CheckCircle2 size={12} />Установлен</> :
-               isInstalling ? <><Loader2 size={12} className="animate-spin" />Скачка...</> :
-                              <><Download size={12} />Установить</>}
-            </button>
+              <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
+                {proj.icon_url
+                  ? <img src={proj.icon_url} alt="" className="w-full h-full object-cover" />
+                  : <div className="w-full h-full flex items-center justify-center"><Package size={14} className="text-white/20" /></div>
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold text-white truncate leading-tight">{proj.title}</p>
+                {!selected && (
+                  <p className="text-[10px] truncate mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{proj.description}</p>
+                )}
+              </div>
+              {isInstalled && <CheckCircle2 size={13} style={{ color: "rgba(74,222,128,0.7)", flexShrink: 0 }} />}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Detail panel */}
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            key={selected.id}
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 16 }}
+            transition={{ duration: 0.2 }}
+            className="flex-1 flex flex-col gap-4 min-w-0"
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
+                {selected.icon_url
+                  ? <img src={selected.icon_url} alt="" className="w-full h-full object-cover" />
+                  : <Package size={20} className="text-white/20" />
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] font-bold text-white leading-tight">{selected.title}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    ⬇ {(selected.downloads || 0).toLocaleString("ru-RU")}
+                  </span>
+                  {selected.game_versions?.includes("1.19.2") && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-md font-semibold" style={{ background: "rgba(37,99,235,0.18)", color: "#93c5fd" }}>
+                      1.19.2 ✓
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setSelected(null)}
+                className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 text-[14px] transition-all duration-150"
+                style={{ color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.05)" }}
+                onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.3)"; e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+              >✕</button>
+            </div>
+
+            {/* SB Games description */}
+            <div className="rounded-2xl p-4 flex flex-col gap-2" style={{ background: "rgba(37,99,235,0.08)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(37,99,235,0.7)" }}>
+                На сервере SB Games
+              </p>
+              <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.7)" }}>
+                {MOD_DESCRIPTIONS[selected.slug] || selected.description}
+              </p>
+            </div>
+
+            {/* Tags */}
+            {selected.categories?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selected.categories.slice(0, 4).map(cat => (
+                  <span key={cat} className="text-[10px] px-2 py-0.5 rounded-lg capitalize" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>
+                    {cat}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Install button */}
+            {(() => {
+              const isInstalled  = installed.has(selected.id);
+              const isInstalling = installing.has(selected.id);
+              return (
+                <button
+                  onClick={() => !isInstalled && !isInstalling && handleInstall(selected)}
+                  disabled={isInstalled || isInstalling}
+                  className="flex items-center justify-center gap-2 rounded-2xl py-2.5 text-[12px] font-semibold transition-all duration-200"
+                  style={
+                    isInstalled  ? { background: "rgba(34,197,94,0.12)", color: "rgba(74,222,128,0.9)" } :
+                    isInstalling ? { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)", cursor: "wait" } :
+                                   { background: "rgba(37,99,235,0.22)", color: "#93c5fd" }
+                  }
+                  onMouseEnter={e => { if (!isInstalled && !isInstalling) e.currentTarget.style.background = "rgba(37,99,235,0.38)"; }}
+                  onMouseLeave={e => { if (!isInstalled && !isInstalling) e.currentTarget.style.background = "rgba(37,99,235,0.22)"; }}
+                >
+                  {isInstalled  ? <><CheckCircle2 size={13} />Установлен</> :
+                   isInstalling ? <><Loader2 size={13} className="animate-spin" />Устанавливаем...</> :
+                                  <><Download size={13} />Установить</>}
+                </button>
+              );
+            })()}
           </motion.div>
-        );
-      })}
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -857,8 +1193,8 @@ function FilePicker({ accept, title, hint, onSelect, onClose }) {
 function Section({ title, children }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[10px] text-white/20 uppercase tracking-[0.14em] font-semibold">{title}</p>
-      <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: "#0d0d0d" }}>
+      <p className="text-[10px] uppercase tracking-[0.14em] font-semibold" style={{ color: "rgba(255,255,255,0.18)" }}>{title}</p>
+      <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: "rgba(255,255,255,0.03)" }}>
         {children}
       </div>
     </div>

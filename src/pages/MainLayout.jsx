@@ -14,12 +14,12 @@ import CommunityPage from "./CommunityPage.jsx";
 import LeaderboardPage from "./LeaderboardPage.jsx";
 
 const NAV_ITEMS = [
-  { id: "play",        label: "Играть",      icon: GameController },
-  { id: "profile",     label: "Профиль",     icon: User },
-  { id: "leaderboard", label: "Восхождение", icon: Trophy },
-  { id: "shop",        label: "Магазин",     icon: ShoppingBag },
-  { id: "news",        label: "Новости",     icon: Newspaper },
-  { id: "support",     label: "Поддержка",   icon: Headset },
+  { id: "play",        label: "ИГРАТЬ",      icon: GameController },
+  { id: "profile",     label: "ПРОФИЛЬ",     icon: User },
+  { id: "leaderboard", label: "ВОСХОЖДЕНИЕ", icon: Trophy },
+  { id: "shop",        label: "МАГАЗИН",     icon: ShoppingBag },
+  { id: "news",        label: "НОВОСТИ",     icon: Newspaper },
+  { id: "support",     label: "ПОМОЩЬ",      icon: Headset },
 ];
 
 export default function MainLayout({ user, onLogout }) {
@@ -47,80 +47,101 @@ export default function MainLayout({ user, onLogout }) {
     >
       <Titlebar />
 
-      {/* ── Floating navbar по центру ── */}
-      <div className="relative flex items-center justify-center h-14 flex-shrink-0 px-4">
-        {/* Центральная таблетка */}
+      {/* ── Full-width header bar ── */}
+      <div
+        className="w-full flex-shrink-0 relative flex items-center px-3"
+        style={{
+          height: "46px",
+          background: "rgba(8,8,10,0.98)",
+          borderBottom: "1px solid rgba(255,255,255,0.05)",
+          backdropFilter: "blur(20px)",
+        }}
+      >
+        {/* Logo — left */}
         <div
-          className="flex items-center gap-1 px-2 py-1.5 rounded-2xl"
+          className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg select-none"
           style={{
-            background: "rgba(18,18,18,0.95)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow: "0 4px 24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
-            backdropFilter: "blur(20px)",
+            background: "rgba(15,15,20,0.9)",
+            boxShadow: "0 0 12px rgba(37,99,235,0.2)",
           }}
         >
+          <img src="/logo.jpg" alt="G" className="w-5 h-5 rounded object-cover" />
+        </div>
+
+        {/* Nav items — absolutely centered */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-0.5">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const active = page === id;
             return (
               <button
                 key={id}
                 onClick={() => setPage(id)}
-                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium tracking-wide transition-all duration-150 whitespace-nowrap"
+                className="flex items-center gap-1.5 px-3 h-[28px] text-[10px] font-semibold tracking-widest whitespace-nowrap transition-all duration-150 select-none"
                 style={active
-                  ? { color: "#fff", background: "rgba(255,255,255,0.1)" }
-                  : { color: "rgba(255,255,255,0.35)" }
+                  ? {
+                      background: "rgba(37,99,235,0.85)",
+                      color: "#fff",
+                      borderRadius: "20px",
+                      boxShadow: "0 0 10px rgba(37,99,235,0.35)",
+                    }
+                  : {
+                      background: "transparent",
+                      color: "rgba(255,255,255,0.32)",
+                      borderRadius: "20px",
+                    }
                 }
                 onMouseEnter={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.32)"; }}
               >
-                <Icon size={13} weight={active ? "fill" : "regular"} />
+                <Icon size={11} weight={active ? "fill" : "regular"} />
                 {label}
-                {active && (
-                  <motion.div
-                    layoutId="nav-active"
-                    className="absolute inset-0 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.07)" }}
-                    transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                  />
-                )}
               </button>
             );
           })}
         </div>
 
-        {/* Правая группа — абсолютно позиционирована */}
-        <div className="absolute right-4 flex items-center gap-1.5">
+        {/* Right group: balance + community + logout */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          {/* Balance pill with coin icon */}
           <div
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-            style={{ background: "rgba(255,255,255,0.04)" }}
+            className="flex items-center gap-1.5 px-2.5 h-[28px] rounded-full select-none"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <img src="/money.png" alt="coin" className="w-4 h-4 object-contain" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
             <span className="text-[12px] font-bold text-white tabular-nums">{user.balance ?? 0}</span>
-            <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>СБТ</span>
           </div>
+
+          {/* Community toggle */}
           <button
             onClick={() => setShowCommunity(v => !v)}
-            className="relative w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150"
+            className="relative w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
             style={showCommunity
-              ? { background: "#2563EB", color: "#fff" }
-              : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }
+              ? { background: "rgba(37,99,235,0.7)", color: "#fff" }
+              : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)" }
             }
+            onMouseEnter={e => { if (!showCommunity) e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
+            onMouseLeave={e => { if (!showCommunity) e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
           >
-            <UsersThree size={15} weight={showCommunity ? "fill" : "regular"} />
+            <UsersThree size={13} weight={showCommunity ? "fill" : "regular"} />
             {friendBadge > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center">
                 {friendBadge}
               </span>
             )}
           </button>
+
+          {/* Logout */}
           <button
             onClick={onLogout}
-            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150"
-            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}
-            onMouseEnter={e => { e.currentTarget.style.color = "rgba(239,68,68,0.9)"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "rgba(239,68,68,0.85)"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
           >
-            <SignOut size={15} />
+            <SignOut size={13} />
           </button>
         </div>
       </div>

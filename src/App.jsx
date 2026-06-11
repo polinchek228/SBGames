@@ -10,12 +10,12 @@ export default function App() {
   });
 
   const handleLogin = (data) => {
-    // data может быть { user, token } или просто user
-    const userData = data?.user || data;
-    const token    = data?.token;
-    localStorage.setItem("sbgames_user", JSON.stringify(userData));
+    const user  = data?.user  ?? data;
+    const token = data?.token ?? null;
+    if (!user || typeof user !== "object") return;
+    localStorage.setItem("sbgames_user",  JSON.stringify(user));
     if (token) localStorage.setItem("sbgames_token", token);
-    setUser(userData);
+    setUser(user);
   };
 
   const handleLogout = () => {
@@ -27,7 +27,7 @@ export default function App() {
   return (
     <>
       <CustomCursor />
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {!user ? (
           <LoginPage key="login" onLogin={handleLogin} />
         ) : (
