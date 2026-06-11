@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -275,9 +277,7 @@ fn read_screenshot_b64(path: String) -> Result<String, String> {
         return Err("Access denied".into());
     }
     let bytes = std::fs::read(&canonical).map_err(|e| e.to_string())?;
-    use std::io::Write;
-    let mut enc = base64_encode(&bytes);
-    Ok(format!("data:image/png;base64,{}", enc))
+    Ok(format!("data:image/png;base64,{}", base64_encode(&bytes)))
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
