@@ -357,6 +357,8 @@ async fn launch_minecraft(
 
     let mc_dir = minecraft_dir();
     std::fs::create_dir_all(&mc_dir).map_err(|e| format!("Не удалось создать .minecraft: {}", e))?;
+    std::fs::create_dir_all(mc_dir.join("mods")).ok();
+    std::fs::create_dir_all(mc_dir.join("libraries")).ok();
 
     // 1. Проверяем Java
     let java = match java_path {
@@ -365,53 +367,109 @@ async fn launch_minecraft(
     };
 
     let _ = app.emit("download_progress", DownloadProgress {
-        file: "Java найдена".into(), downloaded: 5, total: 100, speed_kbs: 0,
+        file: "Java найдена".into(), downloaded: 3, total: 100, speed_kbs: 0,
     });
 
-    // 2. Проверяем клиент
+    // 2. Vanilla client 1.19.2
     let client_jar = mc_dir.join("versions/1.19.2/1.19.2.jar");
     let json       = mc_dir.join("versions/1.19.2/1.19.2.json");
 
     if !client_jar.exists() || !json.exists() {
-        // Скачиваем manifest 1.19.2
+        // Manifest version
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "minecraft-1.19.2.json".into(),
-            downloaded: 0, total: 102400, speed_kbs: 0,
+            file:       "manifest 1.19.2".into(),
+            downloaded: 0, total: 5000, speed_kbs: 0,
         });
-        download_file(
-            "https://piston-meta.mojang.com/v1/packages/c1c5c2f3b8b3a8e0d2b7e5e6a8d2c1b3a8e0d2b7/1.19.2.json",
-            &json, &app,
-        ).await.map_err(|e| format!("Не удалось скачать manifest: {}", e))?;
+        let ver_url = "https://piston-meta.mojang.com/v1/packages/d4d472855911c00517a78c0b8c2da3e5c8e6f8a4/1.19.2.json";
+        if let Err(e) = download_file(ver_url, &json, &app).await {
+            // fallback — резолвим через Mojang API
+            if let Ok(resp) = reqwest::get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json").await {
+                if let Ok(text) = resp.text().await {
+                    if let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(v) = manifest["versions"].as_array().and_then(|a| a.iter().find(|v| v["id"] == "1.19.2")) {
+                            if let Some(url) = v["url"].as_str() {
+                                let _ = download_file(url, &json, &app).await;
+                            }
+                        }
+                    }
+                }
+            }
+            if !json.exists() { return Err(format!("Manifest: {}", e)); }
+        }
+
+        // Парсим url client jar из манифеста
+        let client_url = std::fs::read_to_string(&json).ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|j| j["downloads"]["client"]["url"].as_str().map(|s| s.to_string()))
+            .ok_or_else(|| "Не найден URL клиента в manifest".to_string())?;
+
+        let total = std::fs::read_to_string(&json).ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|j| j["downloads"]["client"]["size"].as_u64())
+            .unwrap_or(50 * 1024 * 1024);
 
         let _ = app.emit("download_progress", DownloadProgress {
             file:       "minecraft-1.19.2.jar".into(),
-            downloaded: 0, total: 50 * 1024 * 1024, speed_kbs: 0,
+            downloaded: 0, total, speed_kbs: 0,
         });
-        download_file(
-            "https://piston-data.mojang.com/v1/objects/3a4e6c9a2b8c4d1e5f7a8b9c0d1e2f3a4b5c6d7e/minecraft-1.19.2-client.jar",
-            &client_jar, &app,
-        ).await.map_err(|e| format!("Не удалось скачать клиент: {}", e))?;
+        download_file(&client_url, &client_jar, &app)
+            .await.map_err(|e| format!("Клиент: {}", e))?;
     }
 
     let _ = app.emit("download_progress", DownloadProgress {
-        file:       "Клиент готов".into(),
-        downloaded: 50, total: 100, speed_kbs: 0,
+        file:       "Vanilla клиент готов".into(),
+        downloaded: 30, total: 100, speed_kbs: 0,
     });
 
-    // 3. Forge (опционально, profile загружается из user-supplied mods)
-    let version_arg = "1.19.2";
+    // 3. Forge 1.19.2 (43.2.21) — universal jar напрямую с Maven
+    // Forge Universal — это готовый к запуску jar, не installer.
+    let forge_version = "43.2.21";
+    let forge_universal = mc_dir.join(format!("libraries/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar", forge_version, forge_version));
+    let forge_marker    = mc_dir.join(".forge_installed");
 
-    // 4. Запуск
+    if !forge_universal.exists() || !forge_marker.exists() {
+        let direct_url = format!(
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar",
+            forge_version, forge_version
+        );
+        std::fs::create_dir_all(forge_universal.parent().unwrap()).ok();
+
+        let _ = app.emit("download_progress", DownloadProgress {
+            file:       format!("forge-1.19.2-{}-universal.jar", forge_version).into(),
+            downloaded: 0, total: 7 * 1024 * 1024, speed_kbs: 0,
+        });
+        download_file(&direct_url, &forge_universal, &app)
+            .await
+            .map_err(|e| format!("Не удалось скачать Forge: {}", e))?;
+
+        std::fs::write(&forge_marker, forge_version).ok();
+    }
+
+    let _ = app.emit("download_progress", DownloadProgress {
+        file:       "Forge готов".into(),
+        downloaded: 80, total: 100, speed_kbs: 0,
+    });
+
+    // 4. Запуск Forge
     let ram = ram_gb.unwrap_or(4);
     let mut cmd = Command::new(&java);
     cmd.arg(format!("-Xmx{}G", ram));
     cmd.arg(format!("-Xms{}G", (ram / 2).max(1)));
     cmd.arg("-Dfile.encoding=UTF-8");
-    // Forge/universal args
-    cmd.arg("-cp").arg(&client_jar);
-    cmd.arg("net.minecraft.client.main.Main");
+    cmd.arg("-Dforge.logging.console.level=info");
+    cmd.arg("-Djava.awt.headless=false");
+
+    // Classpath: vanilla + forge universal
+    let cp_sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+    let classpath = format!("{}{}{}", client_jar.display(), cp_sep, forge_universal.display());
+    cmd.arg("-cp").arg(classpath);
+
+    // Main class — Forge (он сам грузит vanilla + libraries + mods)
+    cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
+
+    // Forge args
     cmd.arg("--username").arg(&username);
-    cmd.arg("--version").arg(version_arg);
+    cmd.arg("--version").arg("1.19.2-forge");
     cmd.arg("--gameDir").arg(&mc_dir);
     cmd.arg("--assetsDir").arg(mc_dir.join("assets"));
     cmd.arg("--assetIndex").arg("1.19");
@@ -419,6 +477,8 @@ async fn launch_minecraft(
     cmd.arg("--accessToken").arg(&token);
     cmd.arg("--userType").arg("legacy");
     cmd.arg("--versionType").arg("release");
+    cmd.arg("--launchTarget").arg("forgeclient");
+
     cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     cmd.current_dir(&mc_dir);
 
