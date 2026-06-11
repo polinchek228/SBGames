@@ -359,11 +359,15 @@ async fn launch_minecraft(
 
 // ─── 2. System Tray ──────────────────────────────────────────────────────────
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show   = MenuItem::with_id(app, "show",   "Открыть лаунчер", true, None::<&str>)?;
-    let sep    = tauri::menu::PredefinedMenuItem::separator(app)?;
-    let quit   = MenuItem::with_id(app, "quit",   "Выйти",           true, None::<&str>)?;
+    let header  = MenuItem::with_id(app, "header",  "SB Games Launcher",      false, None::<&str>)?;
+    let sep0    = tauri::menu::PredefinedMenuItem::separator(app)?;
+    let show    = MenuItem::with_id(app, "show",    "⬛  Открыть",             true,  None::<&str>)?;
+    let play    = MenuItem::with_id(app, "play",    "▶  Играть на STARWARS",  true,  None::<&str>)?;
+    let support = MenuItem::with_id(app, "support", "💬  Поддержка",           true,  None::<&str>)?;
+    let sep1    = tauri::menu::PredefinedMenuItem::separator(app)?;
+    let quit    = MenuItem::with_id(app, "quit",    "✕  Выйти",               true,  None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&show, &sep, &quit])?;
+    let menu = Menu::with_items(app, &[&header, &sep0, &show, &play, &support, &sep1, &quit])?;
 
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
@@ -374,6 +378,14 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.show();
                     let _ = w.set_focus();
+                }
+            }
+            "play" | "support" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                    let page = if event.id.as_ref() == "play" { "play" } else { "support" };
+                    let _ = w.eval(&format!("window.__navigateTo && window.__navigateTo('{}')", page));
                 }
             }
             "quit" => app.exit(0),

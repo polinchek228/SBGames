@@ -3,6 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import LoginPage from "./pages/LoginPage.jsx";
 import MainLayout from "./pages/MainLayout.jsx";
 import CustomCursor from "./components/CustomCursor.jsx";
+import { NotificationProvider } from "./components/NotificationSystem.jsx";
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -25,7 +26,7 @@ export default function App() {
   };
 
   return (
-    <>
+    <NotificationProvider>
       <CustomCursor />
       <AnimatePresence>
         {!user ? (
@@ -34,6 +35,6 @@ export default function App() {
           <MainLayout key="main" user={user} onLogout={handleLogout} />
         )}
       </AnimatePresence>
-    </>
+    </NotificationProvider>
   );
 }
