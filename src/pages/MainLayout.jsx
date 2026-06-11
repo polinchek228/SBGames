@@ -27,8 +27,8 @@ export default function MainLayout({ user, onLogout }) {
   const [showCommunity, setShowCommunity] = useState(false);
   const [friendBadge, setFriendBadge] = useState(0);
 
-  const renderPage = () => {
-    switch (page) {
+  const renderPage = (id) => {
+    switch (id) {
       case "play":        return <PlayPage user={user} onOpenCommunity={() => setShowCommunity(true)} />;
       case "profile":     return <ProfilePage user={user} />;
       case "leaderboard": return <LeaderboardPage />;
@@ -148,16 +148,17 @@ export default function MainLayout({ user, onLogout }) {
 
       {/* ── Content ── */}
       <div className="flex-1 relative overflow-hidden">
-        <AnimatePresence mode="wait">
+        {NAV_ITEMS.map(({ id }) => (
           <motion.div
-            key={page}
+            key={id}
             className="absolute inset-0 overflow-hidden"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            animate={{ opacity: page === id ? 1 : 0, pointerEvents: page === id ? "auto" : "none" }}
+            transition={{ duration: 0.12 }}
+            style={{ zIndex: page === id ? 1 : 0 }}
           >
-            {renderPage()}
+            {renderPage(id)}
           </motion.div>
-        </AnimatePresence>
+        ))}
 
         <AnimatePresence>
           {showCommunity && (

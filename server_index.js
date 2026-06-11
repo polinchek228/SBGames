@@ -1,0 +1,1161 @@
+const fetch        = require("node-fetch");
+const express      = require("express");
+const cors         = require("cors");
+const crypto       = require("crypto");
+const http         = require("http");
+const https        = require("https");
+const fs           = require("fs");
+const helmet       = require("helmet");
+const rateLimit    = require("express-rate-limit");
+const jwt          = require("jsonwebtoken");
+const sanitizeHtml = require("sanitize-html");
+const Redis        = require("ioredis");
+const { WebSocketServer, WebSocket } = require("ws");
+const { v4: uuidv4 } = require("uuid");
+
+const BOT_TOKEN       = "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
+// JWT_SECRET персистентный — читаем из Redis, генерируем один раз
+let JWT_SECRET = crypto.randomBytes(48).toString("hex"); // временный до загрузки из Redis
+const PORT            = 3000;
+const PORT_SSL        = 3443;
+const ADMIN_USERNAMES = ["efseea"];
+const ADMIN_TG_IDS    = ["8092106401"];
+const BOT_USERNAME    = "sbgamescbot";
+
+const SSL_KEY  = "/etc/ssl/private/sbgames.key";
+const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
+
+// ─── Redis ────────────────────────────────────────────────────────────────────
+const redis = new Redis({ host: "127.0.0.1", port: 6379, lazyConnect: true });
+redis.connect().catch(() => console.warn("[redis] not available, using memory"));
+
+// Загружаем или генерируем персистентный JWT_SECRET
+async function loadJwtSecret() {
+  try {
+    const stored = await redis.get("sbgames:jwt_secret");
+    if (stored) { JWT_SECRET = stored; }
+    else {
+      JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(48).toString("hex");
+      await redis.set("sbgames:jwt_secret", JWT_SECRET);
+    }
+    console.log("[jwt] secret loaded");
+  } catch { console.warn("[jwt] redis unavailable, using ephemeral secret"); }
+}
+loadJwtSecret();
+
+const redisAccounts = { _map: new Map(),
+  async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
+  async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
+  values()        { return this._map.values(); },
+};
+
+const app = express();
+
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({
+  origin: (origin, cb) => {
+    const allowed = [
+      null, undefined,
+      "https://api.sbgames.hyperionsearch.xyz:8443",
+      "https://sbgames.hyperionsearch.xyz:8444",
+      "https://sbgames.hyperionsearch.xyz",
+      "http://sbgames.hyperionsearch.xyz",
+      "http://localhost:1420",
+      "http://localhost:5173",
+    ];
+    if (!origin || allowed.includes(origin)) return cb(null, true);
+    cb(new Error("CORS: not allowed"));
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: "32kb" }));
+
+const authLimiter      = rateLimit({ windowMs: 60_000, max: 10,  message: { message: "Слишком много запросов" }, standardHeaders: true, legacyHeaders: false });
+const checkCodeLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+const apiLimiter       = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+app.use("/auth/tg-login",   authLimiter);
+app.use("/auth/create-code", authLimiter);
+app.use("/auth/check-code",  checkCodeLimiter);
+app.use("/api",  apiLimiter);
+
+function sanitize(str, max = 500) {
+  if (typeof str !== "string") return "";
+  return sanitizeHtml(str.slice(0, max), { allowedTags: [], allowedAttributes: {} }).trim();
+}
+function signToken(userId)  { return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "30d" }); }
+function verifyToken(token) { try { return jwt.verify(token, JWT_SECRET); } catch { return null; } }
+function wsAuthenticate(token) { const p = verifyToken(token); return p ? p.sub : null; }
+function isAdmin(username)  { return ADMIN_USERNAMES.includes((username || "").toLowerCase()); }
+function isAdminId(tgId)   { return ADMIN_TG_IDS.includes(String(tgId)); }
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+// ─── Stores ───────────────────────────────────────────────────────────────────
+const tickets        = new Map();
+const friendships    = new Map();
+const friendRequests = new Map();
+const dms            = new Map();
+const invoices       = new Map();
+let ticketCounter  = 1000;
+let invoiceCounter = 1;
+
+const wsClients = new Map();
+
+function getFriends(userId)         { return friendships.get(userId) || new Set(); }
+function areFriends(a, b)           { return getFriends(a).has(b); }
+function dmKey(a, b)                { return [a, b].sort().join("_"); }
+function getPendingRequests(userId) { return (friendRequests.get(userId) || []); }
+function sendToUser(userId, data) {
+  for (const c of wsClients.values()) { if (c.userId === userId) send(c.ws, data); }
+}
+
+// ─── REST ─────────────────────────────────────────────────────────────────────
+
+// Вход через Telegram Widget (с верификацией хэша)
+app.post("/auth/widget-login", async (req, res) => {
+  const tgData = req.body;
+  if (!tgData || !tgData.hash) return res.status(400).json({ message: "Нет данных" });
+
+  if (!verifyTelegramAuth(tgData)) return res.status(401).json({ message: "Неверная подпись Telegram" });
+
+  const tgId = String(tgData.id);
+  let account = await redisAccounts.get(tgId);
+  const adminRole = isAdmin(tgData.username || "") || isAdminId(tgId) ? "admin" : "user";
+
+  if (!account) {
+    // Новый пользователь — нужен ник
+    return res.json({ needNick: true, tgUser: tgData });
+  }
+
+  account.telegram = tgData.username || account.telegram;
+  account.role     = adminRole;
+  await redisAccounts.set(tgId, account);
+
+  res.json({ user: account, token: signToken(tgId) });
+});
+
+// Завершение регистрации (ник)
+app.post("/auth/tg-login", async (req, res) => {
+  const { tgUser, username } = req.body;
+  if (!tgUser || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
+  const cleanNick = sanitize(username).replace(/^@/, "");
+  if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick))
+    return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
+  const tgId = String(tgUser.id);
+  if (!tgUser.id || tgUser.id <= 0) return res.status(401).json({ message: "Невалидный пользователь" });
+  let account = await redisAccounts.get(tgId);
+  if (!account) {
+    const adminRole = isAdmin(tgUser.username || cleanNick) || isAdminId(tgId) ? "admin" : "user";
+    account = { id: tgId, username: cleanNick, telegram: tgUser.username || null, firstName: sanitize(tgUser.first_name || "", 64), balance: 0, role: adminRole, createdAt: Date.now() };
+  } else {
+    account.username = cleanNick;
+    account.role = isAdmin(tgUser.username || cleanNick) || isAdminId(tgId) ? "admin" : "user";
+  }
+  await redisAccounts.set(tgId, account);
+  res.json({ user: account, token: signToken(tgId) });
+});
+
+// Прокси скина чтобы обойти CSP
+app.get("/skin-proxy/:username", async (req, res) => {
+  try {
+    const r = await fetch(`https://minotar.net/skin/${encodeURIComponent(req.params.username)}`);
+    if (!r.ok) throw new Error("not found");
+    const buf = await r.buffer();
+    res.set("Content-Type", "image/png");
+    res.set("Cache-Control", "public, max-age=3600");
+    res.send(buf);
+  } catch {
+    res.redirect("https://minotar.net/skin/Steve");
+  }
+});
+
+app.get("/auth/me", async (req, res) => {
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ message: "Unauthorized" });
+  const acc = await redisAccounts.get(payload.sub);
+  if (!acc) return res.status(404).json({ message: "Not found" });
+  // Принудительно проверяем роль
+  if (isAdminId(payload.sub) && acc.role !== "admin") {
+    acc.role = "admin";
+    await redisAccounts.set(payload.sub, acc);
+  }
+  res.json({ user: acc });
+});
+
+app.get("/health", (_, res) => res.json({ ok: true, tickets: tickets.size, ws: wsClients.size }));
+
+const authCodes = new Map();
+
+app.post("/auth/create-code", (req, res) => {
+  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+  authCodes.set(code, { confirmed: false, tgUser: null, createdAt: Date.now() });
+  for (const [k, v] of authCodes.entries()) { if (Date.now() - v.createdAt > 600_000) authCodes.delete(k); }
+  res.json({ code });
+});
+
+app.get("/auth/check-code", (req, res) => {
+  const entry = authCodes.get(req.query.code);
+  if (!entry) return res.json({ confirmed: false });
+  res.json({ confirmed: entry.confirmed, tgUser: entry.tgUser || null });
+});
+
+app.get("/user/search", async (req, res) => {
+  const q = (req.query.nick || "").toLowerCase();
+  const found = [...redisAccounts._map.values()].find(a => (a.username || "").toLowerCase() === q);
+  res.json(found ? { found: true, id: found.id, username: found.username } : { found: false });
+});
+
+app.get("/online", (_, res) => {
+  res.json({ users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username })) });
+});
+
+app.get("/support/tickets", (req, res) => {
+  const list = [...tickets.values()].map(t => ({ id: t.id, category: t.category, username: t.username, status: t.status, createdAt: t.createdAt, preview: t.preview, unread: t.unread || 0 }));
+  res.json({ tickets: list.sort((a, b) => b.createdAt - a.createdAt) });
+});
+
+app.get("/support/ticket/:id", (req, res) => {
+  const t = tickets.get(Number(req.params.id));
+  if (!t) return res.status(404).json({ message: "Тикет не найден" });
+  res.json(t);
+});
+
+app.post("/support/ticket", (req, res) => {
+  const rawCategory = sanitize(req.body.category || "", 80);
+  const rawMessage  = sanitize(req.body.message  || "", 2000);
+  const rawUsername = sanitize(req.body.username || "Player", 32);
+  const userId      = sanitize(req.body.userId || "anon", 64);
+  if (!rawCategory || !rawMessage || rawMessage.length < 5)
+    return res.status(400).json({ message: "Заполните все поля (минимум 5 символов)" });
+  const ticketId = ++ticketCounter;
+  const ticket = { id: ticketId, userId, username: rawUsername, category: rawCategory, preview: rawMessage.slice(0, 60), status: "open", unread: 0, createdAt: Date.now(), messages: [
+    { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан.`, time: Date.now() },
+    { id: uuidv4(), from: userId, username: rawUsername, text: rawMessage, time: Date.now() },
+  ]};
+  tickets.set(ticketId, ticket);
+  broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
+  res.json({ ticketId });
+});
+
+// ─── Admin API ────────────────────────────────────────────────────────────────
+
+// При старте принудительно ставим роль admin всем из ADMIN_TG_IDS
+async function syncAdminRoles() {
+  for (const tgId of ADMIN_TG_IDS) {
+    const acc = await redisAccounts.get(tgId);
+    if (acc && acc.role !== "admin") {
+      acc.role = "admin";
+      await redisAccounts.set(tgId, acc);
+      console.log(`[admin] promoted ${tgId} (${acc.username}) to admin`);
+    }
+  }
+}
+syncAdminRoles().catch(e => console.error("[admin] syncAdminRoles:", e.message));
+
+async function requireAdmin(req, res) {
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
+  const payload = verifyToken(token);
+  if (!payload) { res.status(401).json({ message: "Unauthorized" }); return null; }
+  const tgId = payload.sub;
+  // Жёстко вшитые ID всегда пропускаем
+  if (isAdminId(tgId)) return tgId;
+  // Иначе проверяем роль в Redis
+  const acc = await redisAccounts.get(tgId);
+  if (!acc || acc.role !== "admin") { res.status(403).json({ message: "Forbidden" }); return null; }
+  return tgId;
+}
+
+app.get("/admin/users", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const users = [...redisAccounts._map.values()].map(a => ({
+    id: a.id, username: a.username, telegram: a.telegram,
+    balance: a.balance ?? 0, role: a.role, createdAt: a.createdAt,
+  }));
+  res.json({ users: users.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) });
+});
+
+app.post("/admin/set-role", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { userId, role } = req.body;
+  if (!userId || !["admin", "user"].includes(role)) return res.status(400).json({ message: "Bad request" });
+  const acc = await redisAccounts.get(String(userId));
+  if (!acc) return res.status(404).json({ message: "User not found" });
+  acc.role = role;
+  await redisAccounts.set(String(userId), acc);
+  res.json({ ok: true });
+});
+
+app.post("/admin/set-balance", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { userId, balance } = req.body;
+  if (!userId || typeof balance !== "number") return res.status(400).json({ message: "Bad request" });
+  const acc = await redisAccounts.get(String(userId));
+  if (!acc) return res.status(404).json({ message: "User not found" });
+  acc.balance = balance;
+  await redisAccounts.set(String(userId), acc);
+  sendToUser(String(userId), { type: "balance_update", balance });
+  res.json({ ok: true, balance });
+});
+
+app.get("/admin/tickets", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const list = [...tickets.values()].map(t => ({
+    id: t.id, category: t.category, username: t.username,
+    status: t.status, createdAt: t.createdAt, preview: t.preview,
+    unread: t.unread || 0, userId: t.userId,
+  }));
+  res.json({ tickets: list.sort((a, b) => b.createdAt - a.createdAt) });
+});
+
+app.post("/admin/ticket/:id/status", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const t = tickets.get(Number(req.params.id));
+  if (!t) return res.status(404).json({ message: "Not found" });
+  const { status } = req.body;
+  if (!["open", "in_progress", "answered", "closed"].includes(status)) return res.status(400).json({ message: "Bad status" });
+  t.status = status;
+  t.messages.push({ id: uuidv4(), from: "system", text: `Статус изменён: ${STATUS_LABELS[status] || status}`, time: Date.now() });
+  broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(t) });
+  broadcastToTicket(t.id, null, { type: "ticket_update", ticket: ticketSummary(t) });
+  if (status === "closed") broadcastToTicket(t.id, null, { type: "ticket_closed", ticketId: t.id });
+  res.json({ ok: true });
+});
+
+const STATUS_LABELS = { open: "Открыт", in_progress: "В работе", answered: "Ответили", closed: "Закрыт" };
+
+app.post("/admin/ticket/:id/close", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const t = tickets.get(Number(req.params.id));
+  if (!t) return res.status(404).json({ message: "Not found" });
+  t.status = "closed";
+  broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(t) });
+  broadcastToTicket(t.id, null, { type: "ticket_closed", ticketId: t.id });
+  res.json({ ok: true });
+});
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+const METHOD_NAMES = { card_ru: "Карта МИР", card_ua: "Карта Master/Visa", crypto: "Криптовалюта", sbp: "СБП" };
+
+app.post("/payments/create", async (req, res) => {
+  const token  = (req.headers.authorization || "").replace("Bearer ", "");
+  const amount = parseInt(req.body.amount, 10);
+  const method = req.body.method || "card_ru";
+  if (!amount || amount < 50) return res.status(400).json({ message: "Минимальная сумма — 50 СБТ" });
+  let userId = null;
+  if (token) { const p = verifyToken(token); if (p) userId = p.sub; }
+  const invoiceId = invoiceCounter++;
+  invoices.set(invoiceId, { userId, amount, method, createdAt: Date.now(), status: "pending" });
+  res.json({ url: `https://t.me/${BOT_USERNAME}?start=pay_${invoiceId}_${amount}_${method}` });
+});
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+wss.on("connection", (ws) => {
+  const clientId = uuidv4();
+  wsClients.set(clientId, { ws, userId: null, role: "user" });
+
+  ws.on("message", (raw) => {
+    let msg; try { msg = JSON.parse(raw); } catch { return; }
+    const client = wsClients.get(clientId);
+    switch (msg.type) {
+      case "auth": {
+        const userId = msg.token ? wsAuthenticate(msg.token) : null;
+        if (!userId) { send(ws, { type: "auth_error", message: "Необходима авторизация" }); ws.close(); return; }
+        client.userId = userId; client.username = sanitize(msg.username || "", 32); client.role = isAdmin(msg.username) || isAdminId(userId) ? "admin" : "user";
+        wsClients.set(clientId, client); broadcastOnlineUsers();
+        const myFriends = [...getFriends(client.userId)].map(fid => { const fa = [...redisAccounts._map.values()].find(a => a.id === fid); return fa ? { id: fa.id, username: fa.username } : null; }).filter(Boolean);
+        send(ws, { type: "friends_list", friends: myFriends });
+        send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+        if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
+        break;
+      }
+      case "friend_request_send": {
+        const target = [...redisAccounts._map.values()].find(a => (a.username || "").toLowerCase() === (msg.toUsername || "").trim().toLowerCase());
+        if (!target)                              { send(ws, { type: "friend_error", message: "Пользователь не найден" }); break; }
+        if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "Нельзя добавить себя" }); break; }
+        if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "Уже в друзьях" }); break; }
+        const existing = getPendingRequests(target.id);
+        if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "Заявка уже отправлена" }); break; }
+        const reqData = { fromId: client.userId, fromUsername: client.username, time: Date.now() };
+        friendRequests.set(target.id, [...existing, reqData]);
+        sendToUser(target.id, { type: "friend_request_received", request: reqData });
+        send(ws, { type: "friend_request_sent", toUsername: target.username });
+        break;
+      }
+      case "friend_request_respond": {
+        const { fromId, accept } = msg;
+        friendRequests.set(client.userId, getPendingRequests(client.userId).filter(r => r.fromId !== fromId));
+        if (accept) {
+          if (!friendships.has(client.userId)) friendships.set(client.userId, new Set());
+          if (!friendships.has(fromId))         friendships.set(fromId,         new Set());
+          friendships.get(client.userId).add(fromId); friendships.get(fromId).add(client.userId);
+          const meFriends = [...getFriends(client.userId)].map(fid => { const fa = [...redisAccounts._map.values()].find(a => a.id === fid); return fa ? { id: fa.id, username: fa.username } : null; }).filter(Boolean);
+          send(ws, { type: "friends_list", friends: meFriends });
+          sendToUser(fromId, { type: "friend_accepted", byId: client.userId, byUsername: client.username });
+        }
+        send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+        break;
+      }
+      case "dm_send": {
+        const text = sanitize(msg.text || "", 2000); if (!text) break;
+        const key = dmKey(client.userId, msg.toId); const msgs = dms.get(key) || [];
+        const dm = { id: uuidv4(), from: client.userId, fromUsername: client.username, text: text.trim(), time: Date.now() };
+        msgs.push(dm); dms.set(key, msgs.slice(-200));
+        send(ws, { type: "dm_message", with: msg.toId, message: dm });
+        sendToUser(msg.toId, { type: "dm_message", with: client.userId, message: dm });
+        break;
+      }
+      case "dm_history": {
+        const msgs = dms.get(dmKey(client.userId, msg.withId)) || [];
+        send(ws, { type: "dm_history", with: msg.withId, messages: msgs });
+        break;
+      }
+      case "message": {
+        const ticket = tickets.get(Number(msg.ticketId)); if (!ticket) return;
+        const cleanText = sanitize(msg.text || "", 2000); if (!cleanText) return;
+        const message = { id: uuidv4(), from: client.userId || "anon", username: client.username || "Player", role: client.role, text: cleanText, time: Date.now() };
+        ticket.messages.push(message);
+        if (client.role === "user") {
+          ticket.unread = (ticket.unread || 0) + 1; ticket.status = "open";
+          broadcastToAdmins({ type: "message", ticketId: ticket.id, message });
+          broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+        } else {
+          ticket.unread = 0; ticket.status = "answered";
+          broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
+          broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+          // Форвард в TG если пользователь из бота
+          if (ticket.tgChatId) {
+            try {
+              await bot.sendMessage(ticket.tgChatId,
+                `💬 *Ответ по тикету #${ticket.id}*\n\n${cleanText}`,
+                { parse_mode: "Markdown", reply_markup: USER_KB }
+              );
+            } catch (e) { console.error("[ws message tg forward]", e.message); }
+          }
+        }
+        break;
+      }
+      case "read_ticket": {
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (ticket && client.role === "admin") { ticket.unread = 0; send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages }); }
+        break;
+      }
+      case "close_ticket": {
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (ticket && client.role === "admin") { ticket.status = "closed"; broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+        break;
+      }
+      // Админ отправляет реквизиты через лаунчер → форвардим в TG
+      case "send_requisites": {
+        if (client.role !== "admin") break;
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (!ticket) break;
+        const cleanText = sanitize(msg.text || "", 1000);
+        if (!cleanText) break;
+        const message = { id: uuidv4(), from: client.userId, username: client.username, role: "admin", text: cleanText, time: Date.now() };
+        ticket.messages.push(message);
+        ticket.status = "answered"; ticket.unread = 0;
+        // Показываем в лаунчере
+        broadcastToAdmins({ type: "message", ticketId: ticket.id, message });
+        broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+        broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
+        // Отправляем в TG если tgChatId известен
+        if (ticket.tgChatId) {
+          try {
+            await bot.sendMessage(ticket.tgChatId,
+              `💳 *Реквизиты для оплаты*\n\n${cleanText}\n\nПосле оплаты нажми кнопку и прикрепи чек.`,
+              { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "✅ Отправить чек", callback_data: `send_receipt_${ticket.id}` }]] } }
+            );
+          } catch (e) { console.error("[ws send_requisites tg]", e.message); }
+        }
+        send(ws, { type: "requisites_sent", ticketId: ticket.id });
+        break;
+      }
+      // Админ подтверждает оплату через лаунчер → выдаём баланс + закрываем
+      case "confirm_payment": {
+        if (client.role !== "admin") break;
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (!ticket) break;
+        const amount = parseInt(msg.amount, 10);
+        if (!amount || amount <= 0) break;
+        const acc = await redisAccounts.get(ticket.userId);
+        if (!acc) { send(ws, { type: "error", text: "Аккаунт игрока не найден" }); break; }
+        acc.balance = (acc.balance || 0) + amount;
+        await redisAccounts.set(ticket.userId, acc);
+        const sysMsg = { id: uuidv4(), from: "system", text: `Оплата подтверждена. +${amount} СБТ зачислено.`, time: Date.now() };
+        ticket.messages.push(sysMsg);
+        ticket.status = "closed";
+        broadcastToAdmins({ type: "message", ticketId: ticket.id, message: sysMsg });
+        broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+        broadcastToTicket(ticket.id, null, { type: "message", ticketId: ticket.id, message: sysMsg });
+        broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id });
+        sendToUser(ticket.userId, { type: "balance_update", balance: acc.balance });
+        send(ws, { type: "payment_confirmed", ticketId: ticket.id, newBalance: acc.balance });
+        // Уведомление в TG
+        if (ticket.tgChatId) {
+          try {
+            await bot.sendMessage(ticket.tgChatId,
+              `✅ *Оплата подтверждена!*\n\n+*${amount} СБТ* зачислено на ваш аккаунт.\nТекущий баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`,
+              { parse_mode: "Markdown", reply_markup: USER_KB }
+            );
+          } catch (e) { console.error("[ws confirm_payment tg]", e.message); }
+        }
+        break;
+      }
+      case "subscribe_ticket": {
+        client.ticketId = Number(msg.ticketId); wsClients.set(clientId, client);
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (ticket) send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
+        break;
+      }
+    }
+  });
+
+  ws.on("close", () => { wsClients.delete(clientId); broadcastOnlineUsers(); });
+  ws.on("error", () => { wsClients.delete(clientId); broadcastOnlineUsers(); });
+});
+
+function send(ws, data) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
+function broadcastOnlineUsers() {
+  const users = [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username, role: c.role }));
+  for (const { ws } of wsClients.values()) send(ws, { type: "online_users", users });
+}
+function broadcastToAdmins(data) { for (const { ws, role } of wsClients.values()) { if (role === "admin") send(ws, data); } }
+function broadcastToTicket(ticketId, excludeUserId, data) {
+  for (const { ws, userId, ticketId: sub } of wsClients.values()) { if (sub === ticketId && userId !== excludeUserId) send(ws, data); }
+}
+function ticketSummary(t) { return { id: t.id, category: t.category, username: t.username, status: t.status, createdAt: t.createdAt, preview: t.preview, unread: t.unread || 0, paymentAmount: t.paymentAmount || null, tgChatId: t.tgChatId || null, userId: t.userId }; }
+
+// ─── News ─────────────────────────────────────────────────────────────────────
+let newsCache = [], newsCacheTime = 0;
+
+async function fetchNewsPublic() {
+  if (Date.now() - newsCacheTime < 300_000 && newsCache.length > 0) return newsCache;
+  try {
+    const r = await fetch("https://rsshub.app/telegram/channel/sb7games", { headers: { "User-Agent": "SBGamesLauncher/1.0" } });
+    if (!r.ok) return newsCache;
+    const xml = await r.text();
+    const items = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null) {
+      const block    = match[1];
+      const title    = ((block.match(/<title><!\[CDATA\[(.*?)\]\]>/) || [])[1] || (block.match(/<title>(.*?)<\/title>/) || [])[1] || "Новость").replace(/<[^>]+>/g, "").trim();
+      const desc     = ((block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]>/) || [])[1] || "");
+      const pubDate  = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1] || "";
+      const photo    = (desc.match(/<img[^>]+src="([^"]+)"/) || [])[1] || null;
+      const cleanDesc = desc.replace(/<[^>]+>/g, "").trim();
+      const dateStr  = (pubDate ? new Date(pubDate) : new Date()).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+      items.push({ id: items.length + 1, title, text: cleanDesc.slice(0, 400), date: dateStr, photo });
+      if (items.length >= 12) break;
+    }
+    if (items.length > 0) { newsCache = items; newsCacheTime = Date.now(); }
+    return newsCache;
+  } catch (e) { console.error("fetchNewsPublic:", e.message); return newsCache; }
+}
+
+app.get("/news", async (req, res) => res.json({ posts: await fetchNewsPublic() }));
+setInterval(fetchNewsPublic, 300_000);
+fetchNewsPublic();
+
+// ─── Telegram Bot ──────────────────────────────────────────────────────────────
+const TelegramBot = require("node-telegram-bot-api");
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+
+const botSessions = new Map(); // chatId -> { state, ... }
+
+// Клавиатуры
+const USER_KB = {
+  keyboard: [
+    [{ text: "Профиль" },       { text: "Пополнить баланс" }],
+    [{ text: "Мои обращения" }, { text: "Новое обращение"  }],
+  ],
+  resize_keyboard: true, persistent: true,
+};
+
+const ADMIN_KB = {
+  keyboard: [
+    [{ text: "Тикеты" },  { text: "Профиль" }],
+    [{ text: "Баланс участника" }],
+  ],
+  resize_keyboard: true, persistent: true,
+};
+
+function getKb(account) {
+  return account?.role === "admin" ? ADMIN_KB : USER_KB;
+}
+
+const TICKET_STATUS_LABELS = { open: "открыт", in_progress: "в работе", answered: "ответили", closed: "закрыт" };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function mainMenu(chatId, account) {
+  const name  = account?.username || "игрок";
+  const bal   = (account?.balance ?? 0).toLocaleString("ru-RU");
+  const isAdm = account?.role === "admin";
+  bot.sendMessage(chatId,
+    `Привет, *${name}*!\n\n` +
+    `Баланс: *${bal} СБТ*` +
+    (isAdm ? "\n\nРежим администратора." : ""),
+    { parse_mode: "Markdown", reply_markup: getKb(account) }
+  );
+}
+
+// Показать список тикетов (для админа)
+async function showAdminTicketList(chatId, filter = "open") {
+  const FILTERS = { open: ["open", "in_progress"], answered: ["answered"], all: ["open","in_progress","answered","closed"] };
+  const statuses = FILTERS[filter] || FILTERS.open;
+  const list = [...tickets.values()]
+    .filter(t => statuses.includes(t.status))
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 20);
+
+  const filterBtns = [
+    [
+      { text: filter === "open"     ? "· Активные ·" : "Активные",     callback_data: "admin_filter_open"     },
+      { text: filter === "answered" ? "· Ответили ·" : "Ответили",     callback_data: "admin_filter_answered" },
+      { text: filter === "all"      ? "· Все ·"       : "Все",          callback_data: "admin_filter_all"      },
+    ],
+  ];
+
+  if (list.length === 0) {
+    return bot.sendMessage(chatId, "Нет тикетов в этой категории.", {
+      reply_markup: { inline_keyboard: filterBtns }
+    });
+  }
+
+  const ticketBtns = list.map(t => [{
+    text: `#${t.id} [${TICKET_STATUS_LABELS[t.status] || t.status}] ${t.username} — ${t.category.slice(0, 20)}${t.unread ? ` (${t.unread} новых)` : ""}`,
+    callback_data: `admin_ticket_${t.id}`,
+  }]);
+
+  bot.sendMessage(chatId, `*Тикеты* (${list.length}):`, {
+    parse_mode: "Markdown",
+    reply_markup: { inline_keyboard: [...filterBtns, ...ticketBtns] }
+  });
+}
+
+// Показать конкретный тикет
+async function showAdminTicket(chatId, ticketId) {
+  const t = tickets.get(ticketId);
+  if (!t) { bot.sendMessage(chatId, "Тикет не найден."); return; }
+
+  const lastMsgs = t.messages
+    .filter(m => m.from !== "system")
+    .slice(-5)
+    .map(m => `${m.role === "admin" ? "Админ" : m.username}: ${m.text.slice(0, 80)}`)
+    .join("\n");
+
+  const statusBtns = Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => ({
+    text: t.status === k ? `· ${v} ·` : v,
+    callback_data: `admin_setstatus_${ticketId}_${k}`,
+  }));
+
+  bot.sendMessage(chatId,
+    `*Тикет #${t.id}*\n` +
+    `Игрок: ${t.username}\n` +
+    `Категория: ${t.category}\n` +
+    `Статус: ${TICKET_STATUS_LABELS[t.status] || t.status}\n\n` +
+    (lastMsgs ? `Последние сообщения:\n${lastMsgs}\n\n` : "") +
+    (t.status !== "closed" ? "Отправь сообщение ответом (reply) на это сообщение." : "Тикет закрыт."),
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          statusBtns,
+          [{ text: "Назад к списку", callback_data: "admin_filter_open" }],
+        ]
+      }
+    }
+  );
+}
+
+// ─── /start ───────────────────────────────────────────────────────────────────
+
+bot.onText(/\/start(.*)/, async (msg, match) => {
+  const tgId    = String(msg.from.id);
+  const param   = (match[1] || "").trim();
+  const account = await redisAccounts.get(tgId);
+
+  if (param.startsWith("auth_")) {
+    const code  = param.slice(5).toUpperCase();
+    const entry = authCodes.get(code);
+    if (!entry) { bot.sendMessage(msg.chat.id, "Код недействителен или истёк. Попробуй снова в лаунчере.", { reply_markup: getKb(account) }); return; }
+    entry.confirmed = true;
+    entry.tgUser = { id: msg.from.id, first_name: msg.from.first_name || "", last_name: msg.from.last_name || "", username: msg.from.username || null, auth_date: Math.floor(Date.now() / 1000) };
+    bot.sendMessage(msg.chat.id, "Авторизация подтверждена. Вернись в лаунчер и введи игровой ник.", { reply_markup: getKb(account) });
+    return;
+  }
+
+  if (param.startsWith("pay_")) {
+    const parts       = param.split("_");
+    const invoiceId   = parseInt(parts[1], 10);
+    const amount      = parseInt(parts[2], 10);
+    const method      = parts.slice(3).join("_") || "card_ru";
+    const methodLabel = METHOD_NAMES[method] || method;
+    const inv         = invoices.get(invoiceId);
+
+    if (inv && !inv.userId) inv.userId = tgId;
+
+    const ticketId = ++ticketCounter;
+    const username = account?.username || msg.from?.username || "Telegram";
+    const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const ticket = {
+      id: ticketId, userId: tgId, tgChatId: String(msg.chat.id), username,
+      category: "Пополнение баланса", preview: `${amount} СБТ · ${methodLabel}`,
+      paymentAmount: amount,
+      status: "open", unread: 1, invoiceId, createdAt: Date.now(),
+      messages: [
+        { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан при пополнении через сайт.`, time: Date.now() },
+        { id: uuidv4(), from: tgId, username, text: `Пополнение: ${amount} СБТ · ${methodLabel}`, time: Date.now() },
+      ],
+    };
+    tickets.set(ticketId, ticket);
+    broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
+    if (inv) inv.ticketId = ticketId;
+
+    bot.sendMessage(msg.chat.id,
+      `*Заявка на пополнение — тикет #${ticketId}*\n\n` +
+      `Аккаунт: \`${username}\`\n` +
+      `Сумма: *${amount} СБТ* (${amount} ₽)\n` +
+      `Способ: ${methodLabel}\n` +
+      `Дата: ${dateStr}\n\n` +
+      `Администратор ответит здесь и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
+        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
+      ]}}
+    );
+    return;
+  }
+
+  if (param.startsWith("link_")) {
+    const linkCode = param.slice(5);
+    const target   = [...redisAccounts._map.values()].find(a => a.linkCode === linkCode);
+    if (target) {
+      target.telegramId = tgId; target.telegram = msg.from.username || null; delete target.linkCode;
+      await redisAccounts.set(target.id, target);
+      bot.sendMessage(msg.chat.id, `Telegram привязан к аккаунту \`${target.username}\`.`, { parse_mode: "Markdown", reply_markup: getKb(account) });
+      return;
+    }
+  }
+
+  mainMenu(msg.chat.id, account);
+});
+
+// ─── Текстовые кнопки панели ──────────────────────────────────────────────────
+
+bot.on("text", async (msg) => {
+  if (msg.text?.startsWith("/")) return;
+  const chatId  = msg.chat.id;
+  const tgId    = String(msg.from.id);
+  const account = await redisAccounts.get(tgId);
+  if (botSessions.get(chatId)) return;
+
+  const isAdm = account?.role === "admin" || isAdminId(tgId);
+
+  // ── АДМИН ──
+  if (isAdm) {
+    if (msg.text === "Тикеты") {
+      await showAdminTicketList(chatId, "open");
+      return;
+    }
+    if (msg.text === "Профиль") {
+      bot.sendMessage(chatId,
+        `*Профиль*\n\nНик: \`${account?.username || "—"}\`\nID: \`${tgId}\`\nРоль: администратор\nБаланс: ${(account?.balance ?? 0).toLocaleString("ru-RU")} СБТ`,
+        { parse_mode: "Markdown", reply_markup: ADMIN_KB }
+      );
+      return;
+    }
+    if (msg.text === "Баланс участника") {
+      botSessions.set(chatId, { state: "admin_awaiting_balance_nick" });
+      bot.sendMessage(chatId, "Введи ник или TG ID участника:");
+      return;
+    }
+    return;
+  }
+
+  // ── ПОЛЬЗОВАТЕЛЬ ──
+  switch (msg.text) {
+    case "Профиль": {
+      if (!account) { bot.sendMessage(chatId, "Аккаунт не найден. Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
+      const regDate = new Date(account.createdAt).toLocaleDateString("ru-RU");
+      bot.sendMessage(chatId,
+        `*Профиль*\n\nНик: \`${account.username}\`\nID: \`${account.id}\`\nБаланс: *${(account.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${account.role === "admin" ? "администратор" : "пользователь"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "не привязан"}\nДата рег.: ${regDate}`,
+        { parse_mode: "Markdown", reply_markup: USER_KB }
+      );
+      return;
+    }
+    case "Пополнить баланс": {
+      bot.sendMessage(chatId, "*Пополнение баланса*\n\nВыбери сумму:", {
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: [
+          [{ text: "50 ₽",   callback_data: "topup_50"   }, { text: "100 ₽",  callback_data: "topup_100"  }, { text: "200 ₽",  callback_data: "topup_200"  }],
+          [{ text: "500 ₽",  callback_data: "topup_500"  }, { text: "1000 ₽", callback_data: "topup_1000" }, { text: "2000 ₽", callback_data: "topup_2000" }],
+          [{ text: "Другая сумма", callback_data: "topup_custom" }],
+        ]}
+      });
+      return;
+    }
+    case "Мои обращения": {
+      const list = [...tickets.values()].filter(t => t.userId === tgId).sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
+      if (list.length === 0) { bot.sendMessage(chatId, "*Обращения*\n\nУ тебя пока нет обращений.", { parse_mode: "Markdown", reply_markup: USER_KB }); return; }
+      const STATUS = { open: "открыт", in_progress: "в работе", answered: "ответили", closed: "закрыт" };
+      const lines = list.map(t => `*#${t.id}*  [${STATUS[t.status] || t.status}]  ${t.category}\n${t.preview?.slice(0, 55)}`).join("\n\n");
+      bot.sendMessage(chatId, `*Обращения*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
+      return;
+    }
+    case "Новое обращение": {
+      botSessions.set(chatId, { state: "awaiting_ticket_desc", category: null });
+      bot.sendMessage(chatId, "Выбери категорию обращения:", {
+        reply_markup: { inline_keyboard: [
+          [{ text: "Технические проблемы", callback_data: "tcat_tech"    }],
+          [{ text: "Вопрос по аккаунту",   callback_data: "tcat_account" }],
+          [{ text: "Вопрос по покупке",     callback_data: "tcat_pay"     }],
+          [{ text: "Баг или ошибка",        callback_data: "tcat_bug"     }],
+          [{ text: "Жалоба на игрока",      callback_data: "tcat_report"  }],
+          [{ text: "Другое",                callback_data: "tcat_other"   }],
+        ]}
+      });
+      return;
+    }
+  }
+});
+
+// ─── Callback кнопки ──────────────────────────────────────────────────────────
+
+bot.on("callback_query", async (q) => {
+  const tgId    = String(q.from.id);
+  const chatId  = q.message.chat.id;
+  const account = await redisAccounts.get(tgId);
+  const isAdm   = account?.role === "admin" || isAdminId(tgId);
+  bot.answerCallbackQuery(q.id);
+
+  // ── АДМИН: фильтр тикетов ──
+  if (q.data.startsWith("admin_filter_")) {
+    if (!isAdm) return;
+    const filter = q.data.replace("admin_filter_", "");
+    await showAdminTicketList(chatId, filter);
+    return;
+  }
+
+  // ── АДМИН: открыть тикет ──
+  if (q.data.startsWith("admin_ticket_")) {
+    if (!isAdm) return;
+    const ticketId = parseInt(q.data.replace("admin_ticket_", ""), 10);
+    botSessions.set(chatId, { state: "admin_viewing_ticket", ticketId });
+    await showAdminTicket(chatId, ticketId);
+    return;
+  }
+
+  // ── АДМИН: сменить статус ──
+  if (q.data.startsWith("admin_setstatus_")) {
+    if (!isAdm) return;
+    const [, , ticketIdStr, status] = q.data.split("_");
+    const ticketId = parseInt(ticketIdStr, 10);
+    const t = tickets.get(ticketId);
+    if (t) {
+      t.status = status;
+      t.messages.push({ id: uuidv4(), from: "system", text: `Статус изменён: ${TICKET_STATUS_LABELS[status] || status}`, time: Date.now() });
+      broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(t) });
+      broadcastToTicket(ticketId, null, { type: "ticket_update", ticket: ticketSummary(t) });
+      // Уведомить пользователя
+      if (status === "answered") {
+        try { await bot.sendMessage(t.userId, `По твоему тикету \`#${ticketId}\` пришёл ответ. Проверь на сайте или нажми "Мои обращения".`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+      }
+      bot.answerCallbackQuery(q.id, { text: `Статус: ${TICKET_STATUS_LABELS[status]}`, show_alert: false });
+      await showAdminTicket(chatId, ticketId);
+    }
+    return;
+  }
+
+  // ── Пополнение ──
+  if (q.data.startsWith("topup_")) {
+    const sub = q.data.split("_")[1];
+    if (sub === "custom") {
+      botSessions.set(chatId, { state: "awaiting_topup_amount" });
+      bot.sendMessage(chatId, "Введи сумму пополнения в рублях:", { reply_markup: { force_reply: true, input_field_placeholder: "Например: 350" } });
+      return;
+    }
+    const amount = parseInt(sub, 10);
+    if (!account) { bot.sendMessage(chatId, "Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
+    const ticketId = ++ticketCounter;
+    const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "Пополнение баланса", preview: `${amount} СБТ · через бота`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан через бота.`, time: Date.now() },
+      { id: uuidv4(), from: tgId, username: account.username, text: `Пополнение на ${amount} СБТ`, time: Date.now() },
+    ]};
+    tickets.set(ticketId, t);
+    broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
+    bot.sendMessage(chatId,
+      `*Заявка на пополнение — тикет #${ticketId}*\n\nАккаунт: \`${account.username}\`\nСумма: *${amount} СБТ* (${amount} ₽)\nДата: ${dateStr}\n\nАдминистратор ответит и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
+        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
+      ]}}
+    );
+    return;
+  }
+
+  // ── Новое обращение inline ──
+  if (q.data === "new_ticket_cb") {
+    botSessions.set(chatId, { state: "awaiting_ticket_desc", category: null });
+    bot.sendMessage(chatId, "Выбери категорию обращения:", {
+      reply_markup: { inline_keyboard: [
+        [{ text: "Технические проблемы", callback_data: "tcat_tech"    }],
+        [{ text: "Вопрос по аккаунту",   callback_data: "tcat_account" }],
+        [{ text: "Вопрос по покупке",     callback_data: "tcat_pay"     }],
+        [{ text: "Баг или ошибка",        callback_data: "tcat_bug"     }],
+        [{ text: "Жалоба на игрока",      callback_data: "tcat_report"  }],
+        [{ text: "Другое",                callback_data: "tcat_other"   }],
+      ]}
+    });
+    return;
+  }
+
+  // ── Категория тикета ──
+  const CAT_MAP = { tcat_tech: "Технические проблемы", tcat_account: "Вопрос по аккаунту", tcat_pay: "Вопрос по покупке", tcat_bug: "Баг или ошибка", tcat_report: "Жалоба на игрока", tcat_other: "Другое" };
+  if (q.data in CAT_MAP) {
+    const category = CAT_MAP[q.data];
+    botSessions.set(chatId, { state: "awaiting_ticket_desc", category });
+    bot.sendMessage(chatId, `Категория: *${category}*\n\nОпиши проблему подробно:`, { parse_mode: "Markdown" });
+    return;
+  }
+
+  // ── Отправить чек ──
+  if (q.data.startsWith("send_receipt_")) {
+    const ticketId = parseInt(q.data.split("_")[2], 10);
+    botSessions.set(chatId, { state: "awaiting_receipt", ticketId });
+    bot.sendMessage(chatId, `Тикет \`#${ticketId}\` — прикрепи скриншот или фото чека следующим сообщением.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Отмена", callback_data: "cancel_input" }]] } }
+    );
+    return;
+  }
+
+  // ── Подтвердить/отклонить оплату ──
+  if (q.data.startsWith("confirm_pay_")) {
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
+    const parts    = q.data.split("_");
+    const ticketId = parseInt(parts[2], 10);
+    const userId   = parts[3];
+    const amount   = parseInt(parts[4], 10);
+    const acc      = await redisAccounts.get(userId);
+    const ticket   = tickets.get(ticketId);
+    if (acc && amount > 0) {
+      acc.balance = (acc.balance || 0) + amount;
+      await redisAccounts.set(userId, acc);
+      if (ticket) { ticket.status = "closed"; ticket.messages.push({ id: uuidv4(), from: "system", text: `Оплата подтверждена. Зачислено ${amount} СБТ.`, time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+      try { await bot.sendMessage(userId, `Оплата подтверждена.\n+*${amount} СБТ* зачислено. Баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+      sendToUser(userId, { type: "balance_update", balance: acc.balance });
+      bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
+      bot.answerCallbackQuery(q.id, { text: `+${amount} СБТ зачислено`, show_alert: true });
+    } else { bot.answerCallbackQuery(q.id, { text: "Аккаунт не найден.", show_alert: true }); }
+    return;
+  }
+
+  if (q.data.startsWith("reject_pay_")) {
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
+    const parts    = q.data.split("_");
+    const ticketId = parseInt(parts[2], 10);
+    const userId   = parts[3];
+    const ticket   = tickets.get(ticketId);
+    if (ticket) { ticket.status = "open"; ticket.messages.push({ id: uuidv4(), from: "system", text: "Оплата отклонена.", time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+    try { await bot.sendMessage(userId, `Оплата по тикету \`#${ticketId}\` не подтверждена. Напишите в поддержку.`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+    bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
+    bot.answerCallbackQuery(q.id, { text: "Оплата отклонена.", show_alert: true });
+    return;
+  }
+
+  if (q.data === "cancel_input") {
+    botSessions.delete(chatId);
+    mainMenu(chatId, account);
+    return;
+  }
+});
+
+// ─── Сообщения (состояния) ────────────────────────────────────────────────────
+
+bot.on("message", async (msg) => {
+  if (msg.text?.startsWith("/")) return;
+  const chatId  = msg.chat.id;
+  const tgId    = String(msg.from.id);
+  const account = await redisAccounts.get(tgId);
+  const session = botSessions.get(chatId);
+  const isAdm   = account?.role === "admin" || isAdminId(tgId);
+
+  // ── АДМИН: reply на тикет ──
+  if (!session && isAdm && msg.reply_to_message) {
+    const replyText = msg.reply_to_message.caption || msg.reply_to_message.text || "";
+    const match     = replyText.match(/тикет[:\s#]+(\d+)/i);
+    if (match) {
+      const ticketId = parseInt(match[1], 10);
+      const ticket   = tickets.get(ticketId);
+      if (ticket && ticket.status !== "closed") {
+        const text = msg.text?.trim();
+        if (!text) return;
+        const message = { id: uuidv4(), from: tgId, username: account?.username || "admin", role: "admin", text, time: Date.now() };
+        ticket.messages.push(message);
+        ticket.status = "answered";
+        ticket.unread  = 0;
+        broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+        broadcastToTicket(ticketId, tgId, { type: "message", ticketId, message });
+        try { await bot.sendMessage(ticket.userId, `Ответ по тикету \`#${ticketId}\`:\n\n${text}`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+        bot.sendMessage(chatId, `Ответ отправлен в тикет \`#${ticketId}\`.`, { parse_mode: "Markdown" });
+        return;
+      }
+    }
+  }
+
+  // ── АДМИН: просмотр тикета — текст = ответ в тикет ──
+  if (!session && isAdm) return;
+
+  if (!session) return;
+
+  // Ввод кастомной суммы
+  if (session.state === "awaiting_topup_amount") {
+    const amount = parseInt(msg.text?.trim(), 10);
+    botSessions.delete(chatId);
+    if (!amount || amount < 50 || amount > 100000) { bot.sendMessage(chatId, "Сумма должна быть от 50 до 100 000 рублей.", { reply_markup: USER_KB }); return; }
+    if (!account) { bot.sendMessage(chatId, "Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
+    const ticketId = ++ticketCounter;
+    const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "Пополнение баланса", preview: `${amount} СБТ · через бота`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан через бота.`, time: Date.now() },
+      { id: uuidv4(), from: tgId, username: account.username, text: `Пополнение на ${amount} СБТ`, time: Date.now() },
+    ]};
+    tickets.set(ticketId, t);
+    broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
+    bot.sendMessage(chatId,
+      `*Заявка на пополнение — тикет #${ticketId}*\n\nАккаунт: \`${account.username}\`\nСумма: *${amount} СБТ* (${amount} ₽)\nДата: ${dateStr}\n\nАдминистратор ответит и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
+        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
+      ]}}
+    );
+    return;
+  }
+
+  // ── АДМИН: поиск баланса участника ──
+  if (session.state === "admin_awaiting_balance_nick") {
+    botSessions.delete(chatId);
+    const q = msg.text?.trim();
+    const found = [...redisAccounts._map.values()].find(a =>
+      a.username?.toLowerCase() === q.toLowerCase() ||
+      a.telegram?.toLowerCase() === q.replace("@","").toLowerCase() ||
+      a.id === q
+    );
+    if (!found) { bot.sendMessage(chatId, "Пользователь не найден.", { reply_markup: ADMIN_KB }); return; }
+    bot.sendMessage(chatId,
+      `*${found.username}*\nID: \`${found.id}\`\nTelegram: ${found.telegram ? `@${found.telegram}` : "—"}\nБаланс: *${(found.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${found.role}`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
+        [{ text: "Добавить 100 СБТ",  callback_data: `bal_add_${found.id}_100`  },
+         { text: "Добавить 500 СБТ",  callback_data: `bal_add_${found.id}_500`  }],
+        [{ text: "Обнулить баланс",   callback_data: `bal_zero_${found.id}`     }],
+      ]}
+    });
+    return;
+  }
+
+  // Получение чека
+  if (session.state === "awaiting_receipt") {
+    const ticketId = session.ticketId;
+    const ticket   = tickets.get(ticketId);
+    const hasPhoto = msg.photo?.length > 0;
+    const hasDoc   = !!msg.document;
+    if (!hasPhoto && !hasDoc) { bot.sendMessage(chatId, "Пришли фото или скриншот (файл)."); return; }
+    botSessions.delete(chatId);
+    if (ticket) {
+      const fileId = hasPhoto ? msg.photo[msg.photo.length - 1].file_id : msg.document.file_id;
+      ticket.messages.push({ id: uuidv4(), from: tgId, username: account?.username || "Telegram", text: `[чек, file_id: ${fileId}]`, time: Date.now() });
+      ticket.unread = (ticket.unread || 0) + 1; ticket.status = "open";
+      broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+    }
+    for (const [tid, acc] of redisAccounts._map.entries()) {
+      if (acc.role !== "admin") continue;
+      try {
+        const inv       = ticket ? [...invoices.values()].find(i => i.ticketId === ticketId) : null;
+        const invAmount = inv?.amount || "?";
+        const invMethod = inv ? (METHOD_NAMES[inv.method] || inv.method) : "?";
+        const caption   = `Чек на пополнение\n\nИгрок: ${account?.username || tgId}\nСумма: ${invAmount} СБТ\nСпособ: ${invMethod}\nТикет: #${ticketId}`;
+        const rm        = { inline_keyboard: [[
+          { text: "Подтвердить", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
+          { text: "Отклонить",   callback_data: `reject_pay_${ticketId}_${tgId}`               },
+        ]]};
+        if (hasPhoto) await bot.sendPhoto(tid, msg.photo[msg.photo.length - 1].file_id, { caption, reply_markup: rm });
+        else          await bot.sendDocument(tid, msg.document.file_id, { caption, reply_markup: rm });
+      } catch (e) { console.error("[admin notify]", e.message); }
+    }
+    bot.sendMessage(chatId, `Чек получен. Тикет \`#${ticketId}\` обновлён — администратор проверит оплату и зачислит баланс.`, { parse_mode: "Markdown", reply_markup: USER_KB });
+    return;
+  }
+
+  // Описание тикета
+  if (session.state === "awaiting_ticket_desc") {
+    const text = msg.text?.trim();
+    if (!text || text.length < 5) { bot.sendMessage(chatId, "Слишком короткое описание. Напиши подробнее."); return; }
+    const ticketId = ++ticketCounter;
+    const ticket = { id: ticketId, userId: tgId, username: account?.username || msg.from.username || "Telegram", category: session.category || "Другое", preview: text.slice(0, 60), status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан.`, time: Date.now() },
+      { id: uuidv4(), from: tgId, username: account?.username || "Telegram", text, time: Date.now() },
+    ]};
+    tickets.set(ticketId, ticket);
+    botSessions.delete(chatId);
+    broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
+    bot.sendMessage(chatId,
+      `Обращение создано.\n\nТикет \`#${ticketId}\` — ${ticket.category}.\nОтветим как можно скорее.`,
+      { parse_mode: "Markdown", reply_markup: USER_KB }
+    );
+  }
+});
+
+// ── Баланс участника (inline, для admin) ──
+bot.on("callback_query", async (q) => {});
+// Дополнительный listener для bal_ коллбеков — уже обработан выше, добавим inline
+// Нужно перехватить bal_ в основном callback handler — добавим перед cancel_input
+
+// Патч: вешаем ещё один listener для bal_
+const origListeners = bot.listeners("callback_query").slice();
+bot.removeAllListeners("callback_query");
+bot.on("callback_query", async (q) => {
+  const tgId  = String(q.from.id);
+  const chatId = q.message.chat.id;
+  const isAdm  = isAdminId(tgId) || (await redisAccounts.get(tgId))?.role === "admin";
+
+  if (q.data.startsWith("bal_")) {
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
+    const parts  = q.data.split("_");
+    const action = parts[1]; // add | zero
+    const userId = parts[2];
+    const amount = parseInt(parts[3] || "0", 10);
+    const acc    = await redisAccounts.get(userId);
+    if (!acc) { bot.answerCallbackQuery(q.id, { text: "Пользователь не найден.", show_alert: true }); return; }
+    if (action === "add") acc.balance = (acc.balance || 0) + amount;
+    if (action === "zero") acc.balance = 0;
+    await redisAccounts.set(userId, acc);
+    sendToUser(userId, { type: "balance_update", balance: acc.balance });
+    bot.answerCallbackQuery(q.id, { text: `Баланс: ${acc.balance} СБТ`, show_alert: true });
+    bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
+    return;
+  }
+
+  // Передаём остальным listeners
+  for (const fn of origListeners) fn(q);
+});
+
+bot.on("polling_error", (err) => { if (!err.message?.includes("409")) console.error("[bot]", err.message); });
+
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
+
+try {
+  const sslOpts = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };
+  const httpsServer = https.createServer(sslOpts, app);
+  const wssSSL = new WebSocketServer({ server: httpsServer });
+  wssSSL.on("connection", (ws) => wss.emit("connection", ws));
+  httpsServer.listen(PORT_SSL, "0.0.0.0", () => console.log(`SBGames HTTPS :${PORT_SSL}`));
+} catch (e) {
+  console.warn("HTTPS not started:", e.message);
+}
