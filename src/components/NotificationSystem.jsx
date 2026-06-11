@@ -251,7 +251,7 @@ export function NotificationBell() {
             exit={{ opacity: 0, scale: 0.92, y: -8 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
             className="absolute top-9 right-0 w-[300px] rounded-2xl overflow-hidden"
-            style={{ zIndex: 10001 }}
+            style={{ zIndex: 10001, background: "rgba(9,9,12,0.98)", boxShadow: "0 8px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07)" }}
             style={{
               background: "rgba(9,9,12,0.98)",
               boxShadow: "0 8px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07)",

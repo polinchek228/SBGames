@@ -408,15 +408,33 @@ async fn launch_minecraft(
         download_file(&client_url, &client_jar, &app)
             .await.map_err(|e| format!("Client.jar: {}", e))?;
 
-        // 2b. Скачиваем vanilla libraries (~88 шт: guava, gson, log4j, jna, lwjgl, и т.д.)
+        // 2b. Скачиваем vanilla libraries + native classifiers для текущей ОС
         // Forge их требует через inheritsFrom — без них Forge падает.
         let libs = ver["libraries"].as_array().cloned().unwrap_or_default();
         let total = libs.len();
+        let our_os = if cfg!(target_os = "windows") { "windows" }
+                     else if cfg!(target_os = "macos") { "osx" }
+                     else { "linux" };
+
         for (i, lib) in libs.iter().enumerate() {
+            // OS rules — skip если не наша ОС
+            if let Some(rules) = lib.get("rules").and_then(|r| r.as_array()) {
+                let allowed = rules.iter().any(|r| {
+                    let os_name = r["os"]["name"].as_str().unwrap_or("");
+                    let action  = r["action"].as_str().unwrap_or("allow");
+                    if action == "allow" {
+                        os_name.is_empty() || os_name == our_os
+                    } else {
+                        !(os_name == our_os)
+                    }
+                });
+                if !allowed { continue; }
+            }
+
+            // Обычный artifact
             if let Some(artifact) = lib.get("downloads").and_then(|d| d.get("artifact")) {
                 let path = artifact["path"].as_str().unwrap_or("");
                 let url  = artifact["url"].as_str().unwrap_or("");
-                let size = artifact["size"].as_u64().unwrap_or(0);
                 if path.is_empty() || url.is_empty() { continue; }
                 let dest = mc_dir.join("libraries").join(path);
                 if dest.exists() { continue; }
@@ -426,6 +444,30 @@ async fn launch_minecraft(
                     downloaded: i as u64, total: total as u64, speed_kbs: 0,
                 });
                 let _ = download_file(url, &dest, &app).await;
+            }
+
+            // Native classifiers (LWJGL natives, OS-specific)
+            if let Some(natives) = lib.get("natives") {
+                if let Some(native_obj) = natives.get(our_os) {
+                    let native_name = native_obj.as_str().unwrap_or("");
+                    // Заменяем ${arch} на "64"
+                    let classifier = native_name.replace("$", "").replace("{arch}", "64");
+                    if let Some(classifiers) = lib["downloads"].get("classifiers") {
+                        if let Some(nat) = classifiers.get(&classifier) {
+                            let path = nat["path"].as_str().unwrap_or("");
+                            let url  = nat["url"].as_str().unwrap_or("");
+                            if path.is_empty() || url.is_empty() { continue; }
+                            let dest = mc_dir.join("libraries").join(path);
+                            if dest.exists() { continue; }
+                            std::fs::create_dir_all(dest.parent().unwrap()).ok();
+                            let _ = app.emit("download_progress", DownloadProgress {
+                                file:       format!("native: {}", path.rsplit('/').next().unwrap_or(path)).into(),
+                                downloaded: i as u64, total: total as u64, speed_kbs: 0,
+                            });
+                            let _ = download_file(url, &dest, &app).await;
+                        }
+                    }
+                }
             }
         }
         let _ = app.emit("download_progress", DownloadProgress {
@@ -914,6 +956,28 @@ async fn install_forge_from_zip(
             let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
             let mut f = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
             f.write_all(&bytes).map_err(|e| e.to_string())?;
+        }
+
+        // Native classifiers (Forge редко, но бывает)
+        if let Some(natives) = lib.get("natives") {
+            let our_os = if cfg!(target_os = "windows") { "windows" }
+                         else if cfg!(target_os = "macos") { "osx" }
+                         else { "linux" };
+            if let Some(native_obj) = natives.get(our_os) {
+                let native_name = native_obj.as_str().unwrap_or("");
+                let classifier = native_name.replace("$", "").replace("{arch}", "64");
+                if let Some(classifiers) = lib["downloads"].get("classifiers") {
+                    if let Some(nat) = classifiers.get(&classifier) {
+                        let path = nat["path"].as_str().unwrap_or("");
+                        let url  = nat["url"].as_str().unwrap_or("");
+                        if path.is_empty() || url.is_empty() { continue; }
+                        let dest = mc_dir.join("libraries").join(path);
+                        if dest.exists() { continue; }
+                        std::fs::create_dir_all(dest.parent().unwrap()).ok();
+                        let _ = download_file(url, &dest, &app).await;
+                    }
+                }
+            }
         }
     }
 
