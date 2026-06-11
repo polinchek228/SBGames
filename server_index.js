@@ -13,14 +13,13 @@ const Redis        = require("ioredis");
 const { WebSocketServer, WebSocket } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
-const BOT_TOKEN       = "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
-// JWT_SECRET персистентный — читаем из Redis, генерируем один раз
-let JWT_SECRET = crypto.randomBytes(48).toString("hex"); // временный до загрузки из Redis
-const PORT            = 3000;
-const PORT_SSL        = 3443;
-const ADMIN_USERNAMES = ["efseea"];
-const ADMIN_TG_IDS    = ["8092106401"];
-const BOT_USERNAME    = "sbgamescbot";
+const BOT_TOKEN       = process.env.BOT_TOKEN       || "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
+const ADMIN_TG_IDS    = (process.env.ADMIN_TG_IDS   || "8092106401").split(",");
+const ADMIN_USERNAMES = (process.env.ADMIN_USERNAMES || "efseea").split(",");
+let JWT_SECRET = crypto.randomBytes(48).toString("hex");
+const PORT            = parseInt(process.env.PORT     || "3000", 10);
+const PORT_SSL        = parseInt(process.env.PORT_SSL || "3443", 10);
+const BOT_USERNAME    = process.env.BOT_USERNAME || "sbgamescbot";
 
 const SSL_KEY  = "/etc/ssl/private/sbgames.key";
 const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
@@ -51,32 +50,125 @@ const redisAccounts = { _map: new Map(),
 
 const app = express();
 
-app.use(helmet({ contentSecurityPolicy: false }));
+// ─── Trust proxy (nginx) ──────────────────────────────────────────────────────
+app.set("trust proxy", 1);
+
+// ─── Security headers ─────────────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:     ["'none'"],
+      connectSrc:     ["'self'"],
+      frameSrc:       ["'none'"],
+      objectSrc:      ["'none'"],
+      scriptSrc:      ["'none'"],
+      styleSrc:       ["'none'"],
+      imgSrc:         ["'none'"],
+      baseUri:        ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy:  true,
+  crossOriginOpenerPolicy:    { policy: "same-origin" },
+  crossOriginResourcePolicy:  { policy: "cross-origin" },
+  referrerPolicy:             { policy: "no-referrer" },
+  hsts:                       { maxAge: 31536000, includeSubDomains: true, preload: true },
+  noSniff:                    true,
+  dnsPrefetchControl:         { allow: false },
+  permittedCrossDomainPolicies: { permittedPolicies: "none" },
+}));
+
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = new Set([
+  "https://api.sbgames.hyperionsearch.xyz:8443",
+  "https://sbgames.hyperionsearch.xyz:8444",
+  "https://sbgames.hyperionsearch.xyz",
+  "http://sbgames.hyperionsearch.xyz",
+  "http://localhost:1420",
+  "http://localhost:5173",
+]);
 app.use(cors({
   origin: (origin, cb) => {
-    const allowed = [
-      null, undefined,
-      "https://api.sbgames.hyperionsearch.xyz:8443",
-      "https://sbgames.hyperionsearch.xyz:8444",
-      "https://sbgames.hyperionsearch.xyz",
-      "http://sbgames.hyperionsearch.xyz",
-      "http://localhost:1420",
-      "http://localhost:5173",
-    ];
-    if (!origin || allowed.includes(origin)) return cb(null, true);
+    if (!origin || ALLOWED_ORIGINS.has(origin)) return cb(null, true);
     cb(new Error("CORS: not allowed"));
   },
   credentials: true,
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 86400,
 }));
-app.use(express.json({ limit: "32kb" }));
 
-const authLimiter      = rateLimit({ windowMs: 60_000, max: 10,  message: { message: "Слишком много запросов" }, standardHeaders: true, legacyHeaders: false });
-const checkCodeLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
-const apiLimiter       = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
-app.use("/auth/tg-login",   authLimiter);
-app.use("/auth/create-code", authLimiter);
+// ─── Body limits ──────────────────────────────────────────────────────────────
+app.use(express.json({ limit: "16kb" }));
+
+// ─── IP blocklist (Redis-backed, in-memory fallback) ─────────────────────────
+const blockedIPs     = new Map(); // ip → unblock timestamp
+const failedAttempts = new Map(); // ip → { count, firstAt }
+const BLOCK_AFTER    = 8;         // неудачных попыток
+const BLOCK_TTL      = 15 * 60 * 1000; // 15 минут
+const ATTEMPT_WINDOW = 10 * 60 * 1000; // окно подсчёта
+
+function getIP(req) {
+  return (req.ip || req.socket.remoteAddress || "0.0.0.0").replace(/^::ffff:/, "");
+}
+
+function isBlocked(ip) {
+  const until = blockedIPs.get(ip);
+  if (!until) return false;
+  if (Date.now() > until) { blockedIPs.delete(ip); return false; }
+  return true;
+}
+
+function recordFailure(ip) {
+  const now = Date.now();
+  const entry = failedAttempts.get(ip) || { count: 0, firstAt: now };
+  if (now - entry.firstAt > ATTEMPT_WINDOW) { entry.count = 0; entry.firstAt = now; }
+  entry.count++;
+  failedAttempts.set(ip, entry);
+  if (entry.count >= BLOCK_AFTER) {
+    blockedIPs.set(ip, now + BLOCK_TTL);
+    failedAttempts.delete(ip);
+    console.warn(`[security] blocked ${ip} (${BLOCK_AFTER} failures)`);
+    return true;
+  }
+  return false;
+}
+
+function blockMiddleware(req, res, next) {
+  const ip = getIP(req);
+  if (isBlocked(ip)) return res.status(429).json({ message: "Слишком много попыток. Попробуйте позже." });
+  next();
+}
+
+// ─── Rate limiters ────────────────────────────────────────────────────────────
+const makeLimit = (windowMs, max, msg) => rateLimit({
+  windowMs, max,
+  message:        { message: msg || "Слишком много запросов" },
+  standardHeaders: true,
+  legacyHeaders:  false,
+  keyGenerator:   req => getIP(req),
+  skip:           req => isAdmin(req.body?.username) || isAdminId(String(req.body?.tgUser?.id || "")),
+});
+
+const authLimiter      = makeLimit(60_000, 6,   "Слишком много попыток входа");
+const checkCodeLimiter = makeLimit(60_000, 90,  "Слишком много проверок кода");
+const apiLimiter       = makeLimit(60_000, 100, "Слишком много запросов");
+const strictLimiter    = makeLimit(60_000, 3,   "Превышен лимит запросов");
+
+app.use("/auth/tg-login",    blockMiddleware, authLimiter);
+app.use("/auth/widget-login", blockMiddleware, authLimiter);
+app.use("/auth/create-code", blockMiddleware, authLimiter);
 app.use("/auth/check-code",  checkCodeLimiter);
-app.use("/api",  apiLimiter);
+app.use("/payments",         blockMiddleware, strictLimiter);
+app.use("/admin",            blockMiddleware);
+app.use("/api",              apiLimiter);
+app.use("/support/ticket",   apiLimiter);
+
+// ─── Request ID & logging ─────────────────────────────────────────────────────
+app.use((req, _res, next) => {
+  req.reqId = uuidv4().slice(0, 8);
+  next();
+});
 
 function sanitize(str, max = 500) {
   if (typeof str !== "string") return "";
@@ -137,13 +229,22 @@ app.post("/auth/widget-login", async (req, res) => {
 
 // Завершение регистрации (ник)
 app.post("/auth/tg-login", async (req, res) => {
+  const ip = getIP(req);
   const { tgUser, username } = req.body;
-  if (!tgUser || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
+  if (!tgUser || !username) {
+    recordFailure(ip);
+    return res.status(400).json({ message: "Обязательные поля отсутствуют" });
+  }
   const cleanNick = sanitize(username).replace(/^@/, "");
-  if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick))
+  if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) {
+    recordFailure(ip);
     return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
+  }
   const tgId = String(tgUser.id);
-  if (!tgUser.id || tgUser.id <= 0) return res.status(401).json({ message: "Невалидный пользователь" });
+  if (!tgUser.id || tgUser.id <= 0) {
+    recordFailure(ip);
+    return res.status(401).json({ message: "Невалидный пользователь" });
+  }
   let account = await redisAccounts.get(tgId);
   if (!account) {
     const adminRole = isAdmin(tgUser.username || cleanNick) || isAdminId(tgId) ? "admin" : "user";
@@ -352,18 +453,55 @@ app.post("/payments/create", async (req, res) => {
 });
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
-wss.on("connection", (ws) => {
+const WS_MAX_PER_IP    = 5;    // макс соединений с одного IP
+const WS_AUTH_TIMEOUT  = 10_000; // 10с на авторизацию
+const WS_MSG_LIMIT     = 30;   // сообщений в минуту
+const WS_MSG_WINDOW    = 60_000;
+const wsIPCount        = new Map(); // ip → count
+
+wss.on("connection", (ws, req) => {
   const clientId = uuidv4();
-  wsClients.set(clientId, { ws, userId: null, role: "user" });
+  const ip = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
+
+  // Лимит соединений per IP
+  const ipCount = (wsIPCount.get(ip) || 0) + 1;
+  wsIPCount.set(ip, ipCount);
+  if (ipCount > WS_MAX_PER_IP || isBlocked(ip)) {
+    ws.close(1008, "Too many connections");
+    wsIPCount.set(ip, ipCount - 1);
+    return;
+  }
+
+  wsClients.set(clientId, { ws, userId: null, role: "user", ip, msgCount: 0, msgWindowStart: Date.now() });
+
+  // Таймаут авторизации
+  const authTimeout = setTimeout(() => {
+    if (!wsClients.get(clientId)?.userId) {
+      ws.close(1008, "Auth timeout");
+    }
+  }, WS_AUTH_TIMEOUT);
 
   ws.on("message", (raw) => {
+    if (raw.length > 8192) { ws.close(1009, "Message too large"); return; }
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     const client = wsClients.get(clientId);
+    if (!client) return;
+
+    // Rate limit сообщений
+    const now = Date.now();
+    if (now - client.msgWindowStart > WS_MSG_WINDOW) { client.msgCount = 0; client.msgWindowStart = now; }
+    client.msgCount++;
+    if (client.msgCount > WS_MSG_LIMIT) {
+      send(ws, { type: "error", text: "Слишком много сообщений" });
+      return;
+    }
+
     switch (msg.type) {
       case "auth": {
         const userId = msg.token ? wsAuthenticate(msg.token) : null;
-        if (!userId) { send(ws, { type: "auth_error", message: "Необходима авторизация" }); ws.close(); return; }
-        client.userId = userId; client.username = sanitize(msg.username || "", 32); client.role = isAdmin(msg.username) || isAdminId(userId) ? "admin" : "user";
+        if (!userId) { recordFailure(ip); send(ws, { type: "auth_error", message: "Необходима авторизация" }); ws.close(); return; }
+        clearTimeout(authTimeout);
+        client.userId = userId; client.username = sanitize(msg.username || "", 32); client.role = isAdminId(userId) ? "admin" : "user";
         wsClients.set(clientId, client); broadcastOnlineUsers();
         const myFriends = [...getFriends(client.userId)].map(fid => { const fa = [...redisAccounts._map.values()].find(a => a.id === fid); return fa ? { id: fa.id, username: fa.username } : null; }).filter(Boolean);
         send(ws, { type: "friends_list", friends: myFriends });
@@ -513,8 +651,20 @@ wss.on("connection", (ws) => {
     }
   });
 
-  ws.on("close", () => { wsClients.delete(clientId); broadcastOnlineUsers(); });
-  ws.on("error", () => { wsClients.delete(clientId); broadcastOnlineUsers(); });
+  ws.on("close", () => {
+    clearTimeout(authTimeout);
+    wsClients.delete(clientId);
+    const cnt = wsIPCount.get(ip) || 1;
+    if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
+    broadcastOnlineUsers();
+  });
+  ws.on("error", () => {
+    clearTimeout(authTimeout);
+    wsClients.delete(clientId);
+    const cnt = wsIPCount.get(ip) || 1;
+    if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
+    broadcastOnlineUsers();
+  });
 });
 
 function send(ws, data) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
