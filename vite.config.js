@@ -4,32 +4,55 @@ import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
 
-// Обфускация только в prod через кастомный Rollup-плагин
+const OBF_OPTIONS = {
+  compact:                          true,
+  controlFlowFlattening:            true,
+  controlFlowFlatteningThreshold:   0.4,
+  deadCodeInjection:                true,
+  deadCodeInjectionThreshold:       0.15,
+  debugProtection:                  true,
+  debugProtectionInterval:          3000,
+  disableConsoleOutput:             true,
+  identifierNamesGenerator:         "hexadecimal",
+  identifiersPrefix:                "_",
+  renameGlobals:                    false,
+  renameProperties:                 false, // ломает React
+  selfDefending:                    true,
+  splitStrings:                     true,
+  splitStringsChunkLength:          6,
+  stringArray:                      true,
+  stringArrayCallsTransform:        true,
+  stringArrayCallsTransformThreshold: 0.6,
+  stringArrayEncoding:              ["rc4"],
+  stringArrayIndexShift:            true,
+  stringArrayRotate:                true,
+  stringArrayShuffle:               true,
+  stringArrayWrappersCount:         3,
+  stringArrayWrappersChainedCalls:  true,
+  stringArrayWrappersParametersMaxCount: 4,
+  stringArrayWrappersType:          "function",
+  stringArrayThreshold:             0.8,
+  numbersToExpressions:             true,
+  simplify:                         true,
+  transformObjectKeys:              false,
+  unicodeEscapeSequence:            false,
+  target:                           "browser",
+};
+
 function obfuscatePlugin() {
   return {
     name: "sbgames-obfuscate",
     apply: "build",
-    async generateBundle(opts, bundle) {
+    enforce: "post",
+    async generateBundle(_opts, bundle) {
       let JavaScriptObfuscator;
       try { JavaScriptObfuscator = (await import("javascript-obfuscator")).default; } catch { return; }
-      for (const chunk of Object.values(bundle)) {
-        if (chunk.type === "chunk" && chunk.fileName.endsWith(".js")) {
-          chunk.code = JavaScriptObfuscator.obfuscate(chunk.code, {
-            compact: true,
-            controlFlowFlattening: true,
-            controlFlowFlatteningThreshold: 0.3,
-            deadCodeInjection: false,
-            debugProtection: true,
-            debugProtectionInterval: 2000,
-            disableConsoleOutput: true,
-            identifierNamesGenerator: "hexadecimal",
-            renameGlobals: false,
-            selfDefending: true,
-            stringArray: true,
-            stringArrayEncoding: ["rc4"],
-            stringArrayThreshold: 0.75,
-            target: "browser",
-          }).getObfuscatedCode();
+      for (const [fileName, chunk] of Object.entries(bundle)) {
+        if (chunk.type !== "chunk" || !fileName.endsWith(".js")) continue;
+        try {
+          chunk.code = JavaScriptObfuscator.obfuscate(chunk.code, OBF_OPTIONS).getObfuscatedCode();
+        } catch (e) {
+          console.warn(`[obfuscate] skipped ${fileName}:`, e.message);
         }
       }
     },
