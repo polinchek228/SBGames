@@ -4,6 +4,7 @@ export default function CustomCursor() {
   const dotRef   = useRef(null);
   const ringRef  = useRef(null);
   const saberRef = useRef(null);
+  const flashRef = useRef(null); // вспышка при клике
 
   useEffect(() => {
     async function hideCursor() {
@@ -19,18 +20,33 @@ export default function CustomCursor() {
     const dot   = dotRef.current;
     const ring  = ringRef.current;
     const saber = saberRef.current;
-    if (!dot || !ring || !saber) return;
+    const flash = flashRef.current;
+    if (!dot || !ring || !saber || !flash) return;
 
     let mx = -300, my = -300;
     let rx = -300, ry = -300;
-    let hovering = false;
-    let clicking = false;
-    let serverId = null;
+    let hovering  = false;
+    let clicking  = false;
+    let serverId  = null;
+    let flashAnim = null;
     let raf;
 
-    // Острие клинка внутри SVG — точка (7, 7)
-    const TIP_X = 7;
-    const TIP_Y = 7;
+    // Острие в SVG: (5, 5)
+    const TIP_X = 5;
+    const TIP_Y = 5;
+
+    // Вспышка при клике — короткий burst
+    function triggerFlash(x, y) {
+      if (flashAnim) clearTimeout(flashAnim);
+      flash.style.left    = `${x - 10}px`;
+      flash.style.top     = `${y - 10}px`;
+      flash.style.opacity = "1";
+      flash.style.transform = "scale(1)";
+      flashAnim = setTimeout(() => {
+        flash.style.opacity   = "0";
+        flash.style.transform = "scale(2.2)";
+      }, 60);
+    }
 
     const loop = () => {
       const isSaber = serverId === "starwars";
@@ -38,11 +54,10 @@ export default function CustomCursor() {
       dot.style.opacity   = isSaber ? "0" : "1";
       ring.style.opacity  = isSaber ? "0" : "1";
       saber.style.opacity = isSaber ? "1" : "0";
-      saber.style.pointerEvents = "none";
+      flash.style.display = isSaber ? "block" : "none";
 
       if (isSaber) {
-        const sc = clicking ? 0.88 : 1;
-        saber.style.transform = `translate(${mx - TIP_X}px, ${my - TIP_Y}px) scale(${sc})`;
+        saber.style.transform = `translate(${mx - TIP_X}px, ${my - TIP_Y}px)`;
       } else {
         rx += (mx - rx) * 0.12;
         ry += (my - ry) * 0.12;
@@ -63,26 +78,30 @@ export default function CustomCursor() {
     raf = requestAnimationFrame(loop);
 
     const onMove = (e) => { mx = e.clientX; my = e.clientY; };
-    const onDown = () => { clicking = true; };
+    const onDown = (e) => {
+      clicking = true;
+      if (serverId === "starwars") triggerFlash(e.clientX, e.clientY);
+    };
     const onUp   = () => { clicking = false; };
     const onOver = (e) => { if (e.target.closest("button,a,input,textarea,select,[role=button],label")) hovering = true; };
     const onOut  = (e) => { if (e.target.closest("button,a,input,textarea,select,[role=button],label")) hovering = false; };
     const onSrv  = (e) => { serverId = e.detail?.id || null; };
 
-    window.addEventListener("mousemove",   onMove, { passive: true });
-    window.addEventListener("mousedown",   onDown);
-    window.addEventListener("mouseup",     onUp);
-    document.addEventListener("mouseover", onOver);
-    document.addEventListener("mouseout",  onOut);
+    window.addEventListener("mousemove",    onMove, { passive: true });
+    window.addEventListener("mousedown",    onDown);
+    window.addEventListener("mouseup",      onUp);
+    document.addEventListener("mouseover",  onOver);
+    document.addEventListener("mouseout",   onOut);
     window.addEventListener("serverChange", onSrv);
 
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("mousemove",   onMove);
-      window.removeEventListener("mousedown",   onDown);
-      window.removeEventListener("mouseup",     onUp);
-      document.removeEventListener("mouseover", onOver);
-      document.removeEventListener("mouseout",  onOut);
+      if (flashAnim) clearTimeout(flashAnim);
+      window.removeEventListener("mousemove",    onMove);
+      window.removeEventListener("mousedown",    onDown);
+      window.removeEventListener("mouseup",      onUp);
+      document.removeEventListener("mouseover",  onOver);
+      document.removeEventListener("mouseout",   onOut);
       window.removeEventListener("serverChange", onSrv);
       try {
         if (window.__TAURI_INTERNALS__) {
@@ -115,6 +134,16 @@ export default function CustomCursor() {
         willChange:"transform",
       }}/>
 
+      {/* Вспышка при клике */}
+      <div ref={flashRef} style={{
+        position:"fixed", zIndex:10000, pointerEvents:"none",
+        width:20, height:20, borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(196,181,253,0.9) 0%, rgba(129,140,248,0.5) 40%, transparent 70%)",
+        opacity:0, display:"none",
+        transition:"opacity 0.18s ease-out, transform 0.18s ease-out",
+        willChange:"transform, opacity",
+      }}/>
+
       {/* ── Lightsaber ── */}
       <div ref={saberRef} style={{
         position:"fixed", top:0, left:0, zIndex:9999,
@@ -122,155 +151,113 @@ export default function CustomCursor() {
         willChange:"transform",
       }}>
         {/*
-          SVG 26×90, повёрнут на -40deg.
-          Острие клинка → точка (7, 7) в координатах SVG.
-          transformOrigin совпадает с этой точкой.
+          Компактный меч: острие → (5, 5), клинок ~28px, рукоять ~18px.
+          Повёрнут на -38deg вокруг острия.
         */}
         <svg
-          width="26" height="90"
-          viewBox="0 0 26 90"
+          width="20" height="60"
+          viewBox="0 0 20 60"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
           style={{
-            display: "block",
-            overflow: "visible",
-            transform: "rotate(-38deg)",
-            transformOrigin: "7px 7px",
+            display:"block",
+            overflow:"visible",
+            transform:"rotate(-38deg)",
+            transformOrigin:"5px 5px",
           }}
         >
           <defs>
-            {/* Самое широкое внешнее свечение */}
-            <filter id="sb-glow-far" x="-600%" y="-4%" width="1300%" height="108%">
-              <feGaussianBlur stdDeviation="6" result="blur"/>
+            <filter id="sb-far" x="-600%" y="-6%" width="1300%" height="112%">
+              <feGaussianBlur stdDeviation="4.5"/>
             </filter>
-            {/* Среднее свечение */}
-            <filter id="sb-glow-mid" x="-300%" y="-3%" width="700%" height="106%">
-              <feGaussianBlur stdDeviation="3" result="blur"/>
+            <filter id="sb-mid" x="-250%" y="-4%" width="600%" height="108%">
+              <feGaussianBlur stdDeviation="2"/>
             </filter>
-            {/* Близкое свечение */}
-            <filter id="sb-glow-near" x="-150%" y="-2%" width="400%" height="104%">
-              <feGaussianBlur stdDeviation="1.4" result="blur"/>
+            <filter id="sb-near" x="-120%" y="-2%" width="340%" height="104%">
+              <feGaussianBlur stdDeviation="1"/>
             </filter>
-            {/* Свечение кончика */}
-            <filter id="sb-tip" x="-400%" y="-400%" width="900%" height="900%">
-              <feGaussianBlur stdDeviation="3"/>
+            <filter id="sb-tip-glow" x="-500%" y="-500%" width="1100%" height="1100%">
+              <feGaussianBlur stdDeviation="2.5"/>
             </filter>
-            {/* Свечение кнопки */}
-            <filter id="sb-btn" x="-200%" y="-200%" width="500%" height="500%">
-              <feGaussianBlur stdDeviation="1.5"/>
+            <filter id="sb-btn-glow" x="-300%" y="-300%" width="700%" height="700%">
+              <feGaussianBlur stdDeviation="1.2"/>
             </filter>
-          </defs>
-
-          {/* ════ КЛИНОК ════ */}
-
-          {/* Слой 1 — ультра-широкий фиолетовый ореол */}
-          <line x1="7" y1="7" x2="7" y2="55"
-            stroke="#4c1d95" strokeWidth="22" strokeLinecap="round"
-            opacity="0.13" filter="url(#sb-glow-far)"
-          >
-            <animate attributeName="opacity" values="0.13;0.2;0.13" dur="1.8s" repeatCount="indefinite"/>
-          </line>
-
-          {/* Слой 2 — фиолетовый */}
-          <line x1="7" y1="7" x2="7" y2="55"
-            stroke="#6d28d9" strokeWidth="11" strokeLinecap="round"
-            opacity="0.28" filter="url(#sb-glow-mid)"
-          >
-            <animate attributeName="opacity" values="0.28;0.42;0.28" dur="1.8s" repeatCount="indefinite"/>
-          </line>
-
-          {/* Слой 3 — индиго близкое */}
-          <line x1="7" y1="7" x2="7" y2="55"
-            stroke="#818cf8" strokeWidth="5.5" strokeLinecap="round"
-            opacity="0.7" filter="url(#sb-glow-near)"
-          >
-            <animate attributeName="opacity" values="0.7;0.9;0.7" dur="1.8s" repeatCount="indefinite"/>
-          </line>
-
-          {/* Слой 4 — светло-индиго клинок */}
-          <line x1="7" y1="7" x2="7" y2="55"
-            stroke="#c4b5fd" strokeWidth="2.2" strokeLinecap="round"
-          />
-
-          {/* Слой 5 — белое ядро */}
-          <line x1="7" y1="8" x2="7" y2="54"
-            stroke="white" strokeWidth="0.85" strokeLinecap="round"
-            opacity="0.95"
-          />
-
-          {/* Свечение кончика */}
-          <circle cx="7" cy="7" r="4"
-            fill="#818cf8" opacity="0.35" filter="url(#sb-tip)"
-          >
-            <animate attributeName="opacity" values="0.35;0.55;0.35" dur="1.8s" repeatCount="indefinite"/>
-          </circle>
-          {/* Яркая точка острия */}
-          <circle cx="7" cy="7" r="1.6" fill="white" opacity="0.98"/>
-
-          {/* ════ ЭМИТТЕР (переход клинок→рукоять) ════ */}
-          {/* Воротник эмиттера */}
-          <rect x="3.5" y="55" width="7" height="2.5" rx="1.2"
-            fill="url(#collar-grad)" stroke="#334155" strokeWidth="0.3"
-          />
-          <defs>
-            <linearGradient id="collar-grad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#64748b"/>
-              <stop offset="100%" stopColor="#334155"/>
-            </linearGradient>
-            <linearGradient id="hilt-grad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%"   stopColor="#1e293b"/>
-              <stop offset="40%"  stopColor="#293548"/>
-              <stop offset="100%" stopColor="#1e293b"/>
+            <linearGradient id="hilt-g" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"  stopColor="#1a2236"/>
+              <stop offset="45%" stopColor="#263044"/>
+              <stop offset="100%" stopColor="#1a2236"/>
             </linearGradient>
           </defs>
 
-          {/* ════ ГАРДА ════ */}
-          {/* Основа гарды */}
-          <rect x="0.5" y="57.5" width="13" height="3.5" rx="1.75"
-            fill="#475569"
-          />
-          {/* Блик на гарде */}
-          <rect x="1" y="57.8" width="12" height="1.2" rx="0.6"
-            fill="#94a3b8" opacity="0.6"
-          />
-          {/* Нижняя тень гарды */}
-          <rect x="1" y="60.2" width="12" height="0.6" rx="0.3"
-            fill="#1e293b" opacity="0.5"
-          />
+          {/* ─ КЛИНОК ─ */}
 
-          {/* ════ РУКОЯТЬ ════ */}
-          {/* Основной корпус */}
-          <rect x="4" y="61" width="6" height="24" rx="3"
-            fill="url(#hilt-grad)"
-          />
+          {/* Ореол — самый широкий */}
+          <line x1="5" y1="5" x2="5" y2="33"
+            stroke="#4c1d95" strokeWidth="14" strokeLinecap="round"
+            opacity="0.14" filter="url(#sb-far)">
+            <animate attributeName="opacity" values="0.14;0.22;0.14" dur="2s" repeatCount="indefinite"/>
+          </line>
 
-          {/* Текстура намотки (5 полос) */}
-          <rect x="4" y="63.5" width="6" height="1.8" rx="0.9"   fill="#293548"/>
-          <rect x="4" y="67"   width="6" height="1.8" rx="0.9"   fill="#293548"/>
-          <rect x="4" y="70.5" width="6" height="1.8" rx="0.9"   fill="#293548"/>
-          <rect x="4" y="74"   width="6" height="1.8" rx="0.9"   fill="#293548"/>
+          {/* Средний */}
+          <line x1="5" y1="5" x2="5" y2="33"
+            stroke="#7c3aed" strokeWidth="6" strokeLinecap="round"
+            opacity="0.32" filter="url(#sb-mid)">
+            <animate attributeName="opacity" values="0.32;0.48;0.32" dur="2s" repeatCount="indefinite"/>
+          </line>
 
-          {/* Блики между полосами */}
-          <rect x="4.5" y="65.5" width="5" height="0.8" rx="0.4" fill="#334155" opacity="0.7"/>
-          <rect x="4.5" y="69"   width="5" height="0.8" rx="0.4" fill="#334155" opacity="0.7"/>
-          <rect x="4.5" y="72.5" width="5" height="0.8" rx="0.4" fill="#334155" opacity="0.7"/>
+          {/* Близкий */}
+          <line x1="5" y1="5" x2="5" y2="33"
+            stroke="#818cf8" strokeWidth="3" strokeLinecap="round"
+            opacity="0.75" filter="url(#sb-near)">
+            <animate attributeName="opacity" values="0.75;0.95;0.75" dur="2s" repeatCount="indefinite"/>
+          </line>
 
-          {/* Блок активации */}
-          <rect x="4.2" y="77" width="5.6" height="5" rx="1.2"
-            fill="#0f172a" stroke="#334155" strokeWidth="0.4"
-          />
-          {/* Кнопка с подсветкой */}
-          <circle cx="7" cy="79.5" r="1.5"
-            fill="#818cf8" opacity="0.9" filter="url(#sb-btn)"
-          >
-            <animate attributeName="opacity" values="0.9;1;0.9" dur="2.4s" repeatCount="indefinite"/>
+          {/* Клинок */}
+          <line x1="5" y1="5" x2="5" y2="33"
+            stroke="#c4b5fd" strokeWidth="1.8" strokeLinecap="round"/>
+
+          {/* Белое ядро */}
+          <line x1="5" y1="6" x2="5" y2="32"
+            stroke="white" strokeWidth="0.7" strokeLinecap="round" opacity="0.95"/>
+
+          {/* Острие — блик */}
+          <circle cx="5" cy="5" r="3"
+            fill="#818cf8" opacity="0.4" filter="url(#sb-tip-glow)">
+            <animate attributeName="opacity" values="0.4;0.6;0.4" dur="2s" repeatCount="indefinite"/>
           </circle>
-          <circle cx="7" cy="79.5" r="0.9" fill="#e0e7ff"/>
+          <circle cx="5" cy="5" r="1.2" fill="white" opacity="0.98"/>
 
-          {/* ════ ПОМЕЛ (навершие) ════ */}
-          <ellipse cx="7" cy="85.5" rx="4" ry="2.2" fill="#334155"/>
-          <ellipse cx="7" cy="85" rx="3" ry="1.5" fill="#475569"/>
-          <ellipse cx="7" cy="84.7" rx="1.8" ry="0.8" fill="#64748b" opacity="0.8"/>
+          {/* ─ ЭМИТТЕР ─ */}
+          <rect x="2.5" y="33" width="5" height="2" rx="1"
+            fill="#475569"/>
+          <rect x="2.8" y="33.1" width="4.4" height="0.9" rx="0.45"
+            fill="#64748b" opacity="0.8"/>
+
+          {/* ─ ГАРДА ─ */}
+          <rect x="0.5" y="35" width="9" height="2.5" rx="1.25"
+            fill="#334155"/>
+          <rect x="1" y="35.2" width="8" height="1" rx="0.5"
+            fill="#64748b" opacity="0.55"/>
+
+          {/* ─ РУКОЯТЬ ─ */}
+          <rect x="3" y="37.5" width="4" height="17" rx="2"
+            fill="url(#hilt-g)"/>
+
+          {/* Полосы намотки */}
+          <rect x="3" y="39.5" width="4" height="1.3" rx="0.65" fill="#1e293b"/>
+          <rect x="3" y="42.2" width="4" height="1.3" rx="0.65" fill="#1e293b"/>
+          <rect x="3" y="44.9" width="4" height="1.3" rx="0.65" fill="#1e293b"/>
+
+          {/* Кнопка активации */}
+          <circle cx="5" cy="48.5" r="1.2"
+            fill="#818cf8" opacity="0.85" filter="url(#sb-btn-glow)">
+            <animate attributeName="opacity" values="0.85;1;0.85" dur="2.6s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="5" cy="48.5" r="0.65" fill="#e0e7ff"/>
+
+          {/* ─ НАВЕРШИЕ ─ */}
+          <ellipse cx="5" cy="55.5" rx="3" ry="1.6" fill="#293548"/>
+          <ellipse cx="5" cy="55" rx="2.2" ry="1.1" fill="#3d4f6b"/>
         </svg>
       </div>
     </>
