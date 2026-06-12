@@ -1168,6 +1168,18 @@ async fn install_forge_from_zip(
             .map_err(|e| format!("Не удалось скачать Forge universal: {}", e))?;
     }
 
+    // Forge FMLLoader ищет Universal jar также под старым путём:
+    // libraries/net/minecraftforge/forge/1.19.2-43.2.21/forge-1.19.2-43.2.21-universal.jar
+    // (без "forge-" в имени директории). LauncherVersion.<clinit> читает
+    // Implementation-Version из манифеста, и ищет jar по шаблону forge-*-universal.jar.
+    let legacy_dir = mc_dir.join("libraries/net/minecraftforge/forge")
+        .join(format!("1.19.2-{}", forge_version));
+    let legacy_jar = legacy_dir.join(format!("forge-1.19.2-{}-universal.jar", forge_version));
+    if !legacy_jar.exists() && universal_dest.exists() {
+        std::fs::create_dir_all(&legacy_dir).ok();
+        let _ = std::fs::copy(&universal_dest, &legacy_jar);
+    }
+
     // 4. Сохраняем version.json в versions/{id}/
     let profile_dir = mc_dir.join("versions").join(&forge_version_id);
     std::fs::create_dir_all(&profile_dir).ok();
