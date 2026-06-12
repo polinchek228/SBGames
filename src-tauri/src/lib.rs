@@ -413,9 +413,17 @@ async fn launch_minecraft(
         });
         download_file(&client_url, &client_jar, &app)
             .await.map_err(|e| format!("Client.jar: {}", e))?;
+    }
 
-        // 2b. Скачиваем vanilla libraries + native classifiers для текущей ОС
-        // Forge их требует через inheritsFrom — без них Forge падает.
+    // 2b. Скачиваем vanilla libraries + native classifiers для текущей ОС
+    // Forge их требует через inheritsFrom — без них Forge падает.
+    // Этот блок ВСЕГДА запускается (даже если client.jar уже скачан) — нужно для
+    // повторных запусков, когда пользователь уже качал клиент раньше.
+    {
+        let ver_text = std::fs::read_to_string(&json)
+            .map_err(|e| format!("read vanilla manifest: {}", e))?;
+        let ver: serde_json::Value = serde_json::from_str(&ver_text)
+            .map_err(|e| format!("parse vanilla manifest: {}", e))?;
         let libs = ver["libraries"].as_array().cloned().unwrap_or_default();
         let total = libs.len();
         let our_os = if cfg!(target_os = "windows") { "windows" }
@@ -456,7 +464,6 @@ async fn launch_minecraft(
             if let Some(natives) = lib.get("natives") {
                 if let Some(native_obj) = natives.get(our_os) {
                     let native_name = native_obj.as_str().unwrap_or("");
-                    // Заменяем ${arch} на "64"
                     let classifier = native_name.replace("$", "").replace("{arch}", "64");
                     if let Some(classifiers) = lib["downloads"].get("classifiers") {
                         if let Some(nat) = classifiers.get(&classifier) {
