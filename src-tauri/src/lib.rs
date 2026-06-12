@@ -587,9 +587,10 @@ async fn launch_minecraft(
 
     // Читаем forge profile.json и собираем classpath по нему
     // Forge profile содержит полный libraries[] с name/path
+    // Vanilla client.jar (1.19.2.jar) НЕ кладём сюда — он содержит невалидный
+    // module name ("1.19.2" — цифра в начале), и пойдёт отдельно в -cp.
     let cp_sep = if cfg!(target_os = "windows") { ";" } else { ":" };
     let mut cp_parts: Vec<PathBuf> = Vec::new();
-    cp_parts.push(client_jar.clone());
 
     // Helper: get jar path from library entry — format is {name, downloads:{artifact:{path,url}}}
     fn extract_lib_paths(mc_dir: &PathBuf, libs: &serde_json::Value, out: &mut Vec<PathBuf>) {
@@ -629,37 +630,20 @@ async fn launch_minecraft(
         cp_parts.push(forge_universal);
     }
 
-    // Используем --module-path вместо -cp. Java 17 strict module system иначе
-    // не находит модули (cpw.mods.securejarhandler) даже если jar в classpath.
-    // Vanilla client.jar содержит классы MC (не модули) — добавляем его отдельно в classpath.
-    let mut module_path: Vec<PathBuf> = Vec::new();
-    let mut classpath_extra: Vec<PathBuf> = Vec::new();
-    for p in std::mem::take(&mut cp_parts) {
-        // Проверяем содержит ли jar module-info.class
-        let has_module = check_jar_has_module_info(&p).unwrap_or(false);
-        if has_module {
-            module_path.push(p);
-        } else {
-            classpath_extra.push(p);
-        }
-    }
+    // Всё кладём в --module-path: jar с module-info.class становятся именованными модулями,
+    // jar без — становятся automatic modules (берётся имя из имени файла).
+    // Это решает "Module typetools not found" — typetools.jar без module-info
+    // становится automatic module "typetools", который eventbus может require.
+    let module_path = std::mem::take(&mut cp_parts);
+    let mp = module_path.iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(cp_sep);
+    cmd.arg("--module-path").arg(mp);
 
-    if !module_path.is_empty() {
-        let mp = module_path.iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(cp_sep);
-        cmd.arg("--module-path").arg(mp);
-    }
-
-    // Vanilla client.jar + non-modular libraries идут в classpath
-    if !classpath_extra.is_empty() {
-        let cp = classpath_extra.iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(cp_sep);
-        cmd.arg("-cp").arg(cp);
-    }
+    // Vanilla client.jar добавляем через -cp (он содержит не-модульные классы MC
+    // которые BootstrapLauncher загрузит через SecureJar)
+    cmd.arg("-cp").arg(&client_jar);
 
     // Main class — Forge BootstrapLauncher
     cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
