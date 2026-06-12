@@ -625,7 +625,15 @@ async fn launch_minecraft(
     cmd.arg("--versionType").arg("release");
     cmd.arg("--launchTarget").arg("forgeclient");
 
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    // Логи Java в файлы — чтобы можно было прочитать ошибки
+    let java_log = mc_dir.join("java-stdout.log");
+    let java_err = mc_dir.join("java-stderr.log");
+    let log_out = std::fs::File::create(&java_log).ok();
+    let log_err = std::fs::File::create(&java_err).ok();
+
+    cmd.stdin(Stdio::null());
+    cmd.stdout(if let Some(f) = log_out { Stdio::from(f) } else { Stdio::null() });
+    cmd.stderr(if let Some(f) = log_err { Stdio::from(f) } else { Stdio::null() });
     cmd.current_dir(&mc_dir);
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -633,7 +641,7 @@ async fn launch_minecraft(
         downloaded: 100, total: 100, speed_kbs: 0,
     });
 
-    // Не блокируем — spawn отвязываем
+    // Spawn
     let child = cmd.spawn().map_err(|e| format!("Не удалось запустить: {}", e))?;
     let pid = child.id();
 
