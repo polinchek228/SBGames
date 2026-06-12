@@ -337,7 +337,7 @@ struct DownloadProgress {
     speed_kbs:  u64,
 }
 
-// ─── Real Minecraft launcher (Forge 1.19.2 offline) ──────────────────────────
+// ─── Real Minecraft launcher (Forge 1.20.1 offline) ──────────────────────────
 #[tauri::command]
 async fn launch_minecraft(
     app: tauri::AppHandle,
@@ -367,7 +367,7 @@ async fn launch_minecraft(
     std::fs::create_dir_all(&mc_dir).map_err(|e| format!("Не удалось создать .sbgames: {}", e))?;
     std::fs::create_dir_all(mc_dir.join("mods")).ok();
     std::fs::create_dir_all(mc_dir.join("libraries")).ok();
-    std::fs::create_dir_all(mc_dir.join("versions/1.19.2")).ok();
+    std::fs::create_dir_all(mc_dir.join("versions/1.20.1")).ok();
     std::fs::create_dir_all(mc_dir.join("assets")).ok();
 
     // 1. Проверяем Java
@@ -380,9 +380,9 @@ async fn launch_minecraft(
         file: "Java найдена".into(), downloaded: 3, total: 100, speed_kbs: 0,
     });
 
-    // 2. Vanilla client 1.19.2 — резолвим URL через version_manifest_v2
-    let client_jar = mc_dir.join("versions/1.19.2/1.19.2.jar");
-    let json       = mc_dir.join("versions/1.19.2/1.19.2.json");
+    // 2. Vanilla client 1.20.1 — резолвим URL через version_manifest_v2
+    let client_jar = mc_dir.join("versions/1.20.1/1.20.1.jar");
+    let json       = mc_dir.join("versions/1.20.1/1.20.1.json");
 
     if !client_jar.exists() || !json.exists() {
         let _ = app.emit("download_progress", DownloadProgress {
@@ -401,7 +401,7 @@ async fn launch_minecraft(
             let m: serde_json::Value = serde_json::from_str(&manifest_text).ok()
                 .ok_or("Manifest parse")?;
             let arr = m["versions"].as_array().ok_or("versions[] missing")?;
-            let v = arr.iter().find(|v| v["id"] == "1.19.2").ok_or("1.19.2 not in manifest")?;
+            let v = arr.iter().find(|v| v["id"] == "1.20.1").ok_or("1.20.1 not in manifest")?;
             v["url"].as_str().ok_or("manifest url missing")?.to_string()
         };
         std::fs::create_dir_all(json.parent().unwrap()).ok();
@@ -416,7 +416,7 @@ async fn launch_minecraft(
             .ok_or("URL client.jar не найден")?.to_string();
         let client_size = ver["downloads"]["client"]["size"].as_u64().unwrap_or(21_000_000);
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "minecraft-1.19.2-client.jar".into(),
+            file:       "minecraft-1.20.1-client.jar".into(),
             downloaded: 0, total: client_size, speed_kbs: 0,
         });
         download_file(&client_url, &client_jar, &app)
@@ -504,14 +504,16 @@ async fn launch_minecraft(
 
     // 3. Forge install через installer.jar — он сам качает все libraries
     // и создаёт version.json для Forge профиля.
-    let forge_version = "43.2.21";
-    let forge_version_id = format!("1.19.2-forge-{}", forge_version);
+    // Серверный мод-пак "Звёздные Войны" использует MC 1.20.1 + Forge 47.4.10.
+    let mc_version = "1.20.1";
+    let forge_version = "47.4.10";
+    let forge_version_id = format!("{}-forge-{}", mc_version, forge_version);
     let forge_profile_json = mc_dir.join("versions").join(&forge_version_id).join(format!("{}.json", forge_version_id));
     let forge_marker    = mc_dir.join(".forge_installed");
 
     if !forge_profile_json.exists() || !forge_marker.exists() {
         // Forge installer требует перед запуском:
-        // 1. vanilla 1.19.2 client.jar + manifest в versions/1.19.2/
+        // 1. vanilla 1.20.1 client.jar + manifest в versions/1.20.1/
         // 2. assets/indexes/1.19.json
         // 3. launcher_profiles.json в корне (любой непустой JSON)
         // Без этого installer падает: "no minecraft launcher profile"
@@ -521,7 +523,7 @@ async fn launch_minecraft(
         let assets_idx = assets_idx_dir.join("1.19.json");
         if !assets_idx.exists() {
             // Скачиваем из vanilla manifest
-            if let Ok(ver_text) = std::fs::read_to_string(mc_dir.join("versions/1.19.2/1.19.2.json")) {
+            if let Ok(ver_text) = std::fs::read_to_string(mc_dir.join("versions/1.20.1/1.20.1.json")) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&ver_text) {
                     if let Some(idx_url) = v["assetIndex"]["url"].as_str() {
                         let _ = std::process::Command::new("curl")
@@ -534,7 +536,7 @@ async fn launch_minecraft(
         }
 
         let installer_url = format!(
-            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-installer.jar",
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-{}/forge-1.20.1-{}-installer.jar",
             forge_version, forge_version
         );
         let installer_jar = mc_dir.join("forge-installer.jar");
@@ -581,7 +583,7 @@ async fn launch_minecraft(
 
         // Помечаем установку как завершённую только если installer создал patched minecraft.
         // Без этого binpatch forge не сможет запуститься.
-        let extra_jar = mc_dir.join("libraries/net/minecraft/client/1.19.2-20220805.130853/client-1.19.2-20220805.130853-extra.jar");
+        let extra_jar = mc_dir.join("libraries/net/minecraft/client/1.20.1-20220805.130853/client-1.20.1-20220805.130853-extra.jar");
         if extra_jar.exists() {
             std::fs::write(&forge_marker, forge_version).ok();
         }
@@ -592,7 +594,7 @@ async fn launch_minecraft(
     // и не требует отдельной загрузки Minecraft libraries — он сам подтянет.
     // Libraries уже распакованы через install_forge_from_zip
 
-    // Копируем Forge universal.jar в legacy путь (1.19.2-VER/).
+    // Копируем Forge universal.jar в legacy путь (1.20.1-VER/).
     // FMLLoader.LoaderVersion.<clinit> ищет именно его для получения Implementation-Version.
     // Делаем КАЖДЫЙ запуск — потому что install_marker может уже стоять, а legacy копия — нет.
     // Также ПАТЧИМ манифест: Forge installer делает binpatch и пишет Implementation-Version,
@@ -600,8 +602,8 @@ async fn launch_minecraft(
     // "Missing FMLLauncher version". Добавляем атрибут вручную.
     {
         let legacy_dir = mc_dir.join("libraries/net/minecraftforge/forge")
-            .join(format!("1.19.2-{}", forge_version));
-        let legacy_jar = legacy_dir.join(format!("forge-1.19.2-{}-universal.jar", forge_version));
+            .join(format!("1.20.1-{}", forge_version));
+        let legacy_jar = legacy_dir.join(format!("forge-1.20.1-{}-universal.jar", forge_version));
         let new_jar = mc_dir.join("libraries/net/minecraftforge/forge")
             .join(&forge_version_id)
             .join(format!("{}.jar", forge_version_id));
@@ -615,7 +617,7 @@ async fn launch_minecraft(
         if legacy_jar.exists() {
             patch_universal_manifest(&legacy_jar, &forge_version, &forge_version_id);
         }
-        // Также патчим в новом пути (1.19.2-forge-VER/...)
+        // Также патчим в новом пути (1.20.1-forge-VER/...)
         if new_jar.exists() {
             patch_universal_manifest(&new_jar, &forge_version, &forge_version_id);
         }
@@ -634,7 +636,7 @@ async fn launch_minecraft(
     cmd.arg("-Dfile.encoding=UTF-8");
     cmd.arg("-Dforge.logging.console.level=info");
 
-    // JVM add-opens для Forge 1.19.2 (Java 17+)
+    // JVM add-opens для Forge 1.20.1 (Java 17+)
     // С named modules --add-opens=ALL-UNNAMED не работает — нужно перечислить модули
     // или использовать "java.base/...=ALL-UNNAMED,cpw.mods.securejarhandler,cpw.mods.bootstraplauncher,..."
     // Проще открыть вообще всему (используя --add-opens java.base/...=java.base) — но это нельзя.
@@ -672,8 +674,8 @@ async fn launch_minecraft(
 
     // Читаем forge profile.json и собираем classpath по нему
     // Forge profile содержит полный libraries[] с name/path
-    // Vanilla client.jar (1.19.2.jar) НЕ кладём сюда — он содержит невалидный
-    // module name ("1.19.2" — цифра в начале), и пойдёт отдельно в -cp.
+    // Vanilla client.jar (1.20.1.jar) НЕ кладём сюда — он содержит невалидный
+    // module name ("1.20.1" — цифра в начале), и пойдёт отдельно в -cp.
     let cp_sep = if cfg!(target_os = "windows") { ";" } else { ":" };
     let mut cp_parts: Vec<PathBuf> = Vec::new();
 
@@ -698,7 +700,7 @@ async fn launch_minecraft(
         if let Ok(profile) = serde_json::from_str::<serde_json::Value>(&profile_text) {
             extract_lib_paths(&mc_dir, &profile["libraries"], &mut cp_parts);
 
-            // Если Forge profile наследуется от vanilla 1.19.2 — добавляем
+            // Если Forge profile наследуется от vanilla 1.20.1 — добавляем
             // vanilla libraries в classpath
             if let Some(inherits) = profile["inheritsFrom"].as_str() {
                 let vanilla_json = mc_dir.join("versions").join(inherits).join(format!("{}.json", inherits));
@@ -711,11 +713,11 @@ async fn launch_minecraft(
         }
     } else {
         // Fallback — только universal
-        let forge_universal = mc_dir.join(format!("libraries/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar", forge_version, forge_version));
+        let forge_universal = mc_dir.join(format!("libraries/net/minecraftforge/forge/1.20.1-{}/forge-1.20.1-{}-universal.jar", forge_version, forge_version));
         cp_parts.push(forge_universal);
     }
 
-    // Forge 1.19.2 + Java 17 = нужен гибридный подход:
+    // Forge 1.20.1 + Java 17 = нужен гибридный подход:
     //  - bootstraplauncher + securejarhandler + asm-*: Java 9+ modules
     //    (требуют --module-path с --add-modules ALL-MODULE-PATH)
     //  - Остальные Forge libraries (включая forge-*-universal.jar с
@@ -757,7 +759,7 @@ async fn launch_minecraft(
     // 2) -DlibraryDirectory — Forge LibraryFinder ищет этот property
     cmd.arg(format!("-DlibraryDirectory={}", mc_dir.join("libraries").display()));
     // -DignoreList (из version.json arguments.jvm) — Forge игнорирует эти jar
-    cmd.arg("-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.19.2.jar");
+    cmd.arg("-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.20.1.jar");
     // -DmergeModules для JNA
     cmd.arg("-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar");
 
@@ -773,12 +775,12 @@ async fn launch_minecraft(
     cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
 
     cmd.arg("--username").arg(&username);
-    cmd.arg("--version").arg(format!("1.19.2-forge-{}", forge_version));
+    cmd.arg("--version").arg(format!("1.20.1-forge-{}", forge_version));
     cmd.arg("--gameDir").arg(&mc_dir);
-    // SBGames кастомный titlebar в Minecraft (заменяет "Minecraft 1.19.2" на "SBGames")
+    // SBGames кастомный titlebar в Minecraft (заменяет "Minecraft 1.20.1" на "SBGames")
     cmd.arg("--title").arg("SBGames");
     cmd.arg("--assetsDir").arg(mc_dir.join("assets"));
-    cmd.arg("--assetIndex").arg("1.19");
+    cmd.arg("--assetIndex").arg("5");
     cmd.arg("--uuid").arg(uuid_str(&uuid_from_username(&username)));
     cmd.arg("--accessToken").arg(&token);
     cmd.arg("--userType").arg("legacy");
@@ -786,9 +788,9 @@ async fn launch_minecraft(
     cmd.arg("--launchTarget").arg("forgeclient");
     // Forge game args (из version.json arguments.game) — обязательные
     cmd.arg("--fml.forgeVersion").arg(&forge_version);
-    cmd.arg("--fml.mcVersion").arg("1.19.2");
+    cmd.arg("--fml.mcVersion").arg("1.20.1");
     cmd.arg("--fml.forgeGroup").arg("net.minecraftforge");
-    cmd.arg("--fml.mcpVersion").arg("20220805.130853");
+    cmd.arg("--fml.mcpVersion").arg("20230612.114412");
 
     // Логи Java в файлы — чтобы можно было прочитать ошибки
     let java_log = mc_dir.join("java-stdout.log");
@@ -827,7 +829,7 @@ async fn launch_minecraft(
     let _ = std::fs::write(mc_dir.join(".minecraft.pid"), pid.to_string());
 
     // Переименовываем окно Minecraft → "SBGames" + мониторим пока жив Java-процесс
-    // (LWJGL/Forge периодически сбрасывают titlebar на "Minecraft 1.19.2")
+    // (LWJGL/Forge периодически сбрасывают titlebar на "Minecraft 1.20.1")
     #[cfg(target_os = "windows")]
     {
         std::thread::spawn(move || {
@@ -837,7 +839,7 @@ async fn launch_minecraft(
                 std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
             }
             let wanted = to_wide("SBGames");
-            let mc_titles = ["Minecraft 1.19.2", "Minecraft* 1.19.2", "Minecraft"];
+            let mc_titles = ["Minecraft 1.20.1", "Minecraft* 1.20.1", "Minecraft"];
 
             // Ждём появления окна (до 60 сек)
             for _ in 0..1800 {
@@ -1411,13 +1413,13 @@ async fn install_forge_from_zip(
             std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
         }
     } else {
-        // universal.jar не в zip (это нормально для Forge 1.19.2+) — качаем напрямую с Maven
+        // universal.jar не в zip (это нормально для Forge 1.20.1+) — качаем напрямую с Maven
         let universal_url = format!(
-            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar",
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-{}/forge-1.20.1-{}-universal.jar",
             forge_version, forge_version
         );
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "forge-1.19.2-universal.jar".into(),
+            file:       "forge-1.20.1-universal.jar".into(),
             downloaded: 0, total: 2_630_062, speed_kbs: 0,
         });
         download_file(&universal_url, &universal_dest, app)
@@ -1426,12 +1428,12 @@ async fn install_forge_from_zip(
     }
 
     // Forge FMLLoader ищет Universal jar также под старым путём:
-    // libraries/net/minecraftforge/forge/1.19.2-43.2.21/forge-1.19.2-43.2.21-universal.jar
+    // libraries/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-universal.jar
     // (без "forge-" в имени директории). LauncherVersion.<clinit> читает
     // Implementation-Version из манифеста, и ищет jar по шаблону forge-*-universal.jar.
     let legacy_dir = mc_dir.join("libraries/net/minecraftforge/forge")
-        .join(format!("1.19.2-{}", forge_version));
-    let legacy_jar = legacy_dir.join(format!("forge-1.19.2-{}-universal.jar", forge_version));
+        .join(format!("1.20.1-{}", forge_version));
+    let legacy_jar = legacy_dir.join(format!("forge-1.20.1-{}-universal.jar", forge_version));
     if !legacy_jar.exists() && universal_dest.exists() {
         std::fs::create_dir_all(&legacy_dir).ok();
         let _ = std::fs::copy(&universal_dest, &legacy_jar);
