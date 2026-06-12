@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Settings, X, Cpu, HardDrive } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
-import { invoke, notify, setDiscordPresence, clearDiscordPresence } from "../lib/tauri.js";
+import { invoke, notify, setDiscordPresence, clearDiscordPresence, getMinecraftStatus, killMinecraft } from "../lib/tauri.js";
 
 const SERVERS = [
   {
@@ -37,6 +37,22 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   // Прогресс скачивания показывается глобальным DownloadProgress в MainLayout
 
+  // ─── Minecraft running state (single-launch lock) ──────────────────────
+  const [mcRunning, setMcRunning] = useState(false);
+  const pollRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const status = await getMinecraftStatus();
+        if (!cancelled) setMcRunning(!!status?.running);
+      } catch {}
+    };
+    poll();
+    pollRef.current = setInterval(poll, 2000);
+    return () => { cancelled = true; if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
     // Discord — смена сервера
@@ -67,6 +83,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       });
       saveSession(selected.id, user?.username);
       await notify("SB Games", `${result}`);
+      setMcRunning(true);   // сразу блокируем кнопку
       setLaunching(false);
       setLaunched(true);
       setTimeout(() => setLaunched(false), 4000);
@@ -74,6 +91,12 @@ export default function PlayPage({ user, onOpenCommunity }) {
       setLaunchError(String(err));
       setLaunching(false);
     }
+  };
+
+  // Закрыть Minecraft (если висит)
+  const handleClose = async () => {
+    try { await killMinecraft(); } catch {}
+    setMcRunning(false);
   };
 
   // ─── 10. Session history ──────────────────────────────────────────────────
@@ -240,38 +263,60 @@ export default function PlayPage({ user, onOpenCommunity }) {
               </span>
             </div>
 
-            {/* ИГРАТЬ */}
-            <motion.button
-              onClick={handlePlay}
-              data-launch-btn
-              disabled={launching || launched}
-              whileTap={{ scale: 0.96 }}
-              className="flex items-center gap-3 h-[44px] rounded-2xl font-black text-[14px] tracking-widest uppercase disabled:opacity-60 transition-colors duration-150"
-              style={{
-                padding: "0 32px",
-                background: launched ? "#16a34a" : "#2563EB",
-                color: "#fff",
-                boxShadow: launched
-                  ? "0 0 24px rgba(22,163,74,0.4)"
-                  : "0 0 24px rgba(37,99,235,0.4)",
-              }}
-              onMouseEnter={e => { if (!launching && !launched) e.currentTarget.style.background = "#1d4ed8"; }}
-              onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = launched ? "#16a34a" : "#2563EB"; }}
-            >
-              {launching ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ЗАПУСК...
-                </>
-              ) : launched ? (
-                <>✓ ЗАПУЩЕНО</>
-              ) : (
-                <>
-                  ИГРАТЬ
-                  <Play size={16} weight="fill" />
-                </>
-              )}
-            </motion.button>
+            {/* ИГРАТЬ / В ИГРЕ */}
+            {mcRunning ? (
+              /* Minecraft запущен — показываем статус + кнопку завершить */
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5 h-[44px] px-6 rounded-2xl font-black text-[13px] tracking-widest uppercase"
+                  style={{ background: "rgba(22,163,74,0.15)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.2)" }}>
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  В ИГРЕ
+                </div>
+                <motion.button
+                  onClick={handleClose}
+                  whileTap={{ scale: 0.95 }}
+                  className="h-[44px] px-4 rounded-2xl font-bold text-[11px] tracking-wider uppercase transition-all"
+                  style={{ background: "rgba(239,68,68,0.12)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.25)"; e.currentTarget.style.color = "#fff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.color = "#fca5a5"; }}
+                  title="Завершить игру"
+                >
+                  <X size={14} />
+                </motion.button>
+              </div>
+            ) : (
+              <motion.button
+                onClick={handlePlay}
+                data-launch-btn
+                disabled={launching || launched}
+                whileTap={{ scale: 0.96 }}
+                className="flex items-center gap-3 h-[44px] rounded-2xl font-black text-[14px] tracking-widest uppercase disabled:opacity-60 transition-colors duration-150"
+                style={{
+                  padding: "0 32px",
+                  background: launched ? "#16a34a" : "#2563EB",
+                  color: "#fff",
+                  boxShadow: launched
+                    ? "0 0 24px rgba(22,163,74,0.4)"
+                    : "0 0 24px rgba(37,99,235,0.4)",
+                }}
+                onMouseEnter={e => { if (!launching && !launched) e.currentTarget.style.background = "#1d4ed8"; }}
+                onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = launched ? "#16a34a" : "#2563EB"; }}
+              >
+                {launching ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ЗАПУСК...
+                  </>
+                ) : launched ? (
+                  <>✓ ЗАПУЩЕНО</>
+                ) : (
+                  <>
+                    ИГРАТЬ
+                    <Play size={16} weight="fill" />
+                  </>
+                )}
+              </motion.button>
+            )}
 
             {/* Шестерёнка настроек запуска */}
             <motion.button

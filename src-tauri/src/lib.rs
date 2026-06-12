@@ -348,6 +348,14 @@ async fn launch_minecraft(
     java_path: Option<String>,
 ) -> Result<String, String> {
     use std::process::{Command, Stdio};
+
+    // ─── Single-launch protection: block если уже запущен процесс Minecraft ─
+    if let Some(running_pid) = read_running_minecraft_pid() {
+        return Err(format!(
+            "Minecraft уже запущен (pid={}). Закрой игру или заверши процесс.",
+            running_pid
+        ));
+    }
     use std::path::PathBuf;
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -502,6 +510,29 @@ async fn launch_minecraft(
     let forge_marker    = mc_dir.join(".forge_installed");
 
     if !forge_profile_json.exists() || !forge_marker.exists() {
+        // Forge installer требует перед запуском:
+        // 1. vanilla 1.19.2 client.jar + manifest в versions/1.19.2/
+        // 2. assets/indexes/1.19.json
+        // 3. launcher_profiles.json в корне (любой непустой JSON)
+        // Без этого installer падает: "no minecraft launcher profile"
+        let _ = std::fs::write(mc_dir.join("launcher_profiles.json"), b"{}");
+        let assets_idx_dir = mc_dir.join("assets/indexes");
+        std::fs::create_dir_all(&assets_idx_dir).ok();
+        let assets_idx = assets_idx_dir.join("1.19.json");
+        if !assets_idx.exists() {
+            // Скачиваем из vanilla manifest
+            if let Ok(ver_text) = std::fs::read_to_string(mc_dir.join("versions/1.19.2/1.19.2.json")) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&ver_text) {
+                    if let Some(idx_url) = v["assetIndex"]["url"].as_str() {
+                        let _ = std::process::Command::new("curl")
+                            .arg("-fsSL").arg("--max-time").arg("30")
+                            .arg(idx_url).arg("-o").arg(&assets_idx)
+                            .output();
+                    }
+                }
+            }
+        }
+
         let installer_url = format!(
             "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-installer.jar",
             forge_version, forge_version
@@ -514,10 +545,9 @@ async fn launch_minecraft(
         download_file(&installer_url, &installer_jar, &app)
             .await.map_err(|e| format!("Не удалось скачать Forge installer: {}", e))?;
 
-        // Headless installer ждёт ввод — пробуем отправить "1\n1\n" в stdin,
-        // иначе installer упадёт и ничего не распакует.
+        // Headless installer ждёт ввод — пробуем отправить "1\n" в stdin
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "Установка Forge (libraries)...".into(),
+            file:       "Установка Forge (binpatch)...".into(),
             downloaded: 30, total: 100, speed_kbs: 0,
         });
         use std::io::Write;
@@ -548,6 +578,13 @@ async fn launch_minecraft(
         }
 
         let _ = std::fs::remove_file(&installer_jar);
+
+        // Помечаем установку как завершённую только если installer создал patched minecraft.
+        // Без этого binpatch forge не сможет запуститься.
+        let extra_jar = mc_dir.join("libraries/net/minecraft/client/1.19.2-20220805.130853/client-1.19.2-20220805.130853-extra.jar");
+        if extra_jar.exists() {
+            std::fs::write(&forge_marker, forge_version).ok();
+        }
     }
 
     // 4. Forge требует libraries — если installer не распаковал, нужно скачать вручную.
@@ -678,40 +715,68 @@ async fn launch_minecraft(
         cp_parts.push(forge_universal);
     }
 
-    // Всё кладём в --module-path: jar с module-info.class становятся именованными модулями,
-    // jar без — становятся automatic modules (берётся имя из имени файла).
-    // Это решает "Module typetools not found" — typetools.jar без module-info
-    // становится automatic module "typetools", который eventbus может require.
-    let module_path = std::mem::take(&mut cp_parts);
-    let mp = module_path.iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(cp_sep);
-    cmd.arg("--module-path").arg(mp);
+    // Forge 1.19.2 + Java 17 = нужен гибридный подход:
+    //  - bootstraplauncher + securejarhandler + asm-*: Java 9+ modules
+    //    (требуют --module-path с --add-modules ALL-MODULE-PATH)
+    //  - Остальные Forge libraries (включая forge-*-universal.jar с
+    //    Implementation-Version): НЕ модули, идут в -cp.
+    //  - vanilla client.jar: тоже -cp.
+    //
+    // Если всё в -cp, Package.getImplementationVersion() возвращает null и
+    // LauncherVersion.<clinit> падает с "Missing FMLLauncher version".
+    // Если всё в --module-path, те же не-Forge модули не видят Implementation-Version.
+    // Поэтому: только 4 boot-модуля Forge в --module-path, остальное в -cp.
+    let mut boot_modules: Vec<PathBuf> = Vec::new();
+    let mut rest_classpath: Vec<PathBuf> = Vec::new();
+    for p in std::mem::take(&mut cp_parts) {
+        let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+        // Только BootstrapLauncher, securejarhandler, asm-* — в module-path
+        if name.starts_with("bootstraplauncher-")
+            || name.starts_with("securejarhandler-")
+            || name.starts_with("asm-")
+            || name.starts_with("JarJarFileSystems-")
+        {
+            boot_modules.push(p);
+        } else {
+            rest_classpath.push(p);
+        }
+    }
+    // Добавляем vanilla client.jar в обычный classpath
+    rest_classpath.push(client_jar.clone());
 
-    // Подключаем все модули с module-path (Forge требует это)
-    cmd.arg("--add-modules").arg("ALL-MODULE-PATH");
+    // 1) Boot модули в --module-path
+    if !boot_modules.is_empty() {
+        let mp = boot_modules.iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(cp_sep);
+        cmd.arg("--module-path").arg(mp);
+        cmd.arg("--add-modules").arg("ALL-MODULE-PATH");
+    }
 
-    // -DignoreList — Forge игнорирует эти jar при сканировании
+    // 2) -DlibraryDirectory — Forge LibraryFinder ищет этот property
+    cmd.arg(format!("-DlibraryDirectory={}", mc_dir.join("libraries").display()));
+    // -DignoreList (из version.json arguments.jvm) — Forge игнорирует эти jar
     cmd.arg("-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.19.2.jar");
-
     // -DmergeModules для JNA
     cmd.arg("-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar");
 
-    // -DlibraryDirectory — путь к libraries/
-    cmd.arg(format!("-DlibraryDirectory={}", mc_dir.join("libraries").display()));
+    // 2) Остальные библиотеки + vanilla в -cp (всё в одном classpath,
+    //    чтобы Forge видел Implementation-Version из manifest)
+    let cp = rest_classpath.iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(cp_sep);
+    cmd.arg("-cp").arg(cp);
 
-    // Vanilla client.jar добавляем через -cp (он содержит не-модульные классы MC
-    // которые BootstrapLauncher загрузит через SecureJar)
-    cmd.arg("-cp").arg(&client_jar);
-
-    // Main class — Forge BootstrapLauncher как именованный модуль
-    // Формат: --module <module>/<class>
-    cmd.arg("--module").arg("cpw.mods.bootstraplauncher/cpw.mods.bootstraplauncher.BootstrapLauncher");
+    // Main class — Forge BootstrapLauncher (находится в module-path)
+    cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
 
     cmd.arg("--username").arg(&username);
     cmd.arg("--version").arg(format!("1.19.2-forge-{}", forge_version));
     cmd.arg("--gameDir").arg(&mc_dir);
+    // SBGames кастомный titlebar в Minecraft (заменяет "Minecraft 1.19.2" на "SBGames")
+    cmd.arg("--title").arg("SBGames");
     cmd.arg("--assetsDir").arg(mc_dir.join("assets"));
     cmd.arg("--assetIndex").arg("1.19");
     cmd.arg("--uuid").arg(uuid_str(&uuid_from_username(&username)));
@@ -719,6 +784,11 @@ async fn launch_minecraft(
     cmd.arg("--userType").arg("legacy");
     cmd.arg("--versionType").arg("release");
     cmd.arg("--launchTarget").arg("forgeclient");
+    // Forge game args (из version.json arguments.game) — обязательные
+    cmd.arg("--fml.forgeVersion").arg(&forge_version);
+    cmd.arg("--fml.mcVersion").arg("1.19.2");
+    cmd.arg("--fml.forgeGroup").arg("net.minecraftforge");
+    cmd.arg("--fml.mcpVersion").arg("20220805.130853");
 
     // Логи Java в файлы — чтобы можно было прочитать ошибки
     let java_log = mc_dir.join("java-stdout.log");
@@ -753,6 +823,10 @@ async fn launch_minecraft(
     let child = cmd.spawn().map_err(|e| format!("Не удалось запустить: {}", e))?;
     let pid = child.id();
 
+    // Сохраняем PID в файл — чтобы можно было проверять при следующем запуске
+    // (если процесс умер, файл перезаписывается). Также пригодится для UI.
+    let _ = std::fs::write(mc_dir.join(".minecraft.pid"), pid.to_string());
+
     // Сохраняем в состояние что игра запущена
     let state = app.state::<TrayState>();
     let mut s = state.inner().clone();
@@ -762,6 +836,69 @@ async fn launch_minecraft(
     }));
 
     Ok(format!("Minecraft запущен (pid={}, user={})", pid, username))
+}
+
+/// Проверяет, запущен ли уже Minecraft (через PID файл + tasklist)
+fn read_running_minecraft_pid() -> Option<u32> {
+    let mc_dir = minecraft_dir();
+    let pid_file = mc_dir.join(".minecraft.pid");
+    if !pid_file.exists() { return None; }
+    let pid_str = std::fs::read_to_string(&pid_file).ok()?;
+    let pid: u32 = pid_str.trim().parse().ok()?;
+
+    // Проверяем что процесс с этим PID жив (Windows: OpenProcess через tasklist)
+    #[cfg(target_os = "windows")]
+    {
+        let out = std::process::Command::new("tasklist")
+            .arg("/FI").arg(format!("PID eq {}", pid))
+            .output().ok()?;
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        // Если строка с PID есть в выводе — процесс жив
+        if stdout.contains(&pid.to_string()) && !stdout.contains("No tasks") {
+            return Some(pid);
+        }
+        // Мёртвый PID — удаляем файл
+        let _ = std::fs::remove_file(&pid_file);
+        None
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix: kill -0
+        let out = std::process::Command::new("kill")
+            .arg("-0").arg(pid.to_string())
+            .output().ok()?;
+        if out.status.success() { Some(pid) } else { let _ = std::fs::remove_file(&pid_file); None }
+    }
+}
+
+/// Команда для UI: проверяет запущен ли Minecraft (без блокировки)
+#[tauri::command]
+async fn get_minecraft_status() -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "running": read_running_minecraft_pid().is_some(),
+    }))
+}
+
+/// Команда для UI: убить Minecraft (если он завис)
+#[tauri::command]
+async fn kill_minecraft() -> Result<(), String> {
+    if let Some(pid) = read_running_minecraft_pid() {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .arg("/PID").arg(pid.to_string())
+                .arg("/F").arg("/T")
+                .output();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = std::process::Command::new("kill")
+                .arg("-9").arg(pid.to_string())
+                .output();
+        }
+    }
+    let _ = std::fs::remove_file(minecraft_dir().join(".minecraft.pid"));
+    Ok(())
 }
 
 // SB Games game dir — кастомная директория .sbgames чтобы не путать с обычным MC
@@ -1315,6 +1452,8 @@ pub fn run() {
             get_version,
             get_system_ram_gb,
             launch_minecraft,
+            get_minecraft_status,
+            kill_minecraft,
             // Discord
             set_discord_presence,
             clear_discord_presence,

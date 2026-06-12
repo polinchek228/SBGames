@@ -30,3 +30,11 @@ export async function setDiscordPresence(details, status, largeImage = "sbgames"
 export async function clearDiscordPresence() {
   return invoke("clear_discord_presence");
 }
+
+export async function getMinecraftStatus() {
+  return invoke("get_minecraft_status");
+}
+
+export async function killMinecraft() {
+  return invoke("kill_minecraft");
+}
