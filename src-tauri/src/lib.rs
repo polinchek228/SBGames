@@ -824,8 +824,29 @@ async fn launch_minecraft(
     let pid = child.id();
 
     // Сохраняем PID в файл — чтобы можно было проверять при следующем запуске
-    // (если процесс умер, файл перезаписывается). Также пригодится для UI.
     let _ = std::fs::write(mc_dir.join(".minecraft.pid"), pid.to_string());
+
+    // Переименовываем окно Minecraft → "SBGames" через Win32 API.
+    // Forge игнорирует --title, поэтому ждём появления окна и меняем SetWindowTextW.
+    #[cfg(target_os = "windows")]
+    std::thread::spawn(move || {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SetWindowTextW};
+        use std::os::windows::ffi::OsStrExt;
+        fn to_wide(s: &str) -> Vec<u16> {
+            std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        }
+        let mc_titles = ["Minecraft 1.19.2", "Minecraft* 1.19.2", "Minecraft"];
+        for _ in 0..120 { // 60 секунд
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            for t in &mc_titles {
+                let hwnd = unsafe { FindWindowW(std::ptr::null(), to_wide(t).as_ptr()) };
+                if hwnd != 0 {
+                    unsafe { SetWindowTextW(hwnd, to_wide("SBGames").as_ptr()) };
+                    return;
+                }
+            }
+        }
+    });
 
     // Сохраняем в состояние что игра запущена
     let state = app.state::<TrayState>();
