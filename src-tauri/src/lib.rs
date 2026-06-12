@@ -660,6 +660,18 @@ async fn launch_minecraft(
         .join(cp_sep);
     cmd.arg("--module-path").arg(mp);
 
+    // Подключаем все модули с module-path (Forge требует это)
+    cmd.arg("--add-modules").arg("ALL-MODULE-PATH");
+
+    // -DignoreList — Forge игнорирует эти jar при сканировании
+    cmd.arg("-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.19.2.jar");
+
+    // -DmergeModules для JNA
+    cmd.arg("-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar");
+
+    // -DlibraryDirectory — путь к libraries/
+    cmd.arg(format!("-DlibraryDirectory={}", mc_dir.join("libraries").display()));
+
     // Vanilla client.jar добавляем через -cp (он содержит не-модульные классы MC
     // которые BootstrapLauncher загрузит через SecureJar)
     cmd.arg("-cp").arg(&client_jar);
