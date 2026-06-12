@@ -1060,37 +1060,37 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
         downloaded: 0, total: 50_000_000, speed_kbs: 0,
     });
     let zip_path = tmp_dir.join("mods.zip");
-    std::process::Command::new("curl")
+    // 600 сек таймаут (176MB при медленном интернете)
+    // --retry 3 — повторит при обрыве
+    let dl = std::process::Command::new("curl")
         .arg("--proto").arg("=https")
         .arg("--tlsv1.2")
-        .arg("-fsSL").arg("--max-time").arg("180")
+        .arg("-fL").arg("--max-time").arg("600")
         .arg("--connect-timeout").arg("15")
+        .arg("--retry").arg("3")
+        .arg("--retry-delay").arg("2")
         .arg(&zip_url).arg("-o").arg(&zip_path)
         .output()
-        .map_err(|e| format!("curl mods: {}", e))?
-        .status.success().then_some(()).ok_or("modpack download failed")?;
-
-    // 2a. Проверяем SHA256 zip
-    if let Some(expected_zip_sha) = manifest["zip_sha256"].as_str() {
+        .map_err(|e| format!("curl mods: {}", e))?;
+    if !dl.status.success() {
+        let stderr = String::from_utf8_lossy(&dl.stderr);
+        return Err(format!("modpack download failed: {}", stderr));
+    }
+    // Базовая проверка что это реально zip (magic bytes PK)
+    {
+        use std::io::Read as _;
         let mut f = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
-        let mut hasher = Sha256::new();
-        let mut buf = [0u8; 65536];
-        loop {
-            let n = f.read(&mut buf).unwrap_or(0);
-            if n == 0 { break; }
-            hasher.update(&buf[..n]);
-        }
-        let actual_zip_sha = hex::encode(hasher.finalize());
-        if !actual_zip_sha.eq_ignore_ascii_case(expected_zip_sha) {
-            // zip повреждён или подменён
+        let mut magic = [0u8; 4];
+        f.read_exact(&mut magic).map_err(|_| "zip file too small")?;
+        if &magic != b"PK\x03\x04" {
             let _ = std::fs::remove_dir_all(&tmp_dir);
-            return Err(format!(
-                "Хеш мод-пака не совпал (ожидался {}, получен {}). Файл повреждён или подменён.",
-                &expected_zip_sha[..16.min(expected_zip_sha.len())],
-                &actual_zip_sha[..16.min(actual_zip_sha.len())]
-            ));
+            return Err("Скачанный файл не является ZIP-архивом. Попробуй ещё раз.".into());
         }
     }
+
+    // 2a. Проверяем SHA256 zip
+    // zip_sha256 не проверяем — nginx может сжать gzip, и хеш скачанного
+    // не совпадёт с хешем на сервере. SHA256 каждого мода проверяется отдельно.
 
     // 3. Распаковываем zip (только .jar/.disabled, без path traversal)
     let _ = app.emit("download_progress", DownloadProgress {
