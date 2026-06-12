@@ -41,21 +41,6 @@
         "visible": false,
         "skipTaskbar": true,
         "alwaysOnTop": true
-      },
-      {
-        "label": "mcbar",
-        "title": "SBGames Titlebar",
-        "width": 854,
-        "height": 36,
-        "resizable": false,
-        "fullscreen": false,
-        "decorations": false,
-        "transparent": true,
-        "center": false,
-        "shadow": false,
-        "visible": false,
-        "skipTaskbar": true,
-        "alwaysOnTop": true
       }
     ],
     "security": {

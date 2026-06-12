@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir && cross-env MCBAR_BUILD=1 vite build --outDir dist-mcbar --emptyOutDir && node -e \"require('fs').cpSync('dist-tray', 'dist', { recursive: true }); require('fs').cpSync('dist-mcbar', 'dist', { recursive: true });\"",
+    "build": "vite build && cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir && node -e \"require('fs').cpSync('dist-tray', 'dist', { recursive: true });\"",
     "build:main": "vite build",
     "build:tray": "cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir",
-    "build:mcbar": "cross-env MCBAR_BUILD=1 vite build --outDir dist-mcbar --emptyOutDir",
     "preview": "vite preview",
     "tauri": "tauri"
   },

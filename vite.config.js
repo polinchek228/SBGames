@@ -76,22 +76,6 @@ export default defineConfig(({ command, mode }) => {
       resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
     };
   }
-  if (process.env.MCBAR_BUILD) {
-    return {
-      plugins: [react(), obfuscatePlugin()],
-      build: {
-        outDir: "dist-mcbar",
-        emptyOutDir: true,
-        rollupOptions: {
-          input: { main: path.resolve(__dirname, "src/mcbar.html") },
-        },
-        sourcemap: false,
-        minify: "terser",
-        terserOptions: { compress: { drop_console: true, drop_debugger: true } },
-      },
-      resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
-    };
-  }
   return {
     plugins: [react(), obfuscatePlugin()],
     clearScreen: false,
