@@ -130,4 +130,23 @@ router.get("/status", (req, res) => {
     });
 });
 
+// GET /api/mods/file/:name — скачать один мод по имени
+router.get('/file/:name', (req, res) => {
+    const name = req.params.name;
+    if (!/^[a-zA-Z0-9 ._()+-]+$/.test(name) || name.includes('..')) {
+        return res.status(400).json({ error: 'bad filename' });
+    }
+    const versions = fs.existsSync(MODPACK_DIR)
+        ? fs.readdirSync(MODPACK_DIR).filter(d => { try { return fs.statSync(path.join(MODPACK_DIR,d)).isDirectory(); } catch { return false; } })
+        : [];
+    if (!versions.length) return res.status(404).json({ error: 'no modpack' });
+    versions.sort((a,b) => fs.statSync(path.join(MODPACK_DIR,b)).mtimeMs - fs.statSync(path.join(MODPACK_DIR,a)).mtimeMs);
+    const fp = path.join(MODPACK_DIR, versions[0], 'mods', name);
+    if (!fs.existsSync(fp)) return res.status(404).json({ error: 'mod not found', name });
+    const sha = require('crypto').createHash('sha256').update(fs.readFileSync(fp)).digest('hex');
+    res.set('Content-Type','application/java-archive');
+    res.set('X-Content-SHA256', sha);
+    fs.createReadStream(fp).pipe(res);
+});
+
 module.exports = router;

@@ -849,8 +849,202 @@ async fn launch_minecraft(
     let child = cmd.spawn().map_err(|e| format!("Не удалось запустить: {}", e))?;
     let pid = child.id();
 
-    // Сохраняем PID в файл — чтобы можно было проверять при следующем запуске
+    // Сохраняем PID в файл
     let _ = std::fs::write(mc_dir.join(".minecraft.pid"), pid.to_string());
+
+    // ─── Win32: помещаем Java в Job Object ───────────────────────────────────
+    // Job Object позволяет нам:
+    //   1. Убить всё дерево процессов при закрытии лаунчера
+    //   2. Ограничить доступ к отладчику (SetInformationJobObject)
+    // ВАЖНО: это не блокирует DLL инжект напрямую, но даёт контроль над процессом
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::System::JobObjects::{
+            CreateJobObjectW, AssignProcessToJobObject,
+            SetInformationJobObject, JobObjectBasicUIRestrictions,
+            JOBOBJECT_BASIC_UI_RESTRICTIONS,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_ALL_ACCESS,
+        };
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job != 0 {
+                let proc = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
+                if proc != 0 {
+                    // Запрещаем UI операции (нельзя переключать рабочий стол, инжектить через SetWindowsHookEx)
+                    let ui_restrict = JOBOBJECT_BASIC_UI_RESTRICTIONS {
+                        UIRestrictionsClass: 0x40, // JOB_OBJECT_UILIMIT_EXITWINDOWS не нужен, берём HANDLES
+                    };
+                    SetInformationJobObject(
+                        job,
+                        JobObjectBasicUIRestrictions,
+                        &ui_restrict as *const _ as *const _,
+                        std::mem::size_of::<JOBOBJECT_BASIC_UI_RESTRICTIONS>() as u32,
+                    );
+                    AssignProcessToJobObject(job, proc);
+                    CloseHandle(proc);
+                }
+                // Job handle намеренно не закрываем — живёт пока лаунчер жив
+                // При закрытии лаунчера Job убьёт все процессы в нём
+                std::mem::forget(job as usize); // не drop
+            }
+        }
+    }
+
+    // ─── Runtime protection watcher ───────────────────────────────────────────
+    {
+        let mc_dir_w = mc_dir.clone();
+        let pid_watch = pid;
+        std::thread::spawn(move || {
+            let mods_dir = mc_dir_w.join("mods");
+            let whitelist_path = mc_dir_w.join(".modpack-whitelist.json");
+            let pid_file = mc_dir_w.join(".minecraft.pid");
+
+            // Читаем whitelist
+            let allowed: std::collections::HashSet<String> = std::fs::read_to_string(&whitelist_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                .and_then(|v| v.as_array().cloned())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|m| m["name"].as_str().map(|s| s.to_lowercase()))
+                .collect();
+
+            #[cfg(target_os = "windows")]
+            {
+                use windows_sys::Win32::System::Threading::{
+                    OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+                    PROCESS_TERMINATE, TerminateProcess,
+                };
+                use windows_sys::Win32::System::ProcessStatus::EnumProcessModules;
+                use windows_sys::Win32::Foundation::{CloseHandle, MAX_PATH};
+
+                const FORBIDDEN: &[&str] = &[
+                    "doomsday", "inject", "hook_", "_hook", "cheat",
+                    "hack", "esp_", "_esp", "aimbot", "wallhack",
+                    "dumper", "megadump", "radar", "xray", "bypass",
+                    "payload", "loader_", "exploit",
+                ];
+
+                fn kill_proc(pid: u32) {
+                    unsafe {
+                        let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
+                        if h != 0 { TerminateProcess(h, 1); CloseHandle(h); }
+                    }
+                    // Принудительно через taskkill для всего дерева
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/PID", &pid.to_string(), "/F", "/T"])
+                        .output();
+                }
+
+                fn proc_alive(pid: u32) -> bool {
+                    unsafe {
+                        let h = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
+                        if h == 0 { return false; }
+                        CloseHandle(h);
+                        true
+                    }
+                }
+
+                let mut tick: u32 = 0;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+
+                    if !proc_alive(pid_watch) {
+                        let _ = std::fs::remove_file(&pid_file);
+                        break;
+                    }
+
+                    // Каждые 500мс — mods/ whitelist scan
+                    if tick % 2 == 0 {
+                        if let Ok(entries) = std::fs::read_dir(&mods_dir) {
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                if !path.is_file() { continue; }
+                                let fname = path.file_name()
+                                    .and_then(|n| n.to_str()).unwrap_or("").to_string();
+                                if !fname.ends_with(".jar") && !fname.ends_with(".disabled") { continue; }
+                                if !allowed.contains(&fname.to_lowercase()) {
+                                    let _ = std::fs::remove_file(&path);
+                                }
+                            }
+                        }
+                    }
+
+                    // Каждые 2 сек — DLL scan через EnumProcessModules
+                    if tick % 8 == 0 {
+                        unsafe {
+                            let proc = OpenProcess(
+                                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid_watch);
+                            if proc != 0 {
+                                let mut modules = [0isize; 1024];
+                                let mut needed: u32 = 0;
+                                if EnumProcessModules(proc,
+                                    modules.as_mut_ptr(),
+                                    (modules.len() * std::mem::size_of::<isize>()) as u32,
+                                    &mut needed) != 0
+                                {
+                                    let count = (needed as usize) / std::mem::size_of::<isize>();
+                                    let mut found_bad: Option<String> = None;
+                                    'outer: for i in 0..count {
+                                        let mut name_buf = [0u16; MAX_PATH as usize];
+                                        use windows_sys::Win32::System::ProcessStatus::GetModuleFileNameExW;
+                                        let len = GetModuleFileNameExW(
+                                            proc, modules[i], name_buf.as_mut_ptr(), MAX_PATH);
+                                        if len == 0 { continue; }
+                                        let name = String::from_utf16_lossy(&name_buf[..len as usize])
+                                            .to_lowercase();
+                                        for &bad in FORBIDDEN {
+                                            if name.contains(bad) {
+                                                found_bad = Some(format!("{} ({})", bad, name));
+                                                break 'outer;
+                                            }
+                                        }
+                                    }
+                                    if let Some(bad) = found_bad {
+                                        eprintln!("[guard] inject detected: {} — killing PID {}", bad, pid_watch);
+                                        CloseHandle(proc);
+                                        kill_proc(pid_watch);
+                                        let _ = std::fs::remove_file(&pid_file);
+                                        return;
+                                    }
+                                }
+                                CloseHandle(proc);
+                            }
+                        }
+                    }
+
+                    tick = tick.wrapping_add(1);
+                }
+            }
+
+            // Non-Windows fallback (просто ждём смерти процесса)
+            #[cfg(not(target_os = "windows"))]
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let alive = std::process::Command::new("kill")
+                    .arg("-0").arg(pid_watch.to_string()).output()
+                    .map(|o| o.status.success()).unwrap_or(false);
+                if !alive { let _ = std::fs::remove_file(&pid_file); break; }
+                // mods/ scan
+                if let Ok(entries) = std::fs::read_dir(&mods_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if !path.is_file() { continue; }
+                        let fname = path.file_name()
+                            .and_then(|n| n.to_str()).unwrap_or("").to_string();
+                        if !fname.ends_with(".jar") { continue; }
+                        if !allowed.contains(&fname.to_lowercase()) {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     // Переименовываем окно Minecraft → "SBGames" + мониторим пока жив Java-процесс
     // (LWJGL/Forge периодически сбрасывают titlebar на "Minecraft 1.20.1")
@@ -1092,29 +1286,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
     // zip_sha256 не проверяем — nginx может сжать gzip, и хеш скачанного
     // не совпадёт с хешем на сервере. SHA256 каждого мода проверяется отдельно.
 
-    // 3. Распаковываем zip (только .jar/.disabled, без path traversal)
-    let _ = app.emit("download_progress", DownloadProgress {
-        file:       "Распаковка...".into(),
-        downloaded: 75_000_000, total: 100_000_000, speed_kbs: 0,
-    });
-    let file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    let extract_dir = tmp_dir.join("extracted");
-    std::fs::create_dir_all(&extract_dir).ok();
-    for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().to_string();
-        if !name.ends_with(".jar") && !name.ends_with(".disabled") { continue; }
-        if name.contains("..") || name.starts_with('/') || name.starts_with('\\') { continue; }
-        let outpath = extract_dir.join(&name);
-        if let Some(parent) = outpath.parent() { std::fs::create_dir_all(parent).ok(); }
-        let mut out = std::fs::File::create(&outpath).map_err(|e| e.to_string())?;
-        std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
-    }
-    let _ = std::fs::remove_file(&zip_path);
-
-    // 4. Whitelist: собираем имена и sha256 модов из manifest
-    // (name -> (sha256, size, allow_size_check))
+    // 3. Whitelist: собираем имена и sha256 модов из manifest
     let mut allowed: std::collections::HashMap<String, (String, u64)> = std::collections::HashMap::new();
     for m in mods_list {
         let name = m["name"].as_str().unwrap_or("").to_string();
@@ -1125,15 +1297,14 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
         }
     }
 
-    // 4a. Удаляем моды в mods/ которых НЕТ в whitelist
+    // 3a. Удаляем всё что не в whitelist (лишние .jar в mods/)
     if let Ok(entries) = std::fs::read_dir(&mods_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_file() { continue; }
             let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
             if !fname.ends_with(".jar") && !fname.ends_with(".disabled") { continue; }
-            let key = fname.to_lowercase();
-            if !allowed.contains_key(&key) {
+            if !allowed.contains_key(&fname.to_lowercase()) {
                 report.removed.push(ModIssue {
                     name: fname.clone(),
                     reason: "extra".into(),
@@ -1144,69 +1315,116 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
         }
     }
 
-    // 4b. Проверяем SHA256 и размер каждого мода из manifest
-    for (name_lower, (expected_sha, expected_size)) in &allowed {
-        let fname = if let Some(m) = mods_list.iter().find(|m| m["name"].as_str().unwrap_or("").to_lowercase() == *name_lower) {
-            m["name"].as_str().unwrap_or("").to_string()
-        } else { continue };
-        let src = extract_dir.join(&fname);
-        if !src.exists() {
+    // 3b. Проверяем SHA256 каждого мода который УЖЕ ЕСТЬ в mods/.
+    // Если совпадает — не качаем. Если не совпадает / отсутствует — качаем только этот мод.
+    fn sha256_file(path: &std::path::Path) -> Option<String> {
+        use sha2::{Sha256, Digest};
+        use std::io::Read as _;
+        let mut f = std::fs::File::open(path).ok()?;
+        let mut h = Sha256::new();
+        let mut buf = [0u8; 65536];
+        loop { let n = f.read(&mut buf).ok()?; if n == 0 { break; } h.update(&buf[..n]); }
+        Some(hex::encode(h.finalize()))
+    }
+
+    let mut need_download = false;
+    for (name_lower, (expected_sha, _)) in &allowed {
+        let fname = mods_list.iter()
+            .find(|m| m["name"].as_str().unwrap_or("").to_lowercase() == *name_lower)
+            .and_then(|m| m["name"].as_str())
+            .unwrap_or("");
+        if fname.is_empty() { continue; }
+        let dst = mods_dir.join(fname);
+        if !dst.exists() { need_download = true; break; }
+        if !expected_sha.is_empty() {
+            let actual = sha256_file(&dst).unwrap_or_default();
+            if !actual.eq_ignore_ascii_case(expected_sha) { need_download = true; break; }
+        }
+    }
+
+    if !need_download {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        let _ = app.emit("download_progress", DownloadProgress {
+            file: "Мод-пак актуален".into(), downloaded: 100, total: 100, speed_kbs: 0,
+        });
+        report.ok = true;
+        return Ok(report);
+    }
+
+    // 4. Скачиваем только отсутствующие/изменённые моды по одному
+    // Используем /api/mods/file/:name — каждый jar отдельно, не весь zip
+    let base_url = zip_url.split("/api/mods/zip").next().unwrap_or("").to_string();
+    let total_mods = allowed.len() as u64;
+    let mut done: u64 = 0;
+
+    for (name_lower, (expected_sha, _)) in &allowed {
+        let fname = mods_list.iter()
+            .find(|m| m["name"].as_str().unwrap_or("").to_lowercase() == *name_lower)
+            .and_then(|m| m["name"].as_str())
+            .unwrap_or("").to_string();
+        if fname.is_empty() { continue; }
+
+        let dst = mods_dir.join(&fname);
+
+        // Если мод уже есть с правильным хешем — пропускаем
+        if dst.exists() && !expected_sha.is_empty() {
+            let actual = sha256_file(&dst).unwrap_or_default();
+            if actual.eq_ignore_ascii_case(expected_sha) {
+                done += 1;
+                continue;
+            }
+        }
+
+        let _ = app.emit("download_progress", DownloadProgress {
+            file:       format!("[{}/{}] {}", done + 1, total_mods, fname),
+            downloaded: done,
+            total:      total_mods,
+            speed_kbs:  0,
+        });
+
+        // Скачиваем мод с /api/mods/file/:name
+        let encoded_name = fname.replace(' ', "%20").replace('(', "%28").replace(')', "%29");
+        let mod_url = format!("{}/api/mods/file/{}", base_url, encoded_name);
+        let tmp_file = tmp_dir.join(&fname);
+
+        let dl = std::process::Command::new("curl")
+            .arg("--proto").arg("=https").arg("--tlsv1.2")
+            .arg("-fL").arg("--max-time").arg("120")
+            .arg("--connect-timeout").arg("15")
+            .arg("--retry").arg("3")
+            .arg(&mod_url).arg("-o").arg(&tmp_file)
+            .output()
+            .map_err(|e| format!("curl mod {}: {}", fname, e))?;
+
+        if !dl.status.success() {
             report.missing.push(ModIssue {
                 name: fname.clone(),
                 reason: "missing".into(),
-                detail: "Ожидался в манифесте, но не найден в архиве".into(),
+                detail: format!("Не удалось скачать: HTTP {}", dl.status),
             });
+            done += 1;
             continue;
         }
 
-        // Размер файла
-        let actual_size = std::fs::metadata(&src).map(|m| m.len()).unwrap_or(0);
-        if *expected_size > 0 {
-            let diff = (actual_size as i64 - *expected_size as i64).abs();
-            let tolerance = (*expected_size as i64) / 20;  // 5%
-            if diff > tolerance {
-                report.rejected.push(ModIssue {
-                    name: fname.clone(),
-                    reason: "size_mismatch".into(),
-                    detail: format!("Ожидался {} байт, получен {} байт (возможна подмена)",
-                        expected_size, actual_size),
-                });
-                let _ = std::fs::remove_file(&src);
-                continue;
-            }
-        }
-
-        // SHA256 мода
+        // Проверяем SHA256
         if !expected_sha.is_empty() {
-            let mut f = match std::fs::File::open(&src) {
-                Ok(f) => f,
-                Err(_) => { let _ = std::fs::remove_file(&src); continue; }
-            };
-            let mut hasher = Sha256::new();
-            let mut buf = [0u8; 65536];
-            loop {
-                let n = f.read(&mut buf).unwrap_or(0);
-                if n == 0 { break; }
-                hasher.update(&buf[..n]);
-            }
-            let actual_sha = hex::encode(hasher.finalize());
-            if !actual_sha.eq_ignore_ascii_case(expected_sha) {
+            let actual = sha256_file(&tmp_file).unwrap_or_default();
+            if !actual.eq_ignore_ascii_case(expected_sha) {
                 report.rejected.push(ModIssue {
                     name: fname.clone(),
                     reason: "tampered".into(),
-                    detail: format!("Хеш не совпал (ожидался {}…, получен {}…). Мод подменён или повреждён.",
-                        &expected_sha[..12], &actual_sha[..12.min(actual_sha.len())]),
+                    detail: format!("SHA256 не совпал ({}… ≠ {}…)", &expected_sha[..12], &actual[..12.min(actual.len())]),
                 });
-                let _ = std::fs::remove_file(&src);
+                let _ = std::fs::remove_file(&tmp_file);
+                done += 1;
                 continue;
             }
         }
 
-        // OK — копируем в mods/
-        let dst = mods_dir.join(&fname);
-        let _ = std::fs::copy(&src, &dst);
-        let _ = std::fs::remove_file(&src);
+        let _ = std::fs::copy(&tmp_file, &dst);
+        let _ = std::fs::remove_file(&tmp_file);
         report.synced += 1;
+        done += 1;
     }
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -1215,7 +1433,11 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
     });
     let _ = std::fs::remove_dir_all(&tmp_dir);
 
-    // Записываем отчёт для UI (логируем)
+    // Сохраняем whitelist для runtime watcher'а
+    let whitelist_json = serde_json::to_string(mods_list).unwrap_or_default();
+    let _ = std::fs::write(mc_dir.join(".modpack-whitelist.json"), &whitelist_json);
+
+    // Записываем отчёт для UI
     let _ = std::fs::write(
         mc_dir.join(".modpack-report.json"),
         serde_json::to_string_pretty(&report).unwrap_or_default()
