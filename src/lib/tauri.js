@@ -1,11 +1,9 @@
-// Безопасная обёртка над Tauri invoke — не крашит если не в Tauri
+// Безопасная обёртка над Tauri invoke — если Tauri нет, выкидывает ошибку явно
+// НЕ глотаем ошибки! Раньше catch { return null } ловил Rust-ошибки и превращал в null
+// — это приводило к "null" в push-уведомлениях.
 export async function invoke(cmd, args = {}) {
-  try {
-    const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-    return await tauriInvoke(cmd, args);
-  } catch {
-    return null;
-  }
+  const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+  return await tauriInvoke(cmd, args);
 }
 
 export async function listen(event, handler) {
@@ -18,6 +16,10 @@ export async function listen(event, handler) {
 }
 
 export async function notify(title, body) {
+  if (!title || !body || title === "null" || body === "null" || body === "undefined") {
+    console.warn("[notify] skipped empty/invalid:", title, body);
+    return;
+  }
   return invoke("show_notification", { title, body });
 }
 
