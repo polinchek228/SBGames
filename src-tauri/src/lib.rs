@@ -826,27 +826,158 @@ async fn launch_minecraft(
     // Сохраняем PID в файл — чтобы можно было проверять при следующем запуске
     let _ = std::fs::write(mc_dir.join(".minecraft.pid"), pid.to_string());
 
-    // Переименовываем окно Minecraft → "SBGames" через Win32 API.
-    // Forge игнорирует --title, поэтому ждём появления окна и меняем SetWindowTextW.
-    #[cfg(target_os = "windows")]
-    std::thread::spawn(move || {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SetWindowTextW};
-        use std::os::windows::ffi::OsStrExt;
-        fn to_wide(s: &str) -> Vec<u16> {
-            std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    // Открываем кастомный titlebar (окно mcbar) ПОВЕРХ MC.
+    // Окно сразу alwaysOnTop, прозрачное, frameless, прикреплено к MC-окну.
+    if let Some(mcbar) = app.get_webview_window("mcbar") {
+        // В dev: Tauri обслуживает /src/mcbar.html через vite dev server на 1420.
+        // В release: Tauri обслуживает /mcbar.html из dist-mcbar (скопирован в dist).
+        #[cfg(debug_assertions)]
+        {
+            use tauri::Url;
+            if let Ok(url) = Url::parse("http://localhost:1420/src/mcbar.html") {
+                let _ = mcbar.navigate(url);
+            }
         }
-        let mc_titles = ["Minecraft 1.19.2", "Minecraft* 1.19.2", "Minecraft"];
-        for _ in 0..120 { // 60 секунд
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            for t in &mc_titles {
-                let hwnd = unsafe { FindWindowW(std::ptr::null(), to_wide(t).as_ptr()) };
-                if hwnd != 0 {
-                    unsafe { SetWindowTextW(hwnd, to_wide("SBGames").as_ptr()) };
-                    return;
+        let _ = mcbar.show();
+        // Делаем click-through: пропускаем клики мышкой в MC окно
+        #[cfg(target_os = "windows")]
+        {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE,
+                WS_EX_LAYERED, WS_EX_TRANSPARENT, WS_EX_TOOLWINDOW,
+            };
+            let hwnd = mcbar.hwnd().map(|w| w.0 as isize).unwrap_or(0);
+            if hwnd != 0 {
+                unsafe {
+                    let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE,
+                        ex_style | (WS_EX_LAYERED as isize)
+                                  | (WS_EX_TRANSPARENT as isize)
+                                  | (WS_EX_TOOLWINDOW as isize));
                 }
             }
         }
-    });
+    }
+
+    // Клонируем AppHandle для thread ниже
+    let app_for_watch = app.clone();
+
+    // Переименовываем окно Minecraft → "SBGames" + скрываем native titlebar
+    // (frameless) + рисуем наш кастомный заголовок. Мониторим постоянно пока живёт
+    // Java-процесс, потому что LWJGL/Forge периодически сбрасывают title и стиль.
+    #[cfg(target_os = "windows")]
+    {
+        let pid_for_watch = pid;
+        std::thread::spawn(move || {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                FindWindowW, SetWindowTextW, SetWindowLongPtrW, SetWindowPos,
+                GetWindowLongPtrW, GetClientRect, GetWindowRect,
+                WS_CAPTION, WS_SYSMENU, WS_BORDER, WS_THICKFRAME, WS_POPUP,
+                WS_OVERLAPPED, WS_MINIMIZEBOX, WS_MAXIMIZEBOX, WS_EX_LAYERED,
+                GWL_STYLE, GWL_EXSTYLE,
+                SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+            };
+            use windows_sys::Win32::Foundation::{RECT, HWND};
+            use std::os::windows::ffi::OsStrExt;
+            fn to_wide(s: &str) -> Vec<u16> {
+                std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+            }
+
+            fn pid_alive(pid: u32) -> bool {
+                let out = std::process::Command::new("tasklist")
+                    .arg("/FI").arg(format!("PID eq {}", pid))
+                    .output();
+                match out {
+                    Ok(o) => {
+                        let s = String::from_utf8_lossy(&o.stdout);
+                        s.contains(&pid.to_string()) && !s.contains("No tasks")
+                    }
+                    Err(_) => false,
+                }
+            }
+
+            let wanted = to_wide("SBGames");
+            let mc_titles = ["Minecraft 1.19.2", "Minecraft* 1.19.2", "Minecraft"];
+
+            // Ждём появления окна (до 60 сек)
+            let mut hwnd: HWND = 0 as HWND;
+            for _ in 0..120 {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                for t in &mc_titles {
+                    let h = unsafe { FindWindowW(std::ptr::null(), to_wide(t).as_ptr()) };
+                    if h != 0 { hwnd = h; break; }
+                }
+                if hwnd != 0 { break; }
+            }
+
+            if hwnd == 0 { return; }
+
+            // 2. Прикрепляем кастомный titlebar (mcbar) к MC-окну и обновляем его
+            //    позицию пока MC окно движется/ресайзится. Когда Java умрёт — hide.
+            let app_handle = app_for_watch.clone();
+            std::thread::spawn(move || {
+                use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+                use windows_sys::Win32::Foundation::RECT;
+                use tauri::{LogicalPosition, LogicalSize};
+                let pid_for_watch = pid;
+                let bar_height: u32 = 36;
+                for _ in 0..18000 { // 30 минут × 100мс
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    let alive = std::process::Command::new("tasklist")
+                        .arg("/FI").arg(format!("PID eq {}", pid_for_watch))
+                        .output()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid_for_watch.to_string()))
+                        .unwrap_or(false);
+                    if !alive {
+                        if let Some(mcbar) = app_handle.get_webview_window("mcbar") { let _ = mcbar.hide(); }
+                        return;
+                    }
+                    unsafe {
+                        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                        if GetWindowRect(hwnd, &mut rect) != 0 {
+                            let width = rect.right - rect.left;
+                            let x = rect.left;
+                            let y = rect.top;
+                            if width <= 0 {
+                                if let Some(mcbar) = app_handle.get_webview_window("mcbar") { let _ = mcbar.hide(); }
+                            } else if let Some(mcbar) = app_handle.get_webview_window("mcbar") {
+                                let _ = mcbar.set_size(LogicalSize::new(width as u32, bar_height));
+                                let _ = mcbar.set_position(LogicalPosition::new(x, y));
+                                let _ = mcbar.show();
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 1. Убираем native titlebar (frameless mode) — оставляем только WS_POPUP
+            //    (чтобы окно рисовалось, но без caption/system menu/border).
+            for _ in 0..1800 { // 30 минут мониторинга
+                if !pid_alive(pid_for_watch) { return; }
+
+                unsafe {
+                    let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+                    let new_style = (style
+                        & !(WS_CAPTION as isize)
+                        & !(WS_SYSMENU as isize)
+                        & !(WS_BORDER as isize)
+                        & !(WS_THICKFRAME as isize)
+                        & !(WS_MINIMIZEBOX as isize)
+                        & !(WS_MAXIMIZEBOX as isize)
+                        & !(WS_OVERLAPPED as isize))
+                        | (WS_POPUP as isize);
+                    if new_style != style {
+                        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
+                    }
+                    SetWindowPos(hwnd, 0, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                    SetWindowTextW(hwnd, wanted.as_ptr());
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+            }
+        });
+    }
 
     // Сохраняем в состояние что игра запущена
     let state = app.state::<TrayState>();

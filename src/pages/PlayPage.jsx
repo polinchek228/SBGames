@@ -248,18 +248,18 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
             <div className="flex-1" />
 
-            {/* СБТ баланс — СПРАВА */}
-            <div className="flex items-center gap-2 rounded-2xl px-4 h-[44px]"
+            {/* SBT balance — RIGHT */}
+            <div className="flex items-center gap-2 rounded-2xl px-3.5 h-[44px]"
               style={{ background: "rgba(255,255,255,0.08)" }}
             >
-              <div className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0"
-                style={{ boxShadow: "0 0 6px rgba(59,130,246,0.7)" }}
-              />
+              <img src="/money.png" alt="" className="w-5 h-5 flex-shrink-0"
+                style={{ filter: "drop-shadow(0 0 4px rgba(250,204,21,0.6))" }}
+                onError={e => { e.currentTarget.style.display = "none"; }} />
               <span className="text-[14px] font-black text-white tabular-nums">
-                {(user?.balance ?? 0).toLocaleString("ru-RU")}
+                {(user?.balance ?? 0).toLocaleString("en-US")}
               </span>
-              <span className="text-[11px] font-bold" style={{ color: "rgba(255,255,255,0.4)" }}>
-                СБТ
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>
+                SBT
               </span>
             </div>
 
