@@ -543,7 +543,7 @@ async fn launch_minecraft(
                 file:       "Ручная распаковка Forge...".into(),
                 downloaded: 60, total: 100, speed_kbs: 0,
             });
-            install_forge_from_zip(&installer_jar, &mc_dir, &app).await
+            install_forge_from_zip(&installer_jar, &mc_dir, &app, &forge_version).await
                 .map_err(|e| format!("Forge install: {}", e))?;
         }
 
@@ -923,6 +923,7 @@ async fn install_forge_from_zip(
     installer_jar: &PathBuf,
     mc_dir: &PathBuf,
     app: &tauri::AppHandle,
+    forge_version: &str,
 ) -> Result<(), String> {
     use std::io::Read as _;
     use std::io::Write as _;
@@ -1024,7 +1025,7 @@ async fn install_forge_from_zip(
         }
     }
 
-    // 3. Извлекаем universal jar
+    // 3. Извлекаем universal jar — сначала пробуем внутри installer.zip, иначе качаем с Maven
     let mut universal_name: Option<String> = None;
     for i in 0..zip.len() {
         if let Ok(file) = zip.by_index(i) {
@@ -1035,17 +1036,32 @@ async fn install_forge_from_zip(
             }
         }
     }
-    let universal_name = universal_name.ok_or("universal.jar not found in installer")?;
-
     let universal_dest = mc_dir.join("libraries")
         .join("net/minecraftforge/forge")
         .join(&forge_version_id)
         .join(format!("{}.jar", forge_version_id));
     std::fs::create_dir_all(universal_dest.parent().unwrap()).ok();
-    let mut out = std::fs::File::create(&universal_dest).map_err(|e| e.to_string())?;
-    {
-        let mut entry = zip.by_name(&universal_name).map_err(|e| e.to_string())?;
-        std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+
+    if let Some(universal_name) = universal_name {
+        // Нашли в installer.zip — извлекаем
+        let mut out = std::fs::File::create(&universal_dest).map_err(|e| e.to_string())?;
+        {
+            let mut entry = zip.by_name(&universal_name).map_err(|e| e.to_string())?;
+            std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+        }
+    } else {
+        // universal.jar не в zip (это нормально для Forge 1.19.2+) — качаем напрямую с Maven
+        let universal_url = format!(
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.19.2-{}/forge-1.19.2-{}-universal.jar",
+            forge_version, forge_version
+        );
+        let _ = app.emit("download_progress", DownloadProgress {
+            file:       "forge-1.19.2-universal.jar".into(),
+            downloaded: 0, total: 2_630_062, speed_kbs: 0,
+        });
+        download_file(&universal_url, &universal_dest, app)
+            .await
+            .map_err(|e| format!("Не удалось скачать Forge universal: {}", e))?;
     }
 
     // 4. Сохраняем version.json в versions/{id}/

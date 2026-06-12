@@ -35,15 +35,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     if (javaPath) localStorage.setItem("sbg_java_path", javaPath);
   }, [javaPath]);
 
-  // Слушаем прогресс скачивания (локально)
-  const [download, setDownload] = useState(null);
-  useEffect(() => {
-    let unlisten;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      listen("download_progress", e => setDownload(e.payload)).then(fn => { unlisten = fn; });
-    }).catch(() => {});
-    return () => { if (unlisten) unlisten(); };
-  }, []);
+  // Прогресс скачивания показывается глобальным DownloadProgress в MainLayout
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
@@ -95,28 +87,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   return (
     <div className="relative h-full bg-black overflow-hidden">
-      {/* Оверлей прогресса скачивания (локальный) */}
-      <AnimatePresence>
-        {download && launching && download.downloaded < download.total && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="absolute top-6 right-6 w-[280px] rounded-2xl p-3 z-30"
-            style={{ background: "rgba(10,10,14,0.92)", boxShadow: "0 4px 24px rgba(0,0,0,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            <p className="text-[10px] uppercase tracking-widest mb-2"
-              style={{ color: "rgba(255,255,255,0.4)" }}>Загрузка</p>
-            <p className="text-[11px] font-mono text-white truncate">{download.file || "..."}</p>
-            <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-              <motion.div
-                className="h-full"
-                style={{ background: "linear-gradient(90deg, #2563eb, #60a5fa)" }}
-                animate={{ width: `${Math.min(100, (download.downloaded / Math.max(download.total, 1)) * 100)}%` }}
-                transition={{ duration: 0.3 }}
-              />
-            </div>
-            <p className="text-[10px] mt-1.5 tabular-nums" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {download.downloaded} / {download.total} файлов
-            </p>
           </motion.div>
         )}
       </AnimatePresence>
