@@ -565,6 +565,26 @@ async fn launch_minecraft(
     let mut cmd = Command::new(&java);
     cmd.arg(format!("-Xmx{}G", ram));
     cmd.arg(format!("-Xms{}G", (ram / 2).max(1)));
+    cmd.arg("-Dfile.encoding=UTF-8");
+    cmd.arg("-Dforge.logging.console.level=info");
+
+    // JVM add-opens для Forge 1.19.2 (требуются для Java 17+)
+    // Без них UnionFileSystem.<clinit> падает с InaccessibleObjectException
+    for opt in &[
+        "--add-opens", "java.base/java.util.jar=ALL-UNNAMED",
+        "--add-opens", "java.base/java.lang=ALL-UNNAMED",
+        "--add-opens", "java.base/java.lang.invoke=ALL-UNNAMED",
+        "--add-opens", "java.base/java.util=ALL-UNNAMED",
+        "--add-opens", "java.base/java.nio=ALL-UNNAMED",
+        "--add-opens", "java.base/java.io=ALL-UNNAMED",
+        "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED",
+        "--add-opens", "java.base/sun.security.action=ALL-UNNAMED",
+        "--add-opens", "java.base/sun.net.www.protocol.jar=ALL-UNNAMED",
+        "--add-exports", "java.base/sun.security.util=ALL-UNNAMED",
+    ] {
+        cmd.arg(opt);
+    }
+
     // Читаем forge profile.json и собираем classpath по нему
     // Forge profile содержит полный libraries[] с name/path
     let cp_sep = if cfg!(target_os = "windows") { ";" } else { ":" };
