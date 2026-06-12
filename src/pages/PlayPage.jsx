@@ -105,17 +105,17 @@ export default function PlayPage({ user, onOpenCommunity }) {
           >
             <p className="text-[10px] uppercase tracking-widest mb-2"
               style={{ color: "rgba(255,255,255,0.4)" }}>Загрузка</p>
-            <p className="text-[11px] font-mono text-white truncate">{download.file}</p>
+            <p className="text-[11px] font-mono text-white truncate">{download.file || "..."}</p>
             <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
               <motion.div
                 className="h-full"
                 style={{ background: "linear-gradient(90deg, #2563eb, #60a5fa)" }}
-                animate={{ width: `${(download.downloaded / Math.max(download.total, 1)) * 100}%` }}
+                animate={{ width: `${Math.min(100, (download.downloaded / Math.max(download.total, 1)) * 100)}%` }}
                 transition={{ duration: 0.3 }}
               />
             </div>
             <p className="text-[10px] mt-1.5 tabular-nums" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {(download.downloaded / 1024 / 1024).toFixed(1)} / {(download.total / 1024 / 1024).toFixed(1)} МБ
+              {download.downloaded} / {download.total} файлов
             </p>
           </motion.div>
         )}

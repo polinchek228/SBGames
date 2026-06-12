@@ -996,8 +996,7 @@ async fn install_forge_from_zip(
                 if meta.len() == size && size > 0 { continue; }
             }
             // Используем curl-based download (reqwest таймаутит на libraries.minecraft.net)
-            let app_handle = app.clone();
-            if let Err(e) = download_file(url, &dest, &app_handle).await {
+            if let Err(e) = download_file(url, &dest, app).await {
                 eprintln!("[Forge lib] FAIL: {} — {}", url, e);
             }
         }
