@@ -1,0 +1,56 @@
+stages:
+  - deploy
+
+variables:
+  SERVER_USER: root
+  SERVER_PATH: /opt/sbgames-auth
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  when: manual
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh $SERVER_USER@$SERVER_IP bash << 'ENDSSH'
+        set -e
+        echo "=== Fixing index.js ==="
+        cp /opt/sbgames-auth/index.js /opt/sbgames-auth/index.js.bak.$(date +%s)
+
+        python3 - << 'PYEOF'
+import re
+
+path = '/opt/sbgames-auth/index.js'
+with open(path, 'r') as f:
+    c = f.read()
+
+# 1. Переставляем express.json перед роутерами
+old = 'app.use("/api/verify", require("./verify.js"));\napp.use(express.json({ limit: "1mb" }));\napp.use("/api/mods", require("./modpack.js"));'
+new = 'app.use(express.json({ limit: "1mb" }));\napp.use("/api/verify", require("./verify.js"));\napp.use("/api/mods", require("./modpack.js"));'
+c = c.replace(old, new)
+
+# 2. Делаем WS handler async
+c = c.replace('ws.on("message", (raw) => {', 'ws.on("message", async (raw) => {')
+
+with open(path, 'w') as f:
+    f.write(c)
+
+print("index.js patched OK")
+PYEOF
+
+        echo "=== Restarting sbgames-auth ==="
+        pm2 restart sbgames-auth
+        sleep 3
+        pm2 logs sbgames-auth --lines 10 --nostream
+        echo "=== Testing verify endpoint ==="
+        curl -sk -X POST https://localhost:3443/api/verify/report \
+          -H 'Content-Type: application/json' \
+          --data '{"user":"test","hashes":["abc123"],"minecraftVersion":"1.20.1","forgeVersion":"47.4.10"}'
+        echo ""
+        echo "=== Done ==="
+ENDSSH
