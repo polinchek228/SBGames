@@ -568,22 +568,41 @@ async fn launch_minecraft(
     cmd.arg("-Dfile.encoding=UTF-8");
     cmd.arg("-Dforge.logging.console.level=info");
 
-    // JVM add-opens для Forge 1.19.2 (требуются для Java 17+)
-    // Без них UnionFileSystem.<clinit> падает с InaccessibleObjectException
-    for opt in &[
-        "--add-opens", "java.base/java.util.jar=ALL-UNNAMED",
-        "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-        "--add-opens", "java.base/java.lang.invoke=ALL-UNNAMED",
-        "--add-opens", "java.base/java.util=ALL-UNNAMED",
-        "--add-opens", "java.base/java.nio=ALL-UNNAMED",
-        "--add-opens", "java.base/java.io=ALL-UNNAMED",
-        "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED",
-        "--add-opens", "java.base/sun.security.action=ALL-UNNAMED",
-        "--add-opens", "java.base/sun.net.www.protocol.jar=ALL-UNNAMED",
-        "--add-exports", "java.base/sun.security.util=ALL-UNNAMED",
-    ] {
-        cmd.arg(opt);
+    // JVM add-opens для Forge 1.19.2 (Java 17+)
+    // С named modules --add-opens=ALL-UNNAMED не работает — нужно перечислить модули
+    // или использовать "java.base/...=ALL-UNNAMED,cpw.mods.securejarhandler,cpw.mods.bootstraplauncher,..."
+    // Проще открыть вообще всему (используя --add-opens java.base/...=java.base) — но это нельзя.
+    // Стандартный подход: ALL-UNNAMED в add-opens открывает доступ к unnamed module,
+    // а для named modules нужен явный список или `module.name=ALL-UNNAMED` не работает.
+    // Решение: использовать --add-opens с явным перечислением каждого Forge-модуля.
+    let opens: &[(&str, &str)] = &[
+        ("java.base/java.util.jar",              "ALL-UNNAMED"),
+        ("java.base/java.lang",                  "ALL-UNNAMED"),
+        ("java.base/java.lang.invoke",           "ALL-UNNAMED"),
+        ("java.base/java.util",                  "ALL-UNNAMED"),
+        ("java.base/java.nio",                   "ALL-UNNAMED"),
+        ("java.base/java.io",                    "ALL-UNNAMED"),
+        ("java.base/sun.nio.ch",                 "ALL-UNNAMED"),
+        ("java.base/sun.security.action",        "ALL-UNNAMED"),
+        ("java.base/sun.net.www.protocol.jar",   "ALL-UNNAMED"),
+        // Для named Forge модулей
+        ("java.base/java.util.jar",              "cpw.mods.securejarhandler"),
+        ("java.base/java.lang",                  "cpw.mods.securejarhandler"),
+        ("java.base/java.lang.invoke",           "cpw.mods.securejarhandler"),
+        ("java.base/java.util",                  "cpw.mods.securejarhandler"),
+        ("java.base/java.nio",                   "cpw.mods.securejarhandler"),
+        ("java.base/sun.nio.ch",                 "cpw.mods.securejarhandler"),
+        ("java.base/java.io",                    "cpw.mods.securejarhandler"),
+        ("java.base/sun.security.action",        "cpw.mods.securejarhandler"),
+        ("java.base/java.util.jar",              "cpw.mods.bootstraplauncher"),
+        ("java.base/java.lang",                  "cpw.mods.bootstraplauncher"),
+        ("java.base/java.lang.invoke",           "cpw.mods.bootstraplauncher"),
+        ("java.base/sun.nio.ch",                 "cpw.mods.bootstraplauncher"),
+    ];
+    for (module, target) in opens {
+        cmd.arg("--add-opens").arg(format!("{}={}", module, target));
     }
+    cmd.arg("--add-exports").arg("java.base/sun.security.util=ALL-UNNAMED");
 
     // Читаем forge profile.json и собираем classpath по нему
     // Forge profile содержит полный libraries[] с name/path
@@ -645,8 +664,9 @@ async fn launch_minecraft(
     // которые BootstrapLauncher загрузит через SecureJar)
     cmd.arg("-cp").arg(&client_jar);
 
-    // Main class — Forge BootstrapLauncher
-    cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
+    // Main class — Forge BootstrapLauncher как именованный модуль
+    // Формат: --module <module>/<class>
+    cmd.arg("--module").arg("cpw.mods.bootstraplauncher/cpw.mods.bootstraplauncher.BootstrapLauncher");
 
     cmd.arg("--username").arg(&username);
     cmd.arg("--version").arg(format!("1.19.2-forge-{}", forge_version));
