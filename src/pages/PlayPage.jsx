@@ -42,13 +42,19 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   // ─── Minecraft running state (single-launch lock) ──────────────────────
   const [mcRunning, setMcRunning] = useState(false);
+  const [guardModal, setGuardModal] = useState(null);  // {reason, detail} или null
   const pollRef = useRef(null);
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       try {
         const status = await getMinecraftStatus();
-        if (!cancelled) setMcRunning(!!status?.running);
+        if (cancelled) return;
+        setMcRunning(!!status?.running);
+        // Если Rust сообщил что MC был убит защитой — показываем модалку
+        if (!status?.running && status?.guard) {
+          setGuardModal(status.guard);
+        }
       } catch {}
     };
     poll();
@@ -589,6 +595,75 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   Удалить и продолжить
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ─── Anti-cheat guard modal ────────────────────────────────────── */}
+        {guardModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }}
+            onClick={e => { if (e.target === e.currentTarget) setGuardModal(null); }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 280, damping: 26 }}
+              className="w-full max-w-[480px] rounded-3xl p-6 flex flex-col gap-4"
+              style={{
+                background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)",
+                border: "1px solid rgba(239,68,68,0.4)",
+                boxShadow: "0 0 80px rgba(239,68,68,0.3), 0 24px 60px rgba(0,0,0,0.7)",
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                  <ShieldAlert size={22} weight="fill" style={{ color: "#fca5a5" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-black text-white">Защита SB Games</p>
+                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>
+                    {guardModal.reason === "inject"
+                      ? "Обнаружена попытка инжекта DLL в Minecraft"
+                      : "Обнаружены изменения в мод-паке"}
+                  </p>
+                </div>
+                <button onClick={() => setGuardModal(null)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="rounded-2xl p-3 max-h-[240px] overflow-y-auto"
+                style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                <p className="text-[10px] uppercase tracking-widest font-bold mb-2"
+                  style={{ color: "#fca5a5" }}>
+                  {guardModal.reason === "inject" ? "Подозрительная DLL" : "Причина"}
+                </p>
+                <p className="text-[12px] font-mono text-white break-all whitespace-pre-wrap"
+                  style={{ lineHeight: 1.5 }}>
+                  {guardModal.detail || "—"}
+                </p>
+              </div>
+
+              <div className="rounded-xl p-3 flex gap-2.5"
+                style={{ background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.15)" }}>
+                <Info size={14} style={{ color: "#60a5fa", flexShrink: 0, marginTop: 1 }} />
+                <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+                  Minecraft был автоматически остановлен, чтобы предотвратить
+                  нечестную игру. Удалите подозрительное ПО и попробуйте снова.
+                </p>
+              </div>
+
+              <button onClick={() => setGuardModal(null)}
+                className="w-full h-11 rounded-xl text-[12px] font-bold text-white"
+                style={{ background: "rgba(255,255,255,0.08)" }}>
+                Понятно
+              </button>
             </motion.div>
           </motion.div>
         )}

@@ -849,6 +849,9 @@ async fn launch_minecraft(
     let child = cmd.spawn().map_err(|e| format!("Не удалось запустить: {}", e))?;
     let pid = child.id();
 
+    // Очищаем предыдущий guard-trigger (если был)
+    let _ = std::fs::remove_file(mc_dir.join(".guard-trigger"));
+
     // Сохраняем PID в файл
     let _ = std::fs::write(mc_dir.join(".minecraft.pid"), pid.to_string());
 
@@ -895,23 +898,47 @@ async fn launch_minecraft(
     }
 
     // ─── Runtime protection watcher ───────────────────────────────────────────
+    // Принципы (честная client-side защита, без kernel-драйвера):
+    //  1. mods/ проверяется по SHA256 СОДЕРЖИМОГО, не по именам.
+    //     Любой лишний/изменённый/подменённый jar → МГНОВЕННО убиваем MC
+    //     (удалять файл бесполезно — Forge уже загрузил его в JVM).
+    //  2. DLL: baseline-снапшот доверенных модулей за первые секунды +
+    //     whitelist путей (Windows, папка игры, папка Java). Любая НОВАЯ
+    //     DLL из чужого места (Desktop, Downloads, temp с подозрительным
+    //     именем) → инжект → убиваем MC.
     {
         let mc_dir_w = mc_dir.clone();
         let pid_watch = pid;
+        let java_dir = std::path::Path::new(&java).parent()
+            .map(|p| p.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
         std::thread::spawn(move || {
+            use sha2::{Sha256, Digest};
+            use std::io::Read as _;
+
             let mods_dir = mc_dir_w.join("mods");
             let whitelist_path = mc_dir_w.join(".modpack-whitelist.json");
             let pid_file = mc_dir_w.join(".minecraft.pid");
+            let game_dir_l = mc_dir_w.to_string_lossy().to_lowercase();
 
-            // Читаем whitelist
-            let allowed: std::collections::HashSet<String> = std::fs::read_to_string(&whitelist_path)
-                .ok()
-                .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                .and_then(|v| v.as_array().cloned())
-                .unwrap_or_default()
-                .iter()
-                .filter_map(|m| m["name"].as_str().map(|s| s.to_lowercase()))
-                .collect();
+            fn sha256_of(path: &std::path::Path) -> Option<String> {
+                let mut f = std::fs::File::open(path).ok()?;
+                let mut h = Sha256::new();
+                let mut buf = [0u8; 65536];
+                loop { let n = f.read(&mut buf).ok()?; if n == 0 { break; } h.update(&buf[..n]); }
+                Some(hex::encode(h.finalize()))
+            }
+
+            // Разрешённые SHA256 модов (по СОДЕРЖИМОМУ, не имени)
+            let allowed_hashes: std::collections::HashSet<String> =
+                std::fs::read_to_string(&whitelist_path).ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                    .and_then(|v| v.as_array().cloned())
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|m| m["sha256"].as_str().map(|s| s.to_lowercase()))
+                    .collect();
+            let expected_mod_count = allowed_hashes.len();
 
             #[cfg(target_os = "windows")]
             {
@@ -919,101 +946,131 @@ async fn launch_minecraft(
                     OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
                     PROCESS_TERMINATE, TerminateProcess,
                 };
-                use windows_sys::Win32::System::ProcessStatus::EnumProcessModules;
+                use windows_sys::Win32::System::ProcessStatus::{
+                    EnumProcessModules, GetModuleFileNameExW,
+                };
                 use windows_sys::Win32::Foundation::{CloseHandle, MAX_PATH};
-
-                const FORBIDDEN: &[&str] = &[
-                    "doomsday", "inject", "hook_", "_hook", "cheat",
-                    "hack", "esp_", "_esp", "aimbot", "wallhack",
-                    "dumper", "megadump", "radar", "xray", "bypass",
-                    "payload", "loader_", "exploit",
-                ];
 
                 fn kill_proc(pid: u32) {
                     unsafe {
                         let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
                         if h != 0 { TerminateProcess(h, 1); CloseHandle(h); }
                     }
-                    // Принудительно через taskkill для всего дерева
                     let _ = std::process::Command::new("taskkill")
-                        .args(["/PID", &pid.to_string(), "/F", "/T"])
-                        .output();
+                        .args(["/PID", &pid.to_string(), "/F", "/T"]).output();
                 }
-
                 fn proc_alive(pid: u32) -> bool {
                     unsafe {
                         let h = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
                         if h == 0 { return false; }
-                        CloseHandle(h);
-                        true
+                        CloseHandle(h); true
                     }
                 }
+                // Собирает все пути загруженных DLL процесса
+                fn enum_dlls(pid: u32) -> Vec<String> {
+                    let mut out = Vec::new();
+                    unsafe {
+                        let proc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+                        if proc == 0 { return out; }
+                        let mut modules = [0isize; 2048];
+                        let mut needed: u32 = 0;
+                        if EnumProcessModules(proc, modules.as_mut_ptr(),
+                            (modules.len() * std::mem::size_of::<isize>()) as u32, &mut needed) != 0
+                        {
+                            let count = ((needed as usize) / std::mem::size_of::<isize>())
+                                .min(modules.len());
+                            for i in 0..count {
+                                let mut buf = [0u16; MAX_PATH as usize];
+                                let len = GetModuleFileNameExW(proc, modules[i], buf.as_mut_ptr(), MAX_PATH);
+                                if len > 0 {
+                                    out.push(String::from_utf16_lossy(&buf[..len as usize]).to_lowercase());
+                                }
+                            }
+                        }
+                        CloseHandle(proc);
+                    }
+                    out
+                }
 
+                // Путь DLL считается доверенным если он из системных папок,
+                // папки игры или папки Java-рантайма.
+                let is_trusted_path = |p: &str| -> bool {
+                    p.starts_with("c:\\windows\\")
+                        || p.contains("\\system32\\")
+                        || p.contains("\\syswow64\\")
+                        || p.contains("\\winsxs\\")
+                        || p.contains(&game_dir_l)
+                        || (!java_dir.is_empty() && p.contains(&java_dir))
+                        || p.contains("\\program files\\java")
+                        || p.contains("\\program files\\eclipse adoptium")
+                        || p.contains("\\runtime\\")          // bundled JRE
+                        || p.contains("\\jbr\\")              // JetBrains runtime
+                };
+
+                // Baseline: ждём 8 сек пока MC прогрузит свои нативные DLL,
+                // затем фиксируем "доверенный" набор. Всё новое сверх него
+                // из чужого пути = инжект.
+                let mut baseline: std::collections::HashSet<String> = std::collections::HashSet::new();
+                let mut baseline_done = false;
                 let mut tick: u32 = 0;
+
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(250));
-
                     if !proc_alive(pid_watch) {
                         let _ = std::fs::remove_file(&pid_file);
                         break;
                     }
 
-                    // Каждые 500мс — mods/ whitelist scan
+                    // Baseline собираем первые ~8 сек (32 тика по 250мс)
+                    if !baseline_done {
+                        for dll in enum_dlls(pid_watch) { baseline.insert(dll); }
+                        if tick >= 32 { baseline_done = true; }
+                    }
+
+                    // ── mods/ integrity по SHA256 (каждые 500мс) ──
                     if tick % 2 == 0 {
+                        let mut violation: Option<String> = None;
+                        let mut seen = 0usize;
                         if let Ok(entries) = std::fs::read_dir(&mods_dir) {
                             for entry in entries.flatten() {
                                 let path = entry.path();
                                 if !path.is_file() { continue; }
-                                let fname = path.file_name()
-                                    .and_then(|n| n.to_str()).unwrap_or("").to_string();
+                                let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
                                 if !fname.ends_with(".jar") && !fname.ends_with(".disabled") { continue; }
-                                if !allowed.contains(&fname.to_lowercase()) {
-                                    let _ = std::fs::remove_file(&path);
+                                seen += 1;
+                                match sha256_of(&path) {
+                                    Some(h) if allowed_hashes.contains(&h.to_lowercase()) => {}
+                                    _ => { violation = Some(fname); break; }
                                 }
                             }
                         }
+                        // Лишний/чужой мод ИЛИ пропал официальный мод → kill
+                        if violation.is_some() || (expected_mod_count > 0 && seen != expected_mod_count) {
+                            eprintln!("[guard] mods tampered ({:?}, seen {} expected {}) — kill",
+                                violation, seen, expected_mod_count);
+                            kill_proc(pid_watch);
+                            let _ = std::fs::remove_file(&pid_file);
+                            let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
+                                "mods\nОбнаружен посторонний или изменённый мод. Запуск остановлен.");
+                            return;
+                        }
                     }
 
-                    // Каждые 2 сек — DLL scan через EnumProcessModules
-                    if tick % 8 == 0 {
-                        unsafe {
-                            let proc = OpenProcess(
-                                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid_watch);
-                            if proc != 0 {
-                                let mut modules = [0isize; 1024];
-                                let mut needed: u32 = 0;
-                                if EnumProcessModules(proc,
-                                    modules.as_mut_ptr(),
-                                    (modules.len() * std::mem::size_of::<isize>()) as u32,
-                                    &mut needed) != 0
-                                {
-                                    let count = (needed as usize) / std::mem::size_of::<isize>();
-                                    let mut found_bad: Option<String> = None;
-                                    'outer: for i in 0..count {
-                                        let mut name_buf = [0u16; MAX_PATH as usize];
-                                        use windows_sys::Win32::System::ProcessStatus::GetModuleFileNameExW;
-                                        let len = GetModuleFileNameExW(
-                                            proc, modules[i], name_buf.as_mut_ptr(), MAX_PATH);
-                                        if len == 0 { continue; }
-                                        let name = String::from_utf16_lossy(&name_buf[..len as usize])
-                                            .to_lowercase();
-                                        for &bad in FORBIDDEN {
-                                            if name.contains(bad) {
-                                                found_bad = Some(format!("{} ({})", bad, name));
-                                                break 'outer;
-                                            }
-                                        }
-                                    }
-                                    if let Some(bad) = found_bad {
-                                        eprintln!("[guard] inject detected: {} — killing PID {}", bad, pid_watch);
-                                        CloseHandle(proc);
-                                        kill_proc(pid_watch);
-                                        let _ = std::fs::remove_file(&pid_file);
-                                        return;
-                                    }
-                                }
-                                CloseHandle(proc);
+                    // ── DLL injection scan (каждую секунду после baseline) ──
+                    if baseline_done && tick % 4 == 0 {
+                        for dll in enum_dlls(pid_watch) {
+                            if baseline.contains(&dll) { continue; }     // была на старте — ок
+                            if is_trusted_path(&dll) {                   // из доверенной папки — ок
+                                baseline.insert(dll);                    // подтверждаем как норму
+                                continue;
                             }
+                            // Новая DLL из чужого места = инжект
+                            eprintln!("[guard] inject DLL detected: {} — kill PID {}", dll, pid_watch);
+                            kill_proc(pid_watch);
+                            let _ = std::fs::remove_file(&pid_file);
+                            let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
+                                format!("inject\nОбнаружена посторонняя библиотека:\n{}", dll));
+                            return;
                         }
                     }
 
@@ -1021,7 +1078,6 @@ async fn launch_minecraft(
                 }
             }
 
-            // Non-Windows fallback (просто ждём смерти процесса)
             #[cfg(not(target_os = "windows"))]
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1029,18 +1085,24 @@ async fn launch_minecraft(
                     .arg("-0").arg(pid_watch.to_string()).output()
                     .map(|o| o.status.success()).unwrap_or(false);
                 if !alive { let _ = std::fs::remove_file(&pid_file); break; }
-                // mods/ scan
+                let mut seen = 0usize; let mut bad = false;
                 if let Ok(entries) = std::fs::read_dir(&mods_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if !path.is_file() { continue; }
-                        let fname = path.file_name()
-                            .and_then(|n| n.to_str()).unwrap_or("").to_string();
+                        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
                         if !fname.ends_with(".jar") { continue; }
-                        if !allowed.contains(&fname.to_lowercase()) {
-                            let _ = std::fs::remove_file(&path);
+                        seen += 1;
+                        match sha256_of(&path) {
+                            Some(h) if allowed_hashes.contains(&h.to_lowercase()) => {}
+                            _ => { bad = true; break; }
                         }
                     }
+                }
+                if bad || (expected_mod_count > 0 && seen != expected_mod_count) {
+                    let _ = std::process::Command::new("kill").arg("-9").arg(pid_watch.to_string()).output();
+                    let _ = std::fs::remove_file(&pid_file);
+                    break;
                 }
             }
         });
@@ -1071,6 +1133,70 @@ async fn launch_minecraft(
                 }
             }
         });
+    }
+
+    // ─── Server-side mod verification: шлём хеши на /api/verify/report ─────
+    // Сервер сверяет с whitelist, кладёт сессию в Redis.
+    // Когда у тебя появится MC плагин — он заберёт сессию из Redis
+    // и закикает читера. Сейчас без плагина — лаунчер блокирует запуск сам.
+    {
+        use sha2::{Sha256, Digest};
+        use std::io::Read as _;
+        let mut hashes: Vec<String> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(mc_dir.join("mods")) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() { continue; }
+                let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !fname.ends_with(".jar") { continue; }
+                if let Ok(mut f) = std::fs::File::open(&path) {
+                    let mut h = Sha256::new();
+                    let mut buf = [0u8; 65536];
+                    loop { let n = f.read(&mut buf).unwrap_or(0); if n == 0 { break; } h.update(&buf[..n]); }
+                    hashes.push(hex::encode(h.finalize()));
+                }
+            }
+        }
+        // POST /api/verify/report
+        let body = serde_json::json!({
+            "user": username,
+            "serverId": server_id,
+            "hashes": hashes,
+            "minecraftVersion": "1.20.1",
+            "forgeVersion": forge_version,
+        });
+        let body_str = body.to_string();
+        // Пишем во временный файл чтобы избежать проблем с экранированием
+        let body_path = std::env::temp_dir().join("sbgames_verify.json");
+        let _ = std::fs::write(&body_path, &body_str);
+        let out = std::process::Command::new("curl")
+            .arg("--proto").arg("=https").arg("--tlsv1.2")
+            .arg("-fsSL").arg("--max-time").arg("15")
+            .arg("-H").arg("Content-Type: application/json")
+            .arg("--data-binary").arg(format!("@{}", body_path.display()))
+            .arg("https://api.sbgames.hyperionsearch.xyz:8443/api/verify/report")
+            .output();
+        let _ = std::fs::remove_file(&body_path);
+        if let Ok(o) = out {
+            if o.status.success() {
+                if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&o.stdout) {
+                    let ok = v["ok"].as_bool().unwrap_or(false);
+                    let unknown = v["unknown"].as_u64().unwrap_or(0);
+                    let missing = v["missing"].as_u64().unwrap_or(0);
+                    if !ok {
+                        let _ = app.emit("download_progress", DownloadProgress {
+                            file: format!("Сервер отклонил: {} лишних, {} недостающих", unknown, missing),
+                            downloaded: 0, total: 1, speed_kbs: 0,
+                        });
+                        // Сохраняем guard trigger чтобы UI показал модалку
+                        let _ = std::fs::write(mc_dir.join(".guard-trigger"),
+                            format!("server\nСервер отклонил мод-пак:\n• Лишних модов: {}\n• Отсутствует: {}", unknown, missing));
+                        // Закрываем трей-попап / UI — пусть сам обработает
+                        return Err("__GUARD__server".into());
+                    }
+                }
+            }
+        }
     }
 
     // Сохраняем в состояние что игра запущена
@@ -1120,9 +1246,23 @@ fn read_running_minecraft_pid() -> Option<u32> {
 /// Команда для UI: проверяет запущен ли Minecraft (без блокировки)
 #[tauri::command]
 async fn get_minecraft_status() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
-        "running": read_running_minecraft_pid().is_some(),
-    }))
+    let running = read_running_minecraft_pid().is_some();
+    let mut result = serde_json::json!({ "running": running });
+    if !running {
+        // Если есть guard-trigger (MC был убит защитой) — возвращаем
+        let trigger = minecraft_dir().join(".guard-trigger");
+        if let Ok(msg) = std::fs::read_to_string(&trigger) {
+            let mut parts = msg.splitn(2, '\n');
+            let reason = parts.next().unwrap_or("").trim().to_string();
+            let detail = parts.next().unwrap_or("").trim().to_string();
+            result["guard"] = serde_json::json!({
+                "reason": reason,
+                "detail": detail,
+            });
+            let _ = std::fs::remove_file(&trigger);
+        }
+    }
+    Ok(result)
 }
 
 /// Команда для UI: убить Minecraft (если он завис)
