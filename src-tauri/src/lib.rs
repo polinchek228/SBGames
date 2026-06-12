@@ -629,14 +629,39 @@ async fn launch_minecraft(
         cp_parts.push(forge_universal);
     }
 
-    let classpath = cp_parts.iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(cp_sep);
+    // Используем --module-path вместо -cp. Java 17 strict module system иначе
+    // не находит модули (cpw.mods.securejarhandler) даже если jar в classpath.
+    // Vanilla client.jar содержит классы MC (не модули) — добавляем его отдельно в classpath.
+    let mut module_path: Vec<PathBuf> = Vec::new();
+    let mut classpath_extra: Vec<PathBuf> = Vec::new();
+    for p in std::mem::take(&mut cp_parts) {
+        // Проверяем содержит ли jar module-info.class
+        let has_module = check_jar_has_module_info(&p).unwrap_or(false);
+        if has_module {
+            module_path.push(p);
+        } else {
+            classpath_extra.push(p);
+        }
+    }
 
-    cmd.arg("-cp").arg(classpath);
+    if !module_path.is_empty() {
+        let mp = module_path.iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(cp_sep);
+        cmd.arg("--module-path").arg(mp);
+    }
 
-    // Main class — Forge BootstrapLauncher (находится в universal jar)
+    // Vanilla client.jar + non-modular libraries идут в classpath
+    if !classpath_extra.is_empty() {
+        let cp = classpath_extra.iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(cp_sep);
+        cmd.arg("-cp").arg(cp);
+    }
+
+    // Main class — Forge BootstrapLauncher
     cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
 
     cmd.arg("--username").arg(&username);
@@ -766,6 +791,23 @@ fn uuid_str(bytes: &[u8; 16]) -> String {
         bytes[8], bytes[9],
         bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
     )
+}
+
+// Проверяет содержит ли jar module-info.class (Java 9+ module)
+fn check_jar_has_module_info(jar: &PathBuf) -> std::io::Result<bool> {
+    use std::io::Read as _;
+    let file = std::fs::File::open(jar)?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    // module-info.class может быть в корне или в META-INF/versions/N/module-info.class
+    for i in 0..zip.len() {
+        if let Ok(f) = zip.by_index(i) {
+            let n = f.name();
+            if n == "module-info.class" || n.ends_with("/module-info.class") {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 // Download file via curl (reqwest таймаутит на libraries.minecraft.net, curl работает за 0.3с)
