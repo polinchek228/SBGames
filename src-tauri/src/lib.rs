@@ -571,15 +571,26 @@ async fn launch_minecraft(
     let mut cp_parts: Vec<PathBuf> = Vec::new();
     cp_parts.push(client_jar.clone());
 
-    if let Ok(profile_text) = std::fs::read_to_string(&forge_profile_json) {
-        if let Ok(profile) = serde_json::from_str::<serde_json::Value>(&profile_text) {
-            if let Some(arr) = profile["libraries"].as_array() {
-                for lib in arr {
-                    if let Some(path) = lib["path"].as_str() {
-                        cp_parts.push(mc_dir.join("libraries").join(path));
-                    }
+    // Helper: get jar path from library entry — format is {name, downloads:{artifact:{path,url}}}
+    fn extract_lib_paths(mc_dir: &PathBuf, libs: &serde_json::Value, out: &mut Vec<PathBuf>) {
+        if let Some(arr) = libs.as_array() {
+            for lib in arr {
+                // Современный формат: lib.downloads.artifact.path
+                if let Some(p) = lib["downloads"]["artifact"]["path"].as_str() {
+                    out.push(mc_dir.join("libraries").join(p));
+                    continue;
+                }
+                // Legacy: lib.path
+                if let Some(p) = lib["path"].as_str() {
+                    out.push(mc_dir.join("libraries").join(p));
                 }
             }
+        }
+    }
+
+    if let Ok(profile_text) = std::fs::read_to_string(&forge_profile_json) {
+        if let Ok(profile) = serde_json::from_str::<serde_json::Value>(&profile_text) {
+            extract_lib_paths(&mc_dir, &profile["libraries"], &mut cp_parts);
 
             // Если Forge profile наследуется от vanilla 1.19.2 — добавляем
             // vanilla libraries в classpath
@@ -587,13 +598,7 @@ async fn launch_minecraft(
                 let vanilla_json = mc_dir.join("versions").join(inherits).join(format!("{}.json", inherits));
                 if let Ok(v_text) = std::fs::read_to_string(&vanilla_json) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&v_text) {
-                        if let Some(vlibs) = v["libraries"].as_array() {
-                            for lib in vlibs {
-                                if let Some(path) = lib["path"].as_str() {
-                                    cp_parts.push(mc_dir.join("libraries").join(path));
-                                }
-                            }
-                        }
+                        extract_lib_paths(&mc_dir, &v["libraries"], &mut cp_parts);
                     }
                 }
             }
@@ -628,11 +633,24 @@ async fn launch_minecraft(
     // Логи Java в файлы — чтобы можно было прочитать ошибки
     let java_log = mc_dir.join("java-stdout.log");
     let java_err = mc_dir.join("java-stderr.log");
-    let log_out = std::fs::File::create(&java_log).ok();
+
+    // Пишем classpath в начало stdout лога для отладки
+    {
+        use std::io::Write as _;
+        if let Ok(mut f) = std::fs::File::create(&java_log) {
+            let _ = writeln!(f, "=== Classpath ({} entries) ===", cp_parts.len());
+            for p in &cp_parts {
+                let exists = p.exists();
+                let _ = writeln!(f, "  {}{}", if exists { "" } else { "[MISSING] " }, p.display());
+            }
+        }
+    }
+
+    let log_out = std::fs::File::create(&java_log);  // перезаписываем для stdout
     let log_err = std::fs::File::create(&java_err).ok();
 
     cmd.stdin(Stdio::null());
-    cmd.stdout(if let Some(f) = log_out { Stdio::from(f) } else { Stdio::null() });
+    cmd.stdout(if let Ok(f) = log_out { Stdio::from(f) } else { Stdio::null() });
     cmd.stderr(if let Some(f) = log_err { Stdio::from(f) } else { Stdio::null() });
     cmd.current_dir(&mc_dir);
 
