@@ -87,9 +87,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   return (
     <div className="relative h-full bg-black overflow-hidden">
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Background */}
       <AnimatePresence mode="wait">
