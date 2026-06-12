@@ -1,22 +1,24 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { CircleNotch, Copy, Check, ArrowLeft, TelegramLogo, Sparkle } from "@phosphor-icons/react";
 import { API_URL } from "../lib/api.js";
 
 export default function LoginPage({ onLogin }) {
-  const [step, setStep] = useState("choose");   // choose | widget | code | nick | success
+  const [step, setStep] = useState("choose");
   const [tgUser, setTgUser] = useState(null);
   const [nick, setNick] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loginCode, setLoginCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [widgetReady, setWidgetReady] = useState(false);
   const widgetRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!widgetRef.current || step !== "widget") return;
+    if (step !== "widget" || !widgetRef.current) return;
+
+    setWidgetReady(false);
+    setError("");
 
     window.onTelegramAuth = async (data) => {
       setLoading(true);
@@ -28,7 +30,7 @@ export default function LoginPage({ onLogin }) {
           body: JSON.stringify(data),
         });
         const json = await res.json();
-        if (!res.ok) throw new Error(json.message || "Не удалось войти");
+        if (!res.ok) throw new Error(json.message || "Telegram не пустил");
 
         if (json.needNick) {
           setTgUser(json.tgUser);
@@ -43,6 +45,8 @@ export default function LoginPage({ onLogin }) {
       }
     };
 
+    // Удаляем старый script если есть
+    widgetRef.current.innerHTML = "";
     const script = document.createElement("script");
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.setAttribute("data-telegram-login", "sbgamescbot");
@@ -50,13 +54,15 @@ export default function LoginPage({ onLogin }) {
     script.setAttribute("data-onauth", "onTelegramAuth(user)");
     script.setAttribute("data-request-access", "write");
     script.async = true;
+    script.onload = () => setWidgetReady(true);
+    script.onerror = () => setError("Не удалось загрузить Telegram. Попробуй позже.");
     widgetRef.current.appendChild(script);
 
     return () => { delete window.onTelegramAuth; };
   }, [step]);
 
   useEffect(() => {
-    if (step === "code") generateLoginCode();
+    if (step === "code" && !loginCode) generateLoginCode();
   }, [step]);
 
   const finishLogin = (user, token) => {
@@ -64,7 +70,7 @@ export default function LoginPage({ onLogin }) {
     setTimeout(() => {
       onLogin(user, token);
       navigate("/");
-    }, 700);
+    }, 600);
   };
 
   const generateLoginCode = async () => {
@@ -73,9 +79,8 @@ export default function LoginPage({ onLogin }) {
     try {
       const res = await fetch(`${API_URL}/auth/create-code`, { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.message || "Не удалось создать код");
+      if (!res.ok) throw new Error(json.message || "Сервер не ответил");
       setLoginCode(json.code);
-      pollForLogin(json.code);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -83,37 +88,11 @@ export default function LoginPage({ onLogin }) {
     }
   };
 
-  const pollForLogin = (code) => {
-    let stopped = false;
-    const interval = setInterval(async () => {
-      if (stopped) return;
-      try {
-        const res = await fetch(`${API_URL}/auth/check-code`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code }),
-        });
-        const json = await res.json();
-        if (json.user) {
-          stopped = true; clearInterval(interval);
-          if (json.needNick) {
-            setTgUser(json.tgUser);
-            setNick(json.tgUser.username || "");
-            setStep("nick");
-          } else {
-            finishLogin(json.user, json.token);
-          }
-        }
-      } catch {}
-    }, 2000);
-    setTimeout(() => { stopped = true; clearInterval(interval); }, 5 * 60 * 1000);
-  };
-
   const handleNick = async (e) => {
     e.preventDefault();
     const clean = nick.trim().replace(/^@/, "");
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(clean)) {
-      setError("Ник: 3–16 символов, только буквы/цифры/_");
+      setError("Ник: 3–16 символов, буквы/цифры/_");
       return;
     }
     setLoading(true);
@@ -133,328 +112,215 @@ export default function LoginPage({ onLogin }) {
     }
   };
 
-  const copy = () => {
-    navigator.clipboard.writeText(loginCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+  const botLink = `https://t.me/sbgamescbot?start=auth_${loginCode}`;
 
-  const botLink = `https://t.me/sbgamescbot?start=code_${loginCode}`;
+  if (step === "success") {
+    return (
+      <main style={{ minHeight: "calc(100vh - 80px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>✓</div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", margin: "0 0 6px" }}>Входим</h1>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Один момент…</p>
+        </div>
+      </main>
+    );
+  }
 
+  // Plain inline styles, no flashy animations
   return (
     <main style={{
       minHeight: "calc(100vh - 80px)",
       display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "24px",
+      padding: "20px",
     }}>
-      <style>{`
-        @keyframes lpGlow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
-          50%      { box-shadow: 0 0 0 14px rgba(59,130,246,0); }
-        }
-        @keyframes lpSpin { to { transform: rotate(360deg); } }
-        @keyframes lpPulse {
-          0%, 100% { opacity: 0.5; transform: scale(1); }
-          50%      { opacity: 1;   transform: scale(1.05); }
-        }
-        .lp-input:focus {
-          outline: none;
-          border-color: rgba(59,130,246,0.6) !important;
-          background: rgba(59,130,246,0.06) !important;
-        }
-        .lp-btn-primary { transition: all 0.15s; }
-        .lp-btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(59,130,246,0.3); }
-        .lp-btn-primary:active:not(:disabled) { transform: translateY(0); }
-        .lp-card { transition: all 0.2s; }
-        .lp-card:hover { background: rgba(255,255,255,0.05) !important; border-color: rgba(59,130,246,0.4) !important; transform: translateY(-2px); }
-      `}</style>
+      <div style={{ width: "100%", maxWidth: 400 }}>
 
-      <AnimatePresence mode="wait">
-        {step === "success" ? (
-          <motion.div key="ok"
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 280, damping: 24 }}
-            style={{ textAlign: "center" }}
-          >
-            <div style={{
-              width: 80, height: 80, borderRadius: "50%",
-              background: "linear-gradient(135deg, #10b981, #059669)",
-              margin: "0 auto 20px",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 0 40px rgba(16,185,129,0.4)",
-            }}>
-              <Check size={40} weight="bold" color="#fff" />
-            </div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: "#fff", margin: "0 0 8px" }}>Готово</h1>
-            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>Входим в аккаунт…</p>
-          </motion.div>
-        ) : (
-          <motion.div key="form"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -20, opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            style={{ width: "100%", maxWidth: 440 }}
-          >
-            {/* Логотип + приветствие */}
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
-              <div style={{
-                width: 64, height: 64, borderRadius: 20,
-                background: "linear-gradient(135deg, #2563eb, #60a5fa)",
-                margin: "0 auto 16px",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 12px 32px rgba(37,99,235,0.4)",
-                animation: "lpGlow 2.5s ease-out infinite",
-              }}>
-                <Sparkle size={28} weight="fill" color="#fff" />
+        {/* Шапка */}
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#fff", margin: "0 0 6px" }}>
+            Вход в аккаунт
+          </h1>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: 0 }}>
+            Авторизация через Telegram
+          </p>
+        </div>
+
+        {/* Шаги */}
+        {step === "choose" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              onClick={() => setStep("widget")}
+              style={{
+                width: "100%", padding: "14px 16px", textAlign: "left",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 10, cursor: "pointer", color: "#fff",
+                fontSize: 14, fontWeight: 500, fontFamily: "inherit",
+                display: "flex", alignItems: "center", gap: 12,
+              }}
+            >
+              <span style={{ fontSize: 18 }}>💬</span>
+              <div>
+                <div>Войти через Telegram</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2, fontWeight: 400 }}>
+                  Один клик в окне Telegram
+                </div>
               </div>
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: "#fff", margin: "0 0 6px", letterSpacing: "-0.01em" }}>
-                Вход в SB Games
-              </h1>
-              <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 13, margin: 0 }}>
-                Один аккаунт для всех серверов
-              </p>
-            </div>
+            </button>
 
-            <AnimatePresence mode="wait">
-              {step === "choose" && (
-                <motion.div key="choose"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
-                >
-                  <button className="lp-card lp-btn-primary"
-                    onClick={() => setStep("widget")}
-                    style={{
-                      width: "100%", padding: "18px 20px",
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 16, cursor: "pointer", textAlign: "left",
-                      display: "flex", alignItems: "center", gap: 16,
-                      color: "#fff", fontFamily: "inherit",
-                    }}
-                  >
-                    <div style={{
-                      width: 44, height: 44, borderRadius: 12,
-                      background: "rgba(59,130,246,0.15)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0,
-                    }}>
-                      <TelegramLogo size={24} weight="fill" color="#60a5fa" />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Через Telegram</div>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>Один клик — и ты в аккаунте</div>
-                    </div>
-                    <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>›</span>
-                  </button>
-
-                  <button className="lp-card lp-btn-primary"
-                    onClick={() => setStep("code")}
-                    style={{
-                      width: "100%", padding: "18px 20px",
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 16, cursor: "pointer", textAlign: "left",
-                      display: "flex", alignItems: "center", gap: 16,
-                      color: "#fff", fontFamily: "inherit",
-                    }}
-                  >
-                    <div style={{
-                      width: 44, height: 44, borderRadius: 12,
-                      background: "rgba(168,85,247,0.15)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0,
-                    }}>
-                      <span style={{ fontSize: 18, fontWeight: 800, color: "#c084fc", fontFamily: "monospace" }}>#</span>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Через код</div>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>Получи код и отправь боту</div>
-                    </div>
-                    <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>›</span>
-                  </button>
-
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>
-                    Нужен Telegram-аккаунт. <br/>Бот @sbgamescbot спросит разрешение на вход.
-                  </p>
-                </motion.div>
-              )}
-
-              {step === "widget" && (
-                <motion.div key="widget"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                >
-                  <button onClick={() => { setStep("choose"); setError(""); setLoading(false); }}
-                    style={{
-                      background: "transparent", border: "none", color: "rgba(255,255,255,0.4)",
-                      fontSize: 13, cursor: "pointer", padding: "4px 0 16px",
-                      display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit",
-                    }}
-                  >
-                    <ArrowLeft size={14} /> Назад
-                  </button>
-                  <div style={{
-                    padding: "32px 24px",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 16,
-                    display: "flex", justifyContent: "center",
-                    minHeight: 100,
-                  }}>
-                    {loading
-                      ? <CircleNotch size={24} style={{ color: "#60a5fa", animation: "lpSpin 1s linear infinite" }} />
-                      : <div ref={widgetRef} />
-                    }
-                  </div>
-                  {error && <p style={{ color: "#fca5a5", fontSize: 13, marginTop: 12, textAlign: "center" }}>{error}</p>}
-                </motion.div>
-              )}
-
-              {step === "code" && (
-                <motion.div key="code"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                >
-                  <button onClick={() => { setStep("choose"); setError(""); setLoginCode(""); }}
-                    style={{
-                      background: "transparent", border: "none", color: "rgba(255,255,255,0.4)",
-                      fontSize: 13, cursor: "pointer", padding: "4px 0 16px",
-                      display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit",
-                    }}
-                  >
-                    <ArrowLeft size={14} /> Назад
-                  </button>
-
-                  {loginCode ? (
-                    <>
-                      <div style={{
-                        padding: "20px",
-                        background: "rgba(255,255,255,0.03)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 16,
-                        marginBottom: 12,
-                      }}>
-                        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>
-                          Твой код
-                        </p>
-                        <div style={{
-                          display: "flex", alignItems: "center", gap: 10,
-                          padding: "12px 14px",
-                          background: "rgba(59,130,246,0.08)",
-                          border: "1px solid rgba(59,130,246,0.25)",
-                          borderRadius: 10,
-                        }}>
-                          <code style={{
-                            flex: 1, fontSize: 22, fontWeight: 800,
-                            color: "#fff", letterSpacing: "0.2em", fontFamily: "monospace",
-                            animation: "lpPulse 2s ease-in-out infinite",
-                          }}>{loginCode}</code>
-                          <button onClick={copy}
-                            style={{
-                              width: 36, height: 36, borderRadius: 8,
-                              background: copied ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.06)",
-                              border: copied ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(255,255,255,0.08)",
-                              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                            }}>
-                            {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} color="rgba(255,255,255,0.6)" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <a className="lp-btn-primary" href={botLink} target="_blank" rel="noopener noreferrer"
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          gap: 10, width: "100%", padding: "16px",
-                          background: "linear-gradient(135deg, #2563eb, #3b82f6)",
-                          color: "#fff", fontSize: 15, fontWeight: 700,
-                          borderRadius: 12, textDecoration: "none",
-                          boxShadow: "0 8px 24px rgba(37,99,235,0.3)",
-                        }}>
-                        <TelegramLogo size={20} weight="fill" />
-                        Открыть @sbgamescbot
-                      </a>
-
-                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 16, textAlign: "center", lineHeight: 1.6 }}>
-                        Отправь код боту и он откроет тебе вход.<br/>Код действует 5 минут.
-                      </p>
-                    </>
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "40px 0" }}>
-                      <CircleNotch size={20} style={{ color: "#60a5fa", animation: "lpSpin 1s linear infinite" }} />
-                      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>Генерируем код…</span>
-                    </div>
-                  )}
-                  {error && <p style={{ color: "#fca5a5", fontSize: 13, marginTop: 12, textAlign: "center" }}>{error}</p>}
-                </motion.div>
-              )}
-
-              {step === "nick" && (
-                <motion.div key="nick"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                >
-                  <div style={{ textAlign: "center", marginBottom: 24 }}>
-                    {tgUser?.photo_url && (
-                      <img src={tgUser.photo_url} alt=""
-                        style={{ width: 72, height: 72, borderRadius: "50%", marginBottom: 12, border: "2px solid rgba(59,130,246,0.4)" }} />
-                    )}
-                    <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 0 4px" }}>
-                      Привет, {tgUser?.first_name || "друг"}!
-                    </h2>
-                    <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 13, margin: 0 }}>
-                      Придумай ник для игры
-                    </p>
-                  </div>
-
-                  <form onSubmit={handleNick} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ position: "relative" }}>
-                      <span style={{
-                        position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)",
-                        color: "rgba(255,255,255,0.3)", fontSize: 16, fontWeight: 600,
-                      }}>@</span>
-                      <input className="lp-input"
-                        type="text"
-                        value={nick}
-                        onChange={(e) => { setNick(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")); setError(""); }}
-                        placeholder="никнейм"
-                        autoFocus
-                        maxLength={16}
-                        style={{
-                          width: "100%", padding: "14px 16px 14px 36px",
-                          background: error ? "rgba(239,68,68,0.05)" : "rgba(255,255,255,0.04)",
-                          border: error ? "1px solid rgba(239,68,68,0.4)" : "1px solid rgba(255,255,255,0.1)",
-                          borderRadius: 12, color: "#fff", fontSize: 15,
-                          fontFamily: "inherit", boxSizing: "border-box",
-                          transition: "all 0.15s",
-                        }}
-                      />
-                    </div>
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: -4 }}>
-                      3–16 символов, буквы/цифры/подчёркивание
-                    </p>
-
-                    {error && <p style={{ color: "#fca5a5", fontSize: 12, margin: 0 }}>{error}</p>}
-
-                    <button className="lp-btn-primary" type="submit"
-                      disabled={loading || nick.length < 3}
-                      style={{
-                        marginTop: 4, padding: "14px",
-                        background: loading || nick.length < 3 ? "rgba(59,130,246,0.4)" : "linear-gradient(135deg, #2563eb, #3b82f6)",
-                        color: "#fff", fontSize: 14, fontWeight: 700,
-                        border: "none", borderRadius: 12,
-                        cursor: loading || nick.length < 3 ? "not-allowed" : "pointer",
-                        boxShadow: loading || nick.length < 3 ? "none" : "0 8px 24px rgba(37,99,235,0.3)",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      }}
-                    >
-                      {loading ? <CircleNotch size={16} style={{ animation: "lpSpin 1s linear infinite" }} /> : "Готово"}
-                    </button>
-                  </form>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+            <button
+              onClick={() => setStep("code")}
+              style={{
+                width: "100%", padding: "14px 16px", textAlign: "left",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 10, cursor: "pointer", color: "#fff",
+                fontSize: 14, fontWeight: 500, fontFamily: "inherit",
+                display: "flex", alignItems: "center", gap: 12,
+              }}
+            >
+              <span style={{ fontSize: 18 }}>🔑</span>
+              <div>
+                <div>Получить код</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2, fontWeight: 400 }}>
+                  Отправь код боту в Telegram
+                </div>
+              </div>
+            </button>
+          </div>
         )}
-      </AnimatePresence>
+
+        {step === "widget" && (
+          <div>
+            <button onClick={() => setStep("choose")}
+              style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", padding: "0 0 16px", fontFamily: "inherit" }}>
+              ← Назад
+            </button>
+            <div style={{
+              padding: "24px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 10,
+              display: "flex", justifyContent: "center", minHeight: 80,
+              alignItems: "center",
+            }}>
+              {!widgetReady && !error && (
+                <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Загружаем Telegram…</span>
+              )}
+              <div ref={widgetRef} />
+            </div>
+            {error && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 12 }}>{error}</p>}
+          </div>
+        )}
+
+        {step === "code" && (
+          <div>
+            <button onClick={() => setStep("choose")}
+              style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", padding: "0 0 16px", fontFamily: "inherit" }}>
+              ← Назад
+            </button>
+
+            {loading && !loginCode ? (
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Генерируем код…</p>
+            ) : loginCode ? (
+              <>
+                <div style={{
+                  padding: "16px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 10,
+                  marginBottom: 12,
+                }}>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                    Твой код
+                  </p>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 12px",
+                    background: "rgba(0,0,0,0.3)",
+                    borderRadius: 8,
+                  }}>
+                    <code style={{
+                      flex: 1, fontSize: 18, fontWeight: 700,
+                      color: "#fff", letterSpacing: "0.15em", fontFamily: "monospace",
+                    }}>{loginCode}</code>
+                    <button onClick={() => { navigator.clipboard.writeText(loginCode); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                      style={{
+                        padding: "4px 10px",
+                        background: copied ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.06)",
+                        border: copied ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                        color: copied ? "#10b981" : "rgba(255,255,255,0.6)",
+                        borderRadius: 6, cursor: "pointer", fontSize: 11, fontFamily: "inherit",
+                      }}>
+                      {copied ? "Скопировано" : "Копировать"}
+                    </button>
+                  </div>
+                </div>
+
+                <a href={botLink} target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: "block", textAlign: "center",
+                    width: "100%", padding: "12px",
+                    background: "#3b82f6", color: "#fff",
+                    fontSize: 14, fontWeight: 600,
+                    borderRadius: 10, textDecoration: "none",
+                    boxSizing: "border-box",
+                  }}>
+                  Открыть @sbgamescbot
+                </a>
+
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 12, lineHeight: 1.5 }}>
+                  Открой бот, отправь ему код. Он пустит тебя в аккаунт. Код живёт 10 минут.
+                </p>
+              </>
+            ) : null}
+            {error && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 12 }}>{error}</p>}
+          </div>
+        )}
+
+        {step === "nick" && (
+          <div>
+            <p style={{ color: "#fff", fontWeight: 600, marginBottom: 4 }}>
+              Привет, {tgUser?.first_name || "друг"}!
+            </p>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginBottom: 16 }}>
+              Придумай игровой ник
+            </p>
+            <form onSubmit={handleNick}>
+              <input
+                type="text"
+                value={nick}
+                onChange={(e) => { setNick(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")); setError(""); }}
+                placeholder="ник"
+                autoFocus
+                maxLength={16}
+                style={{
+                  width: "100%", padding: "12px 14px", boxSizing: "border-box",
+                  background: "rgba(255,255,255,0.05)",
+                  border: error ? "1px solid rgba(239,68,68,0.5)" : "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 10, color: "#fff", fontSize: 14, fontFamily: "inherit",
+                  marginBottom: 8,
+                }}
+              />
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 12 }}>
+                3–16 символов, буквы/цифры/подчёркивание
+              </p>
+              {error && <p style={{ color: "#ef4444", fontSize: 12, marginBottom: 12 }}>{error}</p>}
+              <button type="submit" disabled={loading || nick.length < 3}
+                style={{
+                  width: "100%", padding: "12px",
+                  background: loading || nick.length < 3 ? "rgba(59,130,246,0.4)" : "#3b82f6",
+                  color: "#fff", fontSize: 14, fontWeight: 600,
+                  border: "none", borderRadius: 10,
+                  cursor: loading || nick.length < 3 ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                }}>
+                {loading ? "..." : "Готово"}
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
     </main>
   );
 }
