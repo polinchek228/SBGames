@@ -1,89 +1,83 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { DownloadSimple, CheckCircle } from "@phosphor-icons/react";
+import { motion } from "framer-motion";
+import { CheckCircle } from "@phosphor-icons/react";
+
+const card = { background: "rgba(255,255,255,0.03)", borderRadius: 16, border: "1px solid rgba(255,255,255,0.06)" };
 
 const STEPS = [
-  {
-    n: "01", title: "Зарегистрируйтесь",
-    desc: "Создайте аккаунт SBGames и привяжите Telegram. Авторизация происходит через бота @sbgamessupport_bot — безопасно и быстро.",
-    action: null,
-  },
-  {
-    n: "02", title: "Скачайте лаунчер",
-    desc: "Установите клиент на Windows, macOS или Linux. Лаунчер автоматически подтянет нужные файлы игры.",
-    action: { label: "Скачать лаунчер", to: "/download" },
-  },
-  {
-    n: "03", title: "Войдите в лаунчер",
-    desc: "Откройте лаунчер и нажмите 'Войти через Telegram'. Откроется бот — нажмите СТАРТ. Придумайте игровой ник.",
-    action: null,
-  },
-  {
-    n: "04", title: "Выберите сервер",
-    desc: "В разделе 'Играть' выберите StarWars. Нажмите кнопку ИГРАТЬ — лаунчер запустит Minecraft с нужными настройками.",
-    action: null,
-  },
-  {
-    n: "05", title: "Заходите и играйте",
-    desc: "После запуска вы автоматически попадёте на сервер. Исследуйте миры, сражайтесь и развивайтесь!",
-    action: null,
-  },
+  { n: "ШАГ 1", title: "Зарегистрируйтесь", desc: "Создайте аккаунт SBGames и привяжите Telegram.", action: null },
+  { n: "ШАГ 2", title: "Скачайте лаунчер",  desc: "Установите клиент и получите доступ к серверам.", action: { label: "Скачать лаунчер ↓", to: "/download" } },
+  { n: "ШАГ 3", title: "Выберите сервер",   desc: "StarWars — подберите мир под себя.", action: null },
+  { n: "ШАГ 4", title: "Заходите и играйте", desc: "Запускайте, подключайтесь и начинайте игру сразу.", action: null },
 ];
 
 export default function HowToPlayPage() {
   return (
-    <main className="relative z-10 max-w-3xl mx-auto px-4 pb-16">
-      <div className="text-center mb-10">
-        <h1 className="text-[32px] font-black text-white mb-2">Как начать играть</h1>
-        <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-          Простой путь: зарегистрируйтесь, скачайте лаунчер, выберите сервер и входите.
-        </p>
-      </div>
+    <main style={{ background: "#000", minHeight: "100vh", color: "#fff", fontFamily: "inherit" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "48px 24px 48px" }}>
 
-      <div className="flex flex-col gap-3">
-        {STEPS.map((step, i) => (
-          <div key={step.n} className="rounded-2xl p-6 flex gap-5"
-            style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
-          >
-            <div className="flex-shrink-0">
-              <span className="text-[28px] font-black tabular-nums" style={{ color: "rgba(255,255,255,0.08)" }}>
-                {step.n}
-              </span>
-            </div>
-            <div className="flex-1">
-              <p className="text-[16px] font-bold text-white mb-2">{step.title}</p>
-              <p className="text-[13px] leading-relaxed" style={{ color: "rgba(255,255,255,0.45)" }}>
-                {step.desc}
-              </p>
-              {step.action && (
-                <Link to={step.action.to}
-                  className="inline-flex items-center gap-2 mt-3 px-4 py-2 rounded-xl text-[12px] font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
-                >
-                  <DownloadSimple size={13} weight="bold" />
-                  {step.action.label}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          style={{ marginBottom: 36 }}
+        >
+          <h1 style={{ fontSize: 44, fontWeight: 900, letterSpacing: "0.01em", marginBottom: 14 }}>
+            Как начать играть
+          </h1>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 15, lineHeight: 1.6, maxWidth: 560, marginBottom: 24 }}>
+            Простой путь: зарегистрируйтесь, скачайте лаунчер, выберите сервер и входите.
+            Всё остальное мы сделали за вас.
+          </p>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <Link to="/download" style={{
+              background: "#fff", color: "#000", padding: "13px 26px", borderRadius: 12,
+              fontWeight: 700, fontSize: 13, textDecoration: "none",
+            }}>
+              Скачать лаунчер ↓
+            </Link>
+            <Link to="/topup" style={{
+              background: "rgba(255,255,255,0.05)", color: "#fff", padding: "13px 26px", borderRadius: 12,
+              fontWeight: 700, fontSize: 13, textDecoration: "none", border: "1px solid rgba(255,255,255,0.08)",
+            }}>
+              Пополнить баланс ↗
+            </Link>
+          </div>
+        </motion.div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 64 }}>
+          {STEPS.map((s, i) => (
+            <motion.div
+              key={s.n}
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.06 * i }}
+              style={{ ...card, padding: "20px 18px" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>
+                  {s.n}
+                </span>
+                <CheckCircle size={13} style={{ color: "rgba(255,255,255,0.3)" }} />
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{s.title}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.42)", lineHeight: 1.6 }}>{s.desc}</div>
+              {s.action && (
+                <Link to={s.action.to} style={{
+                  display: "inline-block", marginTop: 12, color: "#3b82f6",
+                  fontSize: 12, fontWeight: 700, textDecoration: "none",
+                }}>
+                  {s.action.label}
                 </Link>
               )}
-            </div>
-            <div className="flex-shrink-0 mt-1">
-              <CheckCircle size={18} style={{ color: i < 1 ? "#4ade80" : "rgba(255,255,255,0.1)" }} weight="fill" />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-6 rounded-2xl p-5 flex items-center justify-between"
-        style={{ background: "rgba(37,99,235,0.1)" }}
-      >
-        <div>
-          <p className="text-[14px] font-bold text-white">Готов начать?</p>
-          <p className="text-[12px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>Скачай лаунчер прямо сейчас</p>
+            </motion.div>
+          ))}
         </div>
-        <Link to="/download"
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-[13px] text-white bg-blue-600 hover:bg-blue-500 transition-colors"
-        >
-          <DownloadSimple size={14} weight="bold" />
-          Скачать
-        </Link>
+
+        <footer style={{ textAlign: "center", color: "rgba(255,255,255,0.18)", fontSize: 12 }}>
+          © 2026 SBGames. All rights reserved.
+        </footer>
       </div>
     </main>
   );

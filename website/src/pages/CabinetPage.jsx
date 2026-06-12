@@ -1,192 +1,255 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { API_URL } from "../lib/api.js";
 import { motion } from "framer-motion";
+import { Coins, UploadSimple, ArrowCounterClockwise } from "@phosphor-icons/react";
 import * as skinview3d from "skinview3d";
-
-const card = { background: "#0d0d0d", borderRadius: 16 };
-const innerCard = { background: "#111", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" };
-const metaLabel = { fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 12 };
 
 export default function CabinetPage({ user }) {
   const canvasRef = useRef(null);
   const viewerRef = useRef(null);
-  const [autoRotate, setAutoRotate] = useState(true);
+  const fileRef   = useRef(null);
+  const wrapRef   = useRef(null);
 
+  const [autoRotate, setAutoRotate] = useState(true);
+  const [skinFile,   setSkinFile]   = useState(null);
+  const [skinError,  setSkinError]  = useState(false);
+
+  const bal      = user?.balance ?? 0;
+  const username = user?.username ?? "—";
+  const telegram = user?.telegram ? `@${user.telegram}` : "не привязан";
+  const regDate  = user?.createdAt ? new Date(user.createdAt).toLocaleDateString("ru-RU") : "—";
+  const skinUnlocked = bal >= 1000;
+
+  // Инициализация 3D вьюера
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !wrapRef.current) return;
+
+    const w = wrapRef.current.offsetWidth  || 280;
+    const h = 360;
+
+    // Явно задаём размер канваса в пикселях
+    canvasRef.current.width  = w;
+    canvasRef.current.height = h;
+
+    const skinUrl = skinFile
+      ? URL.createObjectURL(skinFile)
+      : `${API_URL}/skin-proxy/${username === "—" ? "Steve" : username}`;
+
+    setSkinError(false);
+
     const viewer = new skinview3d.SkinViewer({
-      canvas: canvasRef.current,
-      width: canvasRef.current.offsetWidth || 280,
-      height: 360,
-      skin: `https://minotar.net/skin/${user?.username || "Steve"}`,
+      canvas:     canvasRef.current,
+      width:      w,
+      height:     h,
+      skin:       skinUrl,
       background: 0x000000,
     });
-    viewer.animation = new skinview3d.WalkingAnimation();
-    viewer.animation.speed = 0.6;
-    viewer.autoRotate = autoRotate;
-    viewerRef.current = viewer;
-    return () => viewer.dispose();
-  }, [user?.username]);
+
+    viewer.animation       = new skinview3d.WalkingAnimation();
+    viewer.animation.speed = 0.5;
+    viewer.autoRotate      = autoRotate;
+    viewer.controls.enableZoom = false;
+    viewerRef.current      = viewer;
+
+    return () => { viewer.dispose(); viewerRef.current = null; };
+  }, [username, skinFile]);
 
   useEffect(() => {
     if (viewerRef.current) viewerRef.current.autoRotate = autoRotate;
   }, [autoRotate]);
 
-  const bal = user?.balance ?? 0;
-  const username = user?.username ?? "—";
-  const userId = user?.id ? `#${String(user.id).slice(0, 8)}` : "—";
-  const telegram = user?.telegram ? `@${user.telegram}` : "—";
-
   return (
-    <main style={{ background: "#000", minHeight: "100vh", color: "#fff", fontFamily: "inherit" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px 64px" }}>
+    <main style={{ background: "#000", minHeight: "100vh", color: "#fff" }}>
+      <div style={{ maxWidth: 1060, margin: "0 auto", padding: "28px 24px 80px" }}>
 
-        {/* TOP USER CARD */}
+        {/* ── Шапка профиля ── */}
         <motion.div
-          initial={{ opacity: 0, y: 18 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          style={{ ...card, padding: "22px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}
+          transition={{ duration: 0.3 }}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+            borderRadius: 20, padding: "22px 28px", marginBottom: 16,
+          }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{
-              width: 54, height: 54, borderRadius: 12, flexShrink: 0,
-              background: "linear-gradient(135deg,#2563eb,#818cf8)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 22, fontWeight: 900,
+              width: 52, height: 52, borderRadius: 14, overflow: "hidden",
+              border: "1px solid rgba(255,255,255,0.1)", flexShrink: 0,
             }}>
-              {username.charAt(0).toUpperCase()}
+              <img src="/logo.jpg" alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
             <div>
-              <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 3 }}>{username}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 7 }}>
-                SB GAMES — ТВОЙ ЛЮБИМЫЙ КОМПЛЕКС ИГРОВЫХ МИРОВ
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 700 }}>
-                <span style={{ color: "#3b82f6", fontSize: 9 }}>●</span>
-                <span>{bal.toLocaleString("ru-RU")}</span>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 500 }}>СБТ</span>
+              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 3 }}>{username}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                {telegram} · с {regDate}
               </div>
             </div>
           </div>
-          <Link to="/topup" style={{
-            border: "1px solid rgba(255,255,255,0.22)", color: "#fff", background: "transparent",
-            padding: "11px 22px", borderRadius: 10, fontWeight: 700, fontSize: 12,
-            letterSpacing: "0.06em", textDecoration: "none", whiteSpace: "nowrap",
-          }}>
-            ПОПОЛНИТЬ БАЛАНС ↗
-          </Link>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)",
+              borderRadius: 12, padding: "10px 18px",
+            }}>
+              <span style={{ fontSize: 20, fontWeight: 900 }}>{bal.toLocaleString("ru-RU")}</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 700 }}>SBT</span>
+            </div>
+            <Link to="/topup" style={{
+              display: "flex", alignItems: "center", gap: 7,
+              background: "#2563eb", borderRadius: 12, padding: "10px 18px",
+              fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none",
+            }}>
+              <Coins size={14} weight="fill" /> Пополнить
+            </Link>
+          </div>
         </motion.div>
 
-        {/* 3-COLUMN GRID */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr 1fr", gap: 16, alignItems: "start" }}>
+        {/* ── Основная сетка ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 14 }}>
 
-          {/* LEFT: ПРОФИЛЬ + МИРЫ */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.06 }}
-              style={{ ...card, padding: "20px 18px" }}
-            >
-              <div style={metaLabel}>Профиль</div>
-              {[
-                { label: "Никнейм",  val: username },
-                { label: "ID",       val: userId },
-                { label: "Telegram", val: telegram },
-              ].map(({ label, val }) => (
-                <div key={label} style={{ ...innerCard, padding: "11px 13px", marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginBottom: 3 }}>
-                    {label}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{val}</div>
-                </div>
-              ))}
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              style={{ ...card, padding: "20px 18px" }}
-            >
-              <div style={metaLabel}>Миры</div>
-              <div style={{ ...innerCard, padding: "12px 13px", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ color: "#3b82f6", fontSize: 9 }}>●</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>STARWARS</span>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* CENTER: 3D SKIN */}
+          {/* Левая: 3D скин */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, delay: 0.08 }}
-            style={{ ...card, overflow: "hidden", height: 430, position: "relative", display: "flex", flexDirection: "column" }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.05 }}
+            style={{
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              borderRadius: 18, overflow: "hidden",
+            }}
           >
-            <div style={{
-              position: "absolute", top: 13, left: 14, zIndex: 2,
-              fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
-              textTransform: "uppercase", color: "rgba(255,255,255,0.3)",
-            }}>
-              STARWARS MODE
+            <div style={{ padding: "14px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>Скин</span>
+              <label style={{
+                display: "flex", alignItems: "center", gap: 5, fontSize: 11,
+                color: skinUnlocked ? "#60a5fa" : "rgba(255,255,255,0.25)",
+                cursor: skinUnlocked ? "pointer" : "default", fontWeight: 600,
+              }}>
+                <UploadSimple size={12} />
+                {skinUnlocked ? "Загрузить" : "1000 SBT"}
+                <input ref={fileRef} type="file" accept="image/png" style={{ display: "none" }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) setSkinFile(f); }}
+                />
+              </label>
             </div>
-            <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#000" }}>
-              <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
+
+            {/* Канвас */}
+            <div ref={wrapRef} style={{ background: "#050505", width: "100%", height: 360, position: "relative" }}>
+              <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", imageRendering: "pixelated" }} />
+              {skinError && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
+                  Не удалось загрузить скин
+                </div>
+              )}
             </div>
-            <div style={{ padding: "12px 14px", background: "#0d0d0d" }}>
-              <button
-                onClick={() => setAutoRotate(v => !v)}
-                style={{
-                  width: "100%", background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.09)",
-                  color: "#fff", borderRadius: 10, padding: "11px 0",
-                  fontWeight: 700, fontSize: 11, letterSpacing: "0.1em",
-                  textTransform: "uppercase", cursor: "pointer",
-                }}
-              >
-                КАСТОМИЗАЦИЯ ДОСТУПНА
-              </button>
+
+            {/* Управление */}
+            <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  onClick={() => setAutoRotate(v => !v)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    background: autoRotate ? "rgba(37,99,235,0.15)" : "rgba(255,255,255,0.04)",
+                    border: autoRotate ? "1px solid rgba(59,130,246,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 8, padding: "5px 11px", fontSize: 11, fontWeight: 600,
+                    color: autoRotate ? "#60a5fa" : "rgba(255,255,255,0.4)", cursor: "pointer",
+                  }}
+                >
+                  Автоповорот {autoRotate ? "вкл" : "выкл"}
+                </button>
+              </div>
+              {skinFile && (
+                <button
+                  onClick={() => setSkinFile(null)}
+                  style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", fontSize: 11, color: "rgba(255,255,255,0.35)", cursor: "pointer" }}
+                >
+                  <ArrowCounterClockwise size={12} /> Сброс
+                </button>
+              )}
             </div>
           </motion.div>
 
-          {/* RIGHT: АКТИВНОСТЬ + ПОМОЩЬ */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.06 }}
-              style={{ ...card, padding: "20px 18px" }}
-            >
-              <div style={metaLabel}>Активность</div>
-              <div style={{ ...innerCard, padding: "14px 13px" }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#4ade80", marginBottom: 4 }}>
-                  +{bal.toLocaleString("ru-RU")}
-                </div>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)" }}>
-                  ПОПОЛНЕНИЕ БАЛАНСА
-                </div>
+          {/* Правая: инфо + настройки */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.08 }}
+            style={{ display: "flex", flexDirection: "column", gap: 12 }}
+          >
+            {/* Инфо о аккаунте */}
+            <div style={{
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              borderRadius: 16, padding: "20px 22px",
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 14 }}>
+                Аккаунт
               </div>
-            </motion.div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[
+                  { label: "Ник",        value: username },
+                  { label: "Telegram",   value: telegram },
+                  { label: "ID",         value: user?.id ? `#${user.id}` : "—" },
+                  { label: "Роль",       value: user?.role === "admin" ? "Администратор" : "Игрок" },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{
+                    background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: 10, padding: "12px 14px",
+                  }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-            >
-              <Link to="/support" style={{ ...card, display: "block", padding: "20px 18px", textDecoration: "none", color: "#fff", position: "relative" }}>
-                <div style={{ position: "absolute", top: 13, right: 14, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.22)" }}>
-                  ПОМОЩЬ ↗
+            {/* Скин-кастомизация */}
+            <div style={{
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              borderRadius: 16, padding: "20px 22px", flex: 1,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 14 }}>
+                Кастомизация скина
+              </div>
+
+              {!skinUnlocked ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Разблокируй за 1000 SBT</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                      Загружай свой PNG-скин 64×64 и он появится в 3D-вьювере и в игре.
+                    </div>
+                  </div>
+                  <Link to="/topup" style={{
+                    flexShrink: 0, background: "#2563eb", borderRadius: 10, padding: "10px 18px",
+                    fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", whiteSpace: "nowrap",
+                  }}>
+                    Пополнить
+                  </Link>
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, marginTop: 20 }}>НУЖНА ПОМОЩЬ?</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
-                  Откройте тикет или свяжитесь с поддержкой
+              ) : (
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: "#4ade80" }}>Разблокировано</div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 14 }}>
+                    Загрузи квадратный PNG 64×64 или 128×128. Он появится в 3D-вьювере и в игре.
+                  </div>
+                  <label style={{
+                    display: "inline-flex", alignItems: "center", gap: 8,
+                    background: "#2563eb", borderRadius: 10, padding: "10px 18px",
+                    fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer",
+                  }}>
+                    <UploadSimple size={14} /> Загрузить скин
+                    <input type="file" accept="image/png" style={{ display: "none" }}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) setSkinFile(f); }}
+                    />
+                  </label>
                 </div>
-              </Link>
-            </motion.div>
-          </div>
+              )}
+            </div>
+          </motion.div>
         </div>
       </div>
     </main>

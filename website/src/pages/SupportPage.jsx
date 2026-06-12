@@ -4,7 +4,7 @@ import { TelegramLogo, Plus } from "@phosphor-icons/react";
 import { Send } from "lucide-react";
 import { API_URL, WS_URL, getToken } from "../lib/api.js";
 
-const card = { background: "#0d0d0d", borderRadius: 16 };
+const card = { background: "rgba(255,255,255,0.03)", borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)" };
 const STATUS_COLORS = { open: "#facc15", answered: "#4ade80", closed: "rgba(255,255,255,0.2)" };
 const CATEGORIES = ["Технические проблемы","Вопрос по аккаунту","Вопрос по покупке","Баг / ошибка","Жалоба на игрока","Другое"];
 
@@ -19,6 +19,18 @@ export default function SupportPage({ user }) {
   const wsRef    = useRef(null);
   const bottomRef = useRef(null);
 
+  // Загружаем тикеты пользователя при монтировании
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`${API_URL}/support/tickets`)
+      .then(r => r.json())
+      .then(d => {
+        const myTickets = (d.tickets || []).filter(t => t.userId === user.id || t.username === user.username);
+        setTickets(myTickets);
+      })
+      .catch(() => {});
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user?.id) return;
     const socket = new WebSocket(WS_URL);
@@ -30,9 +42,14 @@ export default function SupportPage({ user }) {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "ticket_messages") setMessages(msg.messages || []);
-        if (msg.type === "message" && active?.id === msg.ticketId) {
+        if (msg.type === "message" && active?.id === msg.ticketId)
           setMessages(prev => prev.find(m => m.id === msg.message.id) ? prev : [...prev, msg.message]);
+        if (msg.type === "ticket_update") {
+          setTickets(prev => prev.map(t => t.id === msg.ticket.id ? { ...t, ...msg.ticket } : t));
+          setActive(prev => prev?.id === msg.ticket.id ? { ...prev, ...msg.ticket } : prev);
         }
+        if (msg.type === "balance_update" && user)
+          user.balance = msg.balance;
       } catch {}
     };
     return () => socket.close();
@@ -55,7 +72,7 @@ export default function SupportPage({ user }) {
       body: JSON.stringify({ userId: user.id, username: user.username, category: cat, message: desc }),
     });
     const data = await res.json();
-    const ticket = { id: data.ticketId, category: cat, preview: desc.slice(0, 50), status: "open" };
+    const ticket = { id: data.ticketId, category: cat, preview: desc.slice(0, 50), status: "open", createdAt: Date.now() };
     setTickets(prev => [ticket, ...prev]);
     setDesc(""); setView("list");
   };
@@ -77,7 +94,7 @@ export default function SupportPage({ user }) {
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Поддержка</h1>
           <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>
-            Мы отвечаем быстро и по делу. Опиши проблему — поможем.
+            Мы отвечаем быстро и по делу. Опиши проблему — поможем и вернёмся с решением.
           </p>
         </div>
 
@@ -91,7 +108,7 @@ export default function SupportPage({ user }) {
               initial={{ opacity: 0, x: -14 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.35 }}
-              href="https://t.me/sbgamessupport_bot" target="_blank" rel="noreferrer"
+              href="https://t.me/sbgamescbot" target="_blank" rel="noreferrer"
               style={{
                 ...card, padding: "16px 16px", display: "flex", alignItems: "center", gap: 12,
                 textDecoration: "none", color: "#fff",
@@ -143,7 +160,7 @@ export default function SupportPage({ user }) {
                   style={{
                     width: "100%", textAlign: "left", cursor: "pointer", borderRadius: 9,
                     padding: "11px 12px", marginBottom: 4,
-                    background: active?.id === t.id ? "#1a1a1a" : "transparent",
+                    background: active?.id === t.id ? "rgba(255,255,255,0.06)" : "transparent",
                     border: active?.id === t.id ? "1px solid rgba(59,130,246,0.35)" : "1px solid transparent",
                     color: "#fff",
                   }}
@@ -196,7 +213,7 @@ export default function SupportPage({ user }) {
                           borderRadius: 9, padding: "9px 11px", textAlign: "left", fontSize: 12, cursor: "pointer",
                           ...(cat === c
                             ? { background: "rgba(37,99,235,0.2)", border: "1px solid rgba(37,99,235,0.4)", color: "#93c5fd" }
-                            : { background: "#111", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.55)" }),
+                            : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.55)" }),
                         }}
                       >{c}</button>
                     ))}
@@ -204,7 +221,7 @@ export default function SupportPage({ user }) {
                   <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={5}
                     placeholder="Опиши проблему подробно..."
                     style={{
-                      width: "100%", background: "#111", border: "1px solid rgba(255,255,255,0.08)",
+                      width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
                       borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 13,
                       resize: "none", outline: "none", boxSizing: "border-box",
                     }}
@@ -227,14 +244,19 @@ export default function SupportPage({ user }) {
                   style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
                 >
                   {/* Header */}
-                  <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
+                  <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>Обращение #{active.id}</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{active.category}</div>
+                      {active.status === "answered" && (
+                        <span style={{
+                          background: "rgba(139,92,246,0.18)", color: "#c4b5fd",
+                          fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "3px 10px",
+                        }}>Ответ получен</span>
+                      )}
                     </div>
-                    <button onClick={() => setView("list")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 11 }}>
-                      ← Назад
-                    </button>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 3 }}>
+                      Создано {active.createdAt ? new Date(active.createdAt).toLocaleDateString("ru-RU") : active.category}
+                    </div>
                   </div>
 
                   {/* Messages */}
@@ -251,7 +273,7 @@ export default function SupportPage({ user }) {
                             padding: "10px 14px", fontSize: 13, lineHeight: 1.5,
                             ...(isMe
                               ? { background: "#2563eb", color: "#fff", borderRadius: "14px 14px 4px 14px" }
-                              : { background: "#111", color: "rgba(255,255,255,0.85)", borderRadius: "14px 14px 14px 4px", border: "1px solid rgba(255,255,255,0.06)" }),
+                              : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)", borderRadius: "14px 14px 14px 4px", border: "1px solid rgba(255,255,255,0.06)" }),
                           }}>
                             {msg.text}
                           </div>
@@ -265,6 +287,11 @@ export default function SupportPage({ user }) {
                   </div>
 
                   {/* Input */}
+                  {active?.status === "closed" ? (
+                    <div style={{ padding: "14px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
+                      Тикет закрыт — переписка недоступна
+                    </div>
+                  ) : (
                   <form onSubmit={e => { e.preventDefault(); sendMsg(); }}
                     style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}
                   >
@@ -272,7 +299,7 @@ export default function SupportPage({ user }) {
                       onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMsg())}
                       placeholder="Напиши сообщение..."
                       style={{
-                        flex: 1, background: "#111", border: "1px solid rgba(255,255,255,0.08)",
+                        flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
                         borderRadius: 10, padding: "11px 15px", color: "#fff", fontSize: 13, outline: "none",
                       }}
                     />
@@ -287,6 +314,7 @@ export default function SupportPage({ user }) {
                       <Send size={16} color="#fff" />
                     </button>
                   </form>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

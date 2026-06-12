@@ -380,11 +380,17 @@ async fn launch_minecraft(
         let _ = app.emit("download_progress", DownloadProgress {
             file:       "Mojang manifest".into(), downloaded: 0, total: 5000, speed_kbs: 0,
         });
-        let manifest_url = reqwest::get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json")
-            .await.map_err(|e| format!("Manifest API: {}", e))?
-            .text().await.map_err(|e| e.to_string())?;
+        // Получаем version_manifest_v2.json через curl
+        let manifest_text = {
+            let out = std::process::Command::new("curl")
+                .arg("-fsSL").arg("--max-time").arg("30")
+                .arg("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json")
+                .output().map_err(|e| format!("curl manifest: {}", e))?;
+            if !out.status.success() { return Err("Manifest API fail".into()); }
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
         let v1192_url = {
-            let m: serde_json::Value = serde_json::from_str(&manifest_url).ok()
+            let m: serde_json::Value = serde_json::from_str(&manifest_text).ok()
                 .ok_or("Manifest parse")?;
             let arr = m["versions"].as_array().ok_or("versions[] missing")?;
             let v = arr.iter().find(|v| v["id"] == "1.19.2").ok_or("1.19.2 not in manifest")?;
@@ -709,27 +715,54 @@ fn uuid_str(bytes: &[u8; 16]) -> String {
     )
 }
 
-async fn download_file(url: &str, dest: &PathBuf, app: &tauri::AppHandle) -> Result<(), String> {
-    use std::io::{Read, Write};
+// Download file via curl (reqwest таймаутит на libraries.minecraft.net, curl работает за 0.3с)
+async fn download_file(url: &str, dest: &PathBuf, _app: &tauri::AppHandle) -> Result<(), String> {
+    use std::process::Command;
+
     std::fs::create_dir_all(dest.parent().unwrap()).ok();
-    let response = reqwest::get(url).await.map_err(|e| e.to_string())?;
-    let total = response.content_length().unwrap_or(0);
-    let mut file = std::fs::File::create(dest).map_err(|e| e.to_string())?;
-    let mut stream = response.bytes_stream();
-    let mut downloaded: u64 = 0;
-    use futures_util::StreamExt;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| e.to_string())?;
-        file.write_all(&chunk).map_err(|e| e.to_string())?;
-        downloaded += chunk.len() as u64;
-        if total > 0 {
-            let _ = app.emit("download_progress", DownloadProgress {
-                file:       dest.file_name().unwrap().to_string_lossy().to_string(),
-                downloaded, total, speed_kbs: 0,
-            });
+
+    // Список зеркал: основной + fallback на Maven Central
+    let mut urls = vec![url.to_string()];
+    if url.contains("libraries.minecraft.net") {
+        // Fallback: парсим path после libraries.minecraft.net и формируем Maven Central URL
+        if let Some(path) = url.strip_prefix("https://libraries.minecraft.net/") {
+            let mc = format!("https://repo1.maven.org/maven2/{}", path);
+            let forge = format!("https://maven.minecraftforge.net/{}", path);
+            urls.push(mc);
+            urls.push(forge);
         }
     }
-    Ok(())
+
+    let mut last_err = String::new();
+    for attempt_url in &urls {
+        // Пробуем до 3 раз для каждого зеркала
+        for retry in 0..3 {
+            let result = Command::new("curl")
+                .arg("-fsSL")           // fail on errors, silent, follow redirects
+                .arg("--max-time").arg("30")
+                .arg("--connect-timeout").arg("10")
+                .arg("-o").arg(dest)
+                .arg(attempt_url)
+                .output();
+
+            match result {
+                Ok(out) if out.status.success() => {
+                    if dest.exists() && dest.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+                        return Ok(());
+                    }
+                }
+                Ok(out) => {
+                    last_err = String::from_utf8_lossy(&out.stderr).to_string();
+                }
+                Err(e) => {
+                    last_err = format!("curl не найден или не запускается: {}", e);
+                }
+            }
+            // Backoff перед retry
+            std::thread::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1)));
+        }
+    }
+    Err(format!("Не удалось скачать {}: {}", url, last_err))
 }
 
 // ─── Tray popup (custom UI) ──────────────────────────────────────────────────
@@ -951,11 +984,15 @@ async fn install_forge_from_zip(
                 downloaded: i as u64, total: total_libs as u64, speed_kbs: 0,
             });
 
-            let resp = reqwest::get(url).await.map_err(|e| format!("download {}: {}", url, e))?;
-            if !resp.status().is_success() { continue; }
-            let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-            let mut f = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
-            f.write_all(&bytes).map_err(|e| e.to_string())?;
+            // Если dest уже есть правильного размера — skip
+            if let Ok(meta) = dest.metadata() {
+                if meta.len() == size && size > 0 { continue; }
+            }
+            // Используем curl-based download (reqwest таймаутит на libraries.minecraft.net)
+            let app_handle = app.clone();
+            if let Err(e) = download_file(url, &dest, &app_handle).await {
+                eprintln!("[Forge lib] FAIL: {} — {}", url, e);
+            }
         }
 
         // Native classifiers (Forge редко, но бывает)
