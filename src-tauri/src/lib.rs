@@ -555,6 +555,35 @@ async fn launch_minecraft(
     // и не требует отдельной загрузки Minecraft libraries — он сам подтянет.
     // Libraries уже распакованы через install_forge_from_zip
 
+    // Копируем Forge universal.jar в legacy путь (1.19.2-VER/).
+    // FMLLoader.LoaderVersion.<clinit> ищет именно его для получения Implementation-Version.
+    // Делаем КАЖДЫЙ запуск — потому что install_marker может уже стоять, а legacy копия — нет.
+    // Также ПАТЧИМ манифест: Forge installer делает binpatch и пишет Implementation-Version,
+    // но без installer'а manifest пустой. LauncherVersion.<clinit> тогда падает с
+    // "Missing FMLLauncher version". Добавляем атрибут вручную.
+    {
+        let legacy_dir = mc_dir.join("libraries/net/minecraftforge/forge")
+            .join(format!("1.19.2-{}", forge_version));
+        let legacy_jar = legacy_dir.join(format!("forge-1.19.2-{}-universal.jar", forge_version));
+        let new_jar = mc_dir.join("libraries/net/minecraftforge/forge")
+            .join(&forge_version_id)
+            .join(format!("{}.jar", forge_version_id));
+        if !legacy_jar.exists() && new_jar.exists() {
+            std::fs::create_dir_all(&legacy_dir).ok();
+            // Копируем universal jar
+            let _ = std::fs::copy(&new_jar, &legacy_jar);
+        }
+
+        // Патчим manifest в legacy universal.jar — пишем Implementation-Version
+        if legacy_jar.exists() {
+            patch_universal_manifest(&legacy_jar, &forge_version, &forge_version_id);
+        }
+        // Также патчим в новом пути (1.19.2-forge-VER/...)
+        if new_jar.exists() {
+            patch_universal_manifest(&new_jar, &forge_version, &forge_version_id);
+        }
+    }
+
     let _ = app.emit("download_progress", DownloadProgress {
         file:       "Forge готов".into(),
         downloaded: 80, total: 100, speed_kbs: 0,
@@ -807,6 +836,71 @@ fn uuid_str(bytes: &[u8; 16]) -> String {
         bytes[8], bytes[9],
         bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
     )
+}
+
+// Патчит MANIFEST.MF в Forge universal.jar — пишем Implementation-Version
+// и другие Forge-специфичные атрибуты. Forge installer делает это во время binpatch,
+// но без installer'а manifest пустой, и LauncherVersion.<clinit> падает.
+fn patch_universal_manifest(jar: &PathBuf, forge_version: &str, forge_version_id: &str) {
+    use std::io::Read as _;
+    use std::io::Write as _;
+
+    let mut new_jar_data: Vec<u8> = Vec::new();
+    let file = match std::fs::File::open(jar) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let mut zip = match zip::ZipArchive::new(file) {
+        Ok(z) => z,
+        Err(_) => return,
+    };
+
+    // Если Implementation-Version уже есть — skip
+    if let Ok(mut mf) = zip.by_name("META-INF/MANIFEST.MF") {
+        let mut s = String::new();
+        if mf.read_to_string(&mut s).is_ok() && s.contains("Implementation-Version:") {
+            return;
+        }
+    }
+
+    // Собираем обновлённый manifest
+    let new_manifest = format!(
+        "Manifest-Version: 1.0\r\n\
+         Implementation-Version: {}\r\n\
+         Implementation-Vendor: Forge\r\n\
+         Implementation-Title: forge\r\n\
+         Specification-Version: {}\r\n\
+         Built-By: SBGames Launcher\r\n\r\n",
+        forge_version_id, forge_version
+    );
+
+    // Создаём новый zip с патченным manifest
+    let tmp = jar.with_extension("jar.tmp");
+    let mut out = match std::fs::File::create(&tmp) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let opts = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    for i in 0..zip.len() {
+        let mut entry = match zip.by_index(i) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let name = entry.name().to_string();
+        if name == "META-INF/MANIFEST.MF" {
+            out.write_all(new_manifest.as_bytes()).ok();
+        } else {
+            let mut buf = Vec::new();
+            if entry.read_to_end(&mut buf).is_ok() {
+                out.write_all(&buf).ok();
+            }
+        }
+    }
+    drop(zip);
+    drop(out);
+    let _ = std::fs::rename(&tmp, jar);
+    eprintln!("[Forge] Patched manifest in {} with Implementation-Version={}", jar.display(), forge_version_id);
 }
 
 // Проверяет содержит ли jar module-info.class (Java 9+ module)
