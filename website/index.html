@@ -2,14 +2,130 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/logo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SB Games</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#0a0a0e" />
+    <meta name="color-scheme" content="dark" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+    <link rel="icon" href="/logo.jpg" type="image/jpeg" />
+    <link rel="apple-touch-icon" href="/logo.jpg" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="mask-icon" href="/logo.jpg" color="#2563eb" />
+    <link rel="canonical" href="https://sbgames.hyperionsearch.xyz/" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet" />
+
+    <title>SB Games — комплекс игровых серверов. Скачать лаунчер</title>
+    <meta name="description" content="SB Games — комплекс игровых серверов и лаунчер для игры на них. Скачал — играешь. Без ручной установки модов и Forge." />
+    <meta name="keywords" content="SB Games, SBGames, игровые серверы, майнкрафт лаунчер, скачать лаунчер, minecraft" />
+    <meta name="author" content="SB Games" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="language" content="ru" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SB Games" />
+    <meta property="og:title" content="SB Games — комплекс игровых серверов" />
+    <meta property="og:description" content="Лаунчер + комплекс серверов в одном." />
+    <meta property="og:url" content="https://sbgames.hyperionsearch.xyz/" />
+    <meta property="og:image" content="https://sbgames.hyperionsearch.xyz/og-cover.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="ru_RU" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SB Games — комплекс игровых серверов" />
+    <meta name="twitter:description" content="Лаунчер + комплекс серверов в одном." />
+    <meta name="twitter:image" content="https://sbgames.hyperionsearch.xyz/og-cover.jpg" />
+
+    <link rel="alternate" hreflang="ru" href="https://sbgames.hyperionsearch.xyz/" />
+    <link rel="alternate" hreflang="x-default" href="https://sbgames.hyperionsearch.xyz/" />
+
+    <!-- ───── JSON-LD: Organization ───── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://sbgames.hyperionsearch.xyz/#org",
+      "name": "SB Games",
+      "alternateName": "SBGames",
+      "url": "https://sbgames.hyperionsearch.xyz/",
+      "logo": "https://sbgames.hyperionsearch.xyz/logo.jpg",
+      "sameAs": ["https://t.me/sb7games", "https://www.youtube.com/@sb_games7", "https://www.tiktok.com/@sb7games"]
+    }
+    </script>
+
+    <!-- ───── JSON-LD: WebSite ───── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "@id": "https://sbgames.hyperionsearch.xyz/#site",
+      "name": "SB Games",
+      "url": "https://sbgames.hyperionsearch.xyz/",
+      "inLanguage": "ru-RU",
+      "publisher": { "@id": "https://sbgames.hyperionsearch.xyz/#org" }
+    }
+    </script>
+
+    <!-- ───── JSON-LD: SoftwareApplication (лаунчер) ───── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "SB Games Launcher",
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Windows 10, Windows 11",
+      "description": "Лаунчер для игры на серверах SB Games.",
+      "image": "https://sbgames.hyperionsearch.xyz/og-cover.jpg",
+      "url": "https://sbgames.hyperionsearch.xyz/download",
+      "downloadUrl": "https://sbgames.hyperionsearch.xyz/download",
+      "softwareVersion": "1.0",
+      "fileSize": "85 МБ",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "RUB" },
+      "author": { "@id": "https://sbgames.hyperionsearch.xyz/#org" }
+    }
+    </script>
+
+    <!-- ───── Preload hero ───── -->
+    <link rel="preload" as="image" href="/logo.jpg" fetchpriority="high" />
+    <link rel="preconnect" href="https://api.sbgames.hyperionsearch.xyz:8443" />
+
+    <style>
+      *,*::before,*::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #0a0a0e; color: #fff; font-family: 'Inter', system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+      body { min-height: 100vh; }
+      * { -webkit-user-select: none; -moz-user-select: none; user-select: none; }
+      input, textarea, [contenteditable] { -webkit-user-select: text; -moz-user-select: text; user-select: text; }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #000; }
+      ::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.4); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(37,99,235,0.7); }
+
+      .seo-fallback { position: fixed; inset: 0; z-index: -1; padding: 40px 20px; max-width: 1200px; margin: 0 auto; pointer-events: none; }
+      .seo-fallback h1 { font-size: 28px; margin: 0 0 16px; background: linear-gradient(90deg, #60a5fa, #2563eb); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+      .seo-fallback p { font-size: 14px; line-height: 1.6; color: #888; margin: 0 0 12px; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div class="seo-fallback">
+        <h1>SB Games — комплекс игровых серверов</h1>
+        <p>Один лаунчер на все наши серверы. Скачал — играешь.</p>
+        <ul style="color: #888; font-size: 14px; line-height: 1.8;">
+          <li><a style="color: #60a5fa;" href="/download">Скачать лаунчер</a></li>
+          <li><a style="color: #60a5fa;" href="/howtoplay">Как играть</a></li>
+          <li><a style="color: #60a5fa;" href="/topup">Купить SBT</a></li>
+          <li><a style="color: #60a5fa;" href="/rules">Правила</a></li>
+          <li><a style="color: #60a5fa;" href="/support">Поддержка</a></li>
+        </ul>
+        <p style="margin-top: 24px;">Включи JavaScript, чтобы зайти в личный кабинет.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

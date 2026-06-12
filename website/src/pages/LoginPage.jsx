@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Copy, Check } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CircleNotch, Copy, Check, ArrowLeft, TelegramLogo, Sparkle } from "@phosphor-icons/react";
 import { API_URL } from "../lib/api.js";
 
 export default function LoginPage({ onLogin }) {
-  const [step, setStep] = useState("start");
-  const [method, setMethod] = useState(null);
+  const [step, setStep] = useState("choose");   // choose | widget | code | nick | success
   const [tgUser, setTgUser] = useState(null);
   const [nick, setNick] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export default function LoginPage({ onLogin }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!widgetRef.current || method !== "widget") return;
+    if (!widgetRef.current || step !== "widget") return;
 
     window.onTelegramAuth = async (data) => {
       setLoading(true);
@@ -28,18 +28,14 @@ export default function LoginPage({ onLogin }) {
           body: JSON.stringify(data),
         });
         const json = await res.json();
-        if (!res.ok) throw new Error(json.message || "Ошибка авторизации");
+        if (!res.ok) throw new Error(json.message || "Не удалось войти");
 
         if (json.needNick) {
           setTgUser(json.tgUser);
           setNick(json.tgUser.username || "");
           setStep("nick");
         } else {
-          setStep("success");
-          setTimeout(() => {
-            onLogin(json.user, json.token);
-            navigate("/");
-          }, 800);
+          finishLogin(json.user, json.token);
         }
       } catch (e) {
         setError(e.message);
@@ -56,27 +52,28 @@ export default function LoginPage({ onLogin }) {
     script.async = true;
     widgetRef.current.appendChild(script);
 
-    return () => {
-      delete window.onTelegramAuth;
-    };
-  }, [method]);
+    return () => { delete window.onTelegramAuth; };
+  }, [step]);
 
   useEffect(() => {
-    if (method === "bot-link") {
-      generateLoginCode();
-    }
-  }, [method]);
+    if (step === "code") generateLoginCode();
+  }, [step]);
+
+  const finishLogin = (user, token) => {
+    setStep("success");
+    setTimeout(() => {
+      onLogin(user, token);
+      navigate("/");
+    }, 700);
+  };
 
   const generateLoginCode = async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/auth/generate-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await fetch(`${API_URL}/auth/create-code`, { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.message || "Ошибка");
+      if (!res.ok) throw new Error(json.message || "Не удалось создать код");
       setLoginCode(json.code);
       pollForLogin(json.code);
     } catch (e) {
@@ -87,7 +84,9 @@ export default function LoginPage({ onLogin }) {
   };
 
   const pollForLogin = (code) => {
+    let stopped = false;
     const interval = setInterval(async () => {
+      if (stopped) return;
       try {
         const res = await fetch(`${API_URL}/auth/check-code`, {
           method: "POST",
@@ -96,24 +95,25 @@ export default function LoginPage({ onLogin }) {
         });
         const json = await res.json();
         if (json.user) {
-          clearInterval(interval);
-          setStep("success");
-          setTimeout(() => {
-            onLogin(json.user, json.token);
-            navigate("/");
-          }, 800);
+          stopped = true; clearInterval(interval);
+          if (json.needNick) {
+            setTgUser(json.tgUser);
+            setNick(json.tgUser.username || "");
+            setStep("nick");
+          } else {
+            finishLogin(json.user, json.token);
+          }
         }
       } catch {}
     }, 2000);
-
-    setTimeout(() => clearInterval(interval), 5 * 60 * 1000);
+    setTimeout(() => { stopped = true; clearInterval(interval); }, 5 * 60 * 1000);
   };
 
   const handleNick = async (e) => {
     e.preventDefault();
     const clean = nick.trim().replace(/^@/, "");
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(clean)) {
-      setError("Ник: 3–16 символов, буквы/цифры/_");
+      setError("Ник: 3–16 символов, только буквы/цифры/_");
       return;
     }
     setLoading(true);
@@ -126,444 +126,335 @@ export default function LoginPage({ onLogin }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setStep("success");
-      setTimeout(() => {
-        onLogin(data.user, data.token);
-        navigate("/");
-      }, 800);
+      finishLogin(data.user, data.token);
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
 
-  const copyToClipboard = () => {
+  const copy = () => {
     navigator.clipboard.writeText(loginCode);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   const botLink = `https://t.me/sbgamescbot?start=code_${loginCode}`;
 
-  // Success screen with minimalist design
-  if (step === "success") {
-    return (
-      <main style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "80vh", padding: "16px" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
-            <Check size={40} style={{ color: "#3b82f6" }} />
-          </div>
-          <h1 style={{ fontSize: "24px", fontWeight: "bold", color: "#fff", marginBottom: "8px" }}>
-            Добро пожаловать!
-          </h1>
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "14px" }}>Перенаправление...</p>
-        </div>
-      </main>
-    );
-  }
-
-  // Main container with minimalist glassed design
-  const containerStyle = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: "80vh",
-    padding: "16px",
-  };
-
-  const contentStyle = {
-    width: "100%",
-    maxWidth: "480px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-  };
-
-  const headerStyle = {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    padding: "16px",
-    background: "rgba(10,10,10,0.94)",
-    borderRadius: "14px",
-    border: "1px solid rgba(255,255,255,0.09)",
-    boxShadow: "0 4px 32px rgba(0,0,0,0.7)",
-    backdropFilter: "blur(24px)",
-    WebkitBackdropFilter: "blur(24px)",
-    marginBottom: "8px",
-  };
-
-  const titleStyle = {
-    fontSize: "18px",
-    fontWeight: "600",
-    color: "#fff",
-    letterSpacing: "0.02em",
-  };
-
-  const botRequiredStyle = {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "12px 16px",
-    background: "rgba(59,130,246,0.1)",
-    border: "1px solid rgba(59,130,246,0.3)",
-    borderRadius: "12px",
-    marginBottom: "16px",
-  };
-
-  const botLabelStyle = {
-    fontSize: "12px",
-    color: "rgba(255,255,255,0.6)",
-  };
-
-  const botNameStyle = {
-    fontSize: "14px",
-    fontWeight: "600",
-    color: "#3b82f6",
-    fontFamily: "monospace",
-  };
-
-  const buttonStyle = {
-    width: "100%",
-    padding: "12px 16px",
-    background: "#3b82f6",
-    color: "#fff",
-    border: "none",
-    borderRadius: "12px",
-    fontSize: "14px",
-    fontWeight: "500",
-    cursor: "pointer",
-    transition: "all 0.15s",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-  };
-
-  const buttonSecondaryStyle = {
-    ...buttonStyle,
-    background: "rgba(255,255,255,0.08)",
-    border: "1px solid rgba(255,255,255,0.1)",
-  };
-
-  const methodButtonsStyle = {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  };
-
-  const codeBlockStyle = {
-    padding: "12px 16px",
-    background: "rgba(59,130,246,0.05)",
-    border: "1px solid rgba(59,130,246,0.2)",
-    borderRadius: "12px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    marginBottom: "12px",
-  };
-
-  const codeTextStyle = {
-    flex: 1,
-    fontSize: "16px",
-    fontWeight: "600",
-    fontFamily: "monospace",
-    color: "#fff",
-    letterSpacing: "0.1em",
-  };
-
-  const backButtonStyle = {
-    padding: "8px 12px",
-    background: "transparent",
-    color: "rgba(255,255,255,0.4)",
-    border: "none",
-    fontSize: "13px",
-    cursor: "pointer",
-    transition: "color 0.15s",
-    fontWeight: "500",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  };
-
-  const infoBoxStyle = {
-    padding: "12px 16px",
-    background: "rgba(59,130,246,0.1)",
-    border: "1px solid rgba(59,130,246,0.3)",
-    borderRadius: "12px",
-    fontSize: "12px",
-    color: "rgba(255,255,255,0.7)",
-    lineHeight: "1.5",
-  };
-
-  const inputStyle = {
-    width: "100%",
-    padding: "12px 16px",
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "12px",
-    color: "#fff",
-    fontSize: "14px",
-    fontFamily: "inherit",
-    boxSizing: "border-box",
-    transition: "all 0.15s",
-  };
-
-  const errorStyle = {
-    fontSize: "12px",
-    color: "#ef4444",
-    marginTop: "8px",
-  };
-
-  // Loading state
-  if (!method && loading) {
-    return (
-      <main style={containerStyle}>
-        <div style={contentStyle}>
-          <div style={headerStyle}>
-            <span style={titleStyle}>Вход в SBGames</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "32px" }}>
-            <Loader2 size={20} style={{ color: "#3b82f6", animation: "spin 1s linear infinite" }} />
-            <span style={{ color: "rgba(255,255,255,0.6)", fontSize: "14px" }}>Загружаем...</span>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <main style={containerStyle}>
+    <main style={{
+      minHeight: "calc(100vh - 80px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "24px",
+    }}>
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+        @keyframes lpGlow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+          50%      { box-shadow: 0 0 0 14px rgba(59,130,246,0); }
         }
-        button:hover {
-          opacity: 0.9;
+        @keyframes lpSpin { to { transform: rotate(360deg); } }
+        @keyframes lpPulse {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50%      { opacity: 1;   transform: scale(1.05); }
         }
-        button:active {
-          transform: scale(0.98);
-        }
-        input:focus {
+        .lp-input:focus {
           outline: none;
-          border-color: rgba(59, 130, 246, 0.5) !important;
-          background: rgba(59, 130, 246, 0.05) !important;
+          border-color: rgba(59,130,246,0.6) !important;
+          background: rgba(59,130,246,0.06) !important;
         }
+        .lp-btn-primary { transition: all 0.15s; }
+        .lp-btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(59,130,246,0.3); }
+        .lp-btn-primary:active:not(:disabled) { transform: translateY(0); }
+        .lp-card { transition: all 0.2s; }
+        .lp-card:hover { background: rgba(255,255,255,0.05) !important; border-color: rgba(59,130,246,0.4) !important; transform: translateY(-2px); }
       `}</style>
 
-      <div style={contentStyle}>
-        {/* Header */}
-        <div style={headerStyle}>
-          <span style={titleStyle}>Вход в SBGames</span>
-        </div>
-
-        {/* Bot requirement notice */}
-        <div style={botRequiredStyle}>
-          <span style={botLabelStyle}>Требуется бот:</span>
-          <span style={botNameStyle}>@sbgamescbot</span>
-        </div>
-
-        {/* Main content */}
-        {!method ? (
-          // Method selection
-          <div>
-            <div style={methodButtonsStyle}>
-              <button
-                onClick={() => setMethod("widget")}
-                style={{
-                  ...buttonStyle,
-                  background: "#3b82f6",
-                }}
-                onMouseOver={(e) => (e.target.style.background = "#2563eb")}
-                onMouseOut={(e) => (e.target.style.background = "#3b82f6")}
-              >
-                Telegram Widget
-              </button>
-
-              <button
-                onClick={() => setMethod("bot-link")}
-                style={buttonSecondaryStyle}
-                onMouseOver={(e) => (e.target.style.background = "rgba(255,255,255,0.12)")}
-                onMouseOut={(e) => (e.target.style.background = "rgba(255,255,255,0.08)")}
-              >
-                Код + Bot Link
-              </button>
+      <AnimatePresence mode="wait">
+        {step === "success" ? (
+          <motion.div key="ok"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 280, damping: 24 }}
+            style={{ textAlign: "center" }}
+          >
+            <div style={{
+              width: 80, height: 80, borderRadius: "50%",
+              background: "linear-gradient(135deg, #10b981, #059669)",
+              margin: "0 auto 20px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 0 40px rgba(16,185,129,0.4)",
+            }}>
+              <Check size={40} weight="bold" color="#fff" />
+            </div>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: "#fff", margin: "0 0 8px" }}>Готово</h1>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>Входим в аккаунт…</p>
+          </motion.div>
+        ) : (
+          <motion.div key="form"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -20, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            style={{ width: "100%", maxWidth: 440 }}
+          >
+            {/* Логотип + приветствие */}
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 20,
+                background: "linear-gradient(135deg, #2563eb, #60a5fa)",
+                margin: "0 auto 16px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 12px 32px rgba(37,99,235,0.4)",
+                animation: "lpGlow 2.5s ease-out infinite",
+              }}>
+                <Sparkle size={28} weight="fill" color="#fff" />
+              </div>
+              <h1 style={{ fontSize: 26, fontWeight: 800, color: "#fff", margin: "0 0 6px", letterSpacing: "-0.01em" }}>
+                Вход в SB Games
+              </h1>
+              <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 13, margin: 0 }}>
+                Один аккаунт для всех серверов
+              </p>
             </div>
 
-            <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginTop: "16px", textAlign: "center" }}>
-              Выбери способ входа через Telegram
-            </p>
-          </div>
-        ) : step === "start" && method === "widget" ? (
-          // Widget method
-          <div>
-            <button
-              onClick={() => setMethod(null)}
-              style={backButtonStyle}
-              onMouseOver={(e) => (e.target.style.color = "rgba(255,255,255,0.6)")}
-              onMouseOut={(e) => (e.target.style.color = "rgba(255,255,255,0.4)")}
-            >
-              ← Назад
-            </button>
-
-            {loading ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "32px 0" }}>
-                <Loader2 size={20} style={{ color: "#3b82f6", animation: "spin 1s linear infinite" }} />
-                <span style={{ color: "rgba(255,255,255,0.6)", fontSize: "14px" }}>Загружаем виджет...</span>
-              </div>
-            ) : (
-              <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
-                <div ref={widgetRef} />
-              </div>
-            )}
-
-            {error && <p style={errorStyle}>{error}</p>}
-          </div>
-        ) : step === "start" && method === "bot-link" ? (
-          // Bot link method
-          <div>
-            <button
-              onClick={() => setMethod(null)}
-              style={backButtonStyle}
-              onMouseOver={(e) => (e.target.style.color = "rgba(255,255,255,0.6)")}
-              onMouseOut={(e) => (e.target.style.color = "rgba(255,255,255,0.4)")}
-            >
-              ← Назад
-            </button>
-
-            {loginCode ? (
-              <div>
-                <div style={codeBlockStyle}>
-                  <code style={codeTextStyle}>{loginCode}</code>
-                  <button
-                    onClick={copyToClipboard}
+            <AnimatePresence mode="wait">
+              {step === "choose" && (
+                <motion.div key="choose"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
+                >
+                  <button className="lp-card lp-btn-primary"
+                    onClick={() => setStep("widget")}
                     style={{
-                      background: "transparent",
-                      border: "none",
-                      padding: "4px 8px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      color: "rgba(255,255,255,0.6)",
-                      transition: "color 0.15s",
+                      width: "100%", padding: "18px 20px",
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 16, cursor: "pointer", textAlign: "left",
+                      display: "flex", alignItems: "center", gap: 16,
+                      color: "#fff", fontFamily: "inherit",
                     }}
-                    onMouseOver={(e) => (e.target.style.color = "#3b82f6")}
-                    onMouseOut={(e) => (e.target.style.color = "rgba(255,255,255,0.6)")}
-                    title="Скопировать"
                   >
-                    {copied ? (
-                      <Check size={16} style={{ color: "#10b981" }} />
-                    ) : (
-                      <Copy size={16} />
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 12,
+                      background: "rgba(59,130,246,0.15)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0,
+                    }}>
+                      <TelegramLogo size={24} weight="fill" color="#60a5fa" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Через Telegram</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>Один клик — и ты в аккаунте</div>
+                    </div>
+                    <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>›</span>
+                  </button>
+
+                  <button className="lp-card lp-btn-primary"
+                    onClick={() => setStep("code")}
+                    style={{
+                      width: "100%", padding: "18px 20px",
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 16, cursor: "pointer", textAlign: "left",
+                      display: "flex", alignItems: "center", gap: 16,
+                      color: "#fff", fontFamily: "inherit",
+                    }}
+                  >
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 12,
+                      background: "rgba(168,85,247,0.15)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0,
+                    }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: "#c084fc", fontFamily: "monospace" }}>#</span>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Через код</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>Получи код и отправь боту</div>
+                    </div>
+                    <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>›</span>
+                  </button>
+
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>
+                    Нужен Telegram-аккаунт. <br/>Бот @sbgamescbot спросит разрешение на вход.
+                  </p>
+                </motion.div>
+              )}
+
+              {step === "widget" && (
+                <motion.div key="widget"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                >
+                  <button onClick={() => { setStep("choose"); setError(""); setLoading(false); }}
+                    style={{
+                      background: "transparent", border: "none", color: "rgba(255,255,255,0.4)",
+                      fontSize: 13, cursor: "pointer", padding: "4px 0 16px",
+                      display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit",
+                    }}
+                  >
+                    <ArrowLeft size={14} /> Назад
+                  </button>
+                  <div style={{
+                    padding: "32px 24px",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 16,
+                    display: "flex", justifyContent: "center",
+                    minHeight: 100,
+                  }}>
+                    {loading
+                      ? <CircleNotch size={24} style={{ color: "#60a5fa", animation: "lpSpin 1s linear infinite" }} />
+                      : <div ref={widgetRef} />
+                    }
+                  </div>
+                  {error && <p style={{ color: "#fca5a5", fontSize: 13, marginTop: 12, textAlign: "center" }}>{error}</p>}
+                </motion.div>
+              )}
+
+              {step === "code" && (
+                <motion.div key="code"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                >
+                  <button onClick={() => { setStep("choose"); setError(""); setLoginCode(""); }}
+                    style={{
+                      background: "transparent", border: "none", color: "rgba(255,255,255,0.4)",
+                      fontSize: 13, cursor: "pointer", padding: "4px 0 16px",
+                      display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit",
+                    }}
+                  >
+                    <ArrowLeft size={14} /> Назад
+                  </button>
+
+                  {loginCode ? (
+                    <>
+                      <div style={{
+                        padding: "20px",
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 16,
+                        marginBottom: 12,
+                      }}>
+                        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>
+                          Твой код
+                        </p>
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "12px 14px",
+                          background: "rgba(59,130,246,0.08)",
+                          border: "1px solid rgba(59,130,246,0.25)",
+                          borderRadius: 10,
+                        }}>
+                          <code style={{
+                            flex: 1, fontSize: 22, fontWeight: 800,
+                            color: "#fff", letterSpacing: "0.2em", fontFamily: "monospace",
+                            animation: "lpPulse 2s ease-in-out infinite",
+                          }}>{loginCode}</code>
+                          <button onClick={copy}
+                            style={{
+                              width: 36, height: 36, borderRadius: 8,
+                              background: copied ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.06)",
+                              border: copied ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
+                            {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} color="rgba(255,255,255,0.6)" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <a className="lp-btn-primary" href={botLink} target="_blank" rel="noopener noreferrer"
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          gap: 10, width: "100%", padding: "16px",
+                          background: "linear-gradient(135deg, #2563eb, #3b82f6)",
+                          color: "#fff", fontSize: 15, fontWeight: 700,
+                          borderRadius: 12, textDecoration: "none",
+                          boxShadow: "0 8px 24px rgba(37,99,235,0.3)",
+                        }}>
+                        <TelegramLogo size={20} weight="fill" />
+                        Открыть @sbgamescbot
+                      </a>
+
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 16, textAlign: "center", lineHeight: 1.6 }}>
+                        Отправь код боту и он откроет тебе вход.<br/>Код действует 5 минут.
+                      </p>
+                    </>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "40px 0" }}>
+                      <CircleNotch size={20} style={{ color: "#60a5fa", animation: "lpSpin 1s linear infinite" }} />
+                      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>Генерируем код…</span>
+                    </div>
+                  )}
+                  {error && <p style={{ color: "#fca5a5", fontSize: 13, marginTop: 12, textAlign: "center" }}>{error}</p>}
+                </motion.div>
+              )}
+
+              {step === "nick" && (
+                <motion.div key="nick"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                >
+                  <div style={{ textAlign: "center", marginBottom: 24 }}>
+                    {tgUser?.photo_url && (
+                      <img src={tgUser.photo_url} alt=""
+                        style={{ width: 72, height: 72, borderRadius: "50%", marginBottom: 12, border: "2px solid rgba(59,130,246,0.4)" }} />
                     )}
-                  </button>
-                </div>
+                    <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 0 4px" }}>
+                      Привет, {tgUser?.first_name || "друг"}!
+                    </h2>
+                    <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 13, margin: 0 }}>
+                      Придумай ник для игры
+                    </p>
+                  </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <a
-                    href={botLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      ...buttonStyle,
-                      background: "#3b82f6",
-                      textDecoration: "none",
-                    }}
-                    onMouseOver={(e) => (e.target.style.background = "#2563eb")}
-                    onMouseOut={(e) => (e.target.style.background = "#3b82f6")}
-                  >
-                    Открыть бот с кодом
-                  </a>
+                  <form onSubmit={handleNick} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ position: "relative" }}>
+                      <span style={{
+                        position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)",
+                        color: "rgba(255,255,255,0.3)", fontSize: 16, fontWeight: 600,
+                      }}>@</span>
+                      <input className="lp-input"
+                        type="text"
+                        value={nick}
+                        onChange={(e) => { setNick(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")); setError(""); }}
+                        placeholder="никнейм"
+                        autoFocus
+                        maxLength={16}
+                        style={{
+                          width: "100%", padding: "14px 16px 14px 36px",
+                          background: error ? "rgba(239,68,68,0.05)" : "rgba(255,255,255,0.04)",
+                          border: error ? "1px solid rgba(239,68,68,0.4)" : "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: 12, color: "#fff", fontSize: 15,
+                          fontFamily: "inherit", boxSizing: "border-box",
+                          transition: "all 0.15s",
+                        }}
+                      />
+                    </div>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: -4 }}>
+                      3–16 символов, буквы/цифры/подчёркивание
+                    </p>
 
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(loginCode);
-                      window.open("https://t.me/sbgamescbot", "_blank");
-                    }}
-                    style={buttonSecondaryStyle}
-                    onMouseOver={(e) => (e.target.style.background = "rgba(255,255,255,0.12)")}
-                    onMouseOut={(e) => (e.target.style.background = "rgba(255,255,255,0.08)")}
-                  >
-                    Скопировать и открыть бот
-                  </button>
-                </div>
+                    {error && <p style={{ color: "#fca5a5", fontSize: 12, margin: 0 }}>{error}</p>}
 
-                <div style={infoBoxStyle}>
-                  Отправь код боту или нажми на кнопку выше. Вход произойдёт автоматически.
-                </div>
-              </div>
-            ) : loading ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "32px 0" }}>
-                <Loader2 size={20} style={{ color: "#3b82f6", animation: "spin 1s linear infinite" }} />
-                <span style={{ color: "rgba(255,255,255,0.6)", fontSize: "14px" }}>Генерируем код...</span>
-              </div>
-            ) : null}
-
-            {error && <p style={errorStyle}>{error}</p>}
-          </div>
-        ) : step === "nick" ? (
-          // Nick form
-          <div>
-            <form onSubmit={handleNick} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <p style={{ color: "#fff", fontWeight: "600", marginBottom: "4px" }}>
-                  Привет, {tgUser?.first_name}!
-                </p>
-                <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "13px" }}>Придумай игровой ник</p>
-              </div>
-
-              <input
-                type="text"
-                value={nick}
-                onChange={(e) => {
-                  setNick(e.target.value);
-                  setError("");
-                }}
-                placeholder="Ник (3–16 символов)"
-                autoFocus
-                style={{
-                  ...inputStyle,
-                  borderColor: error ? "#ef4444" : "rgba(255,255,255,0.1)",
-                }}
-              />
-
-              {error && <p style={errorStyle}>{error}</p>}
-
-              <button
-                type="submit"
-                disabled={loading || !nick.trim()}
-                style={{
-                  ...buttonStyle,
-                  background: loading || !nick.trim() ? "rgba(255,255,255,0.08)" : "#3b82f6",
-                  opacity: loading || !nick.trim() ? 0.5 : 1,
-                  cursor: loading || !nick.trim() ? "not-allowed" : "pointer",
-                }}
-                onMouseOver={(e) => {
-                  if (!loading && nick.trim()) {
-                    e.target.style.background = "#2563eb";
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (!loading && nick.trim()) {
-                    e.target.style.background = "#3b82f6";
-                  }
-                }}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-                    Загрузка...
-                  </>
-                ) : (
-                  "Войти"
-                )}
-              </button>
-            </form>
-          </div>
-        ) : null}
-      </div>
+                    <button className="lp-btn-primary" type="submit"
+                      disabled={loading || nick.length < 3}
+                      style={{
+                        marginTop: 4, padding: "14px",
+                        background: loading || nick.length < 3 ? "rgba(59,130,246,0.4)" : "linear-gradient(135deg, #2563eb, #3b82f6)",
+                        color: "#fff", fontSize: 14, fontWeight: 700,
+                        border: "none", borderRadius: 12,
+                        cursor: loading || nick.length < 3 ? "not-allowed" : "pointer",
+                        boxShadow: loading || nick.length < 3 ? "none" : "0 8px 24px rgba(37,99,235,0.3)",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      }}
+                    >
+                      {loading ? <CircleNotch size={16} style={{ animation: "lpSpin 1s linear infinite" }} /> : "Готово"}
+                    </button>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
