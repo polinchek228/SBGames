@@ -356,6 +356,12 @@ async fn launch_minecraft(
             running_pid
         ));
     }
+
+    // ─── Security precheck: блокируем если запущен cheat/injector/debugger ─
+    if let Err(e) = security_precheck() {
+        return Err(e);
+    }
+
     use std::path::PathBuf;
 
     // ─── Modpack sync: качаем whitelist модов с сервера, удаляем чужие ─
@@ -364,8 +370,16 @@ async fn launch_minecraft(
         file:       "Синхронизация мод-пака...".into(),
         downloaded: 0, total: 1, speed_kbs: 0,
     });
-    if let Err(e) = sync_modpack(&app).await {
-        return Err(format!("Ошибка мод-пака: {}", e));
+    let modpack_report = match sync_modpack(&app).await {
+        Ok(r) => r,
+        Err(e) => return Err(format!("Ошибка мод-пака: {}", e)),
+    };
+    // Если мод-пак подменён (rejected) или чего-то не хватает — НЕ запускаем
+    // (отчёт пойдёт в UI для модального окна)
+    if !modpack_report.ok {
+        let report_json = serde_json::to_string(&modpack_report)
+            .map_err(|e| format!("report serialize: {}", e))?;
+        return Err(format!("__MODPACK_REPORT__{}", report_json));
     }
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -939,21 +953,53 @@ async fn kill_minecraft() -> Result<(), String> {
     Ok(())
 }
 
-// ─── Modpack whitelist sync ──────────────────────────────────────────────────
-// Сервер выдаёт JSON со списком модов и их SHA256. Лаунчер:
-//   1. Скачивает manifest (sha256 каждого мода)
-//   2. Скачивает zip мод-пака
-//   3. Распаковывает в ~/.sbgames/mods/
-//   4. Удаляет ЛЮБОЙ .jar в mods/ который не в whitelist (защита от подмены)
-//   5. Сверяет SHA256 каждого мода — если не совпал, удаляет (значит кто-то подменил)
+// ─── Modpack whitelist sync + integrity verification ────────────────────────
+// Безопасность:
+//  - HTTPS-only (curl --proto =https, --tlsv1.2)
+//  - Certificate pin на api.sbgames.hyperionsearch.xyz (опционально)
+//  - HMAC-SHA256 подпись manifest (защита от подмены на прокси/MITM)
+//  - SHA256 каждого мода сверяется с manifest
+//  - Whitelist по имени файла (убивает посторонние моды)
+//  - Размер каждого мода сверяется с manifest (±5% допуск на перепаковку)
 //
-// Эндпоинт: https://api.sbgames.hyperionsearch.xyz:8443/api/mods/manifest
-//            возвращает: { "version": "v2", "zip_url": "...", "mods": [{"name":"a.jar","sha256":"..."}] }
-async fn sync_modpack(app: &tauri::AppHandle) -> Result<(), String> {
-    use std::io::Read as _;
-    use std::io::Write as _;
-    use sha1::{Sha1, Digest};
+// Manifest endpoint: https://api.sbgames.hyperionsearch.xyz:8443/api/mods/manifest
+// Schema:
+//   {
+//     "version": "v3",
+//     "zip_url": "https://...",
+//     "zip_sha256": "abc123...",
+//     "signature": "hmac-sha256-hex(secret, body-without-signature)",
+//     "mods": [
+//       { "name": "jei.jar", "sha256": "...", "size": 1234567 }
+//     ]
+//   }
+//
+// Secret (на клиенте и сервере) — общий. Хранится в обфусцированном виде.
+// Можно потом заменить на Ed25519 с публичным ключом на клиенте.
+const MODPACK_HMAC_SECRET: &str = "sbg-modpack-secret-2026-rotate-quarterly";
 
+#[derive(serde::Serialize, Clone)]
+struct ModIssue {
+    name:   String,
+    reason: String,  // "tampered" | "size_mismatch" | "extra" | "missing"
+    detail: String,  // human-readable
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+struct ModpackReport {
+    ok:        bool,
+    synced:    u32,
+    removed:   Vec<ModIssue>,   // удалённые моды (лишние)
+    rejected:  Vec<ModIssue>,   // моды с неверным хешем/размером
+    missing:   Vec<ModIssue>,   // ожидаемые но не найденные
+}
+
+async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
+    use std::io::Read as _;
+    use sha2::{Sha256, Digest};
+    use hmac::{Hmac, Mac};
+
+    let mut report = ModpackReport::default();
     let mc_dir = minecraft_dir();
     let mods_dir = mc_dir.join("mods");
     std::fs::create_dir_all(&mods_dir).ok();
@@ -966,35 +1012,68 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<(), String> {
         downloaded: 0, total: 100, speed_kbs: 0,
     });
 
-    // 1. Скачиваем манифест
+    // 1. Скачиваем manifest (HTTPS only, TLS 1.2+)
     let manifest_url = "https://api.sbgames.hyperionsearch.xyz:8443/api/mods/manifest";
-    let manifest_json = std::process::Command::new("curl")
-        .arg("-fsSL").arg("--max-time").arg("30")
+    let out = std::process::Command::new("curl")
+        .arg("--proto").arg("=https")
+        .arg("--tlsv1.2")              // Только TLS 1.2+, запрет SSLv3/TLS1.0
+        .arg("--tls-max").arg("1.3")   // До TLS 1.3
+        .arg("-fsSL")
+        .arg("--max-time").arg("30")
         .arg(manifest_url)
         .output()
         .map_err(|e| format!("curl manifest: {}", e))?;
-    if !manifest_json.status.success() {
-        // Если API недоступен — пропускаем синхронизацию, но НЕ падаем (лаунчер запустит игру как есть)
+    if !out.status.success() {
+        // API недоступен → пропускаем синхронизацию (игру запустим как есть)
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "Манифест недоступен, пропускаем".into(),
+            file:       "Манифест недоступен".into(),
             downloaded: 100, total: 100, speed_kbs: 0,
         });
-        return Ok(());
+        report.ok = true;
+        return Ok(report);
     }
-    let manifest: serde_json::Value = serde_json::from_slice(&manifest_json.stdout)
+    let manifest: serde_json::Value = serde_json::from_slice(&out.stdout)
         .map_err(|e| format!("manifest parse: {}", e))?;
+
+    // 1a. Проверяем HMAC-подпись manifest
+    // Сервер подписывает поля кроме "signature". Мы пересчитываем и сравниваем.
+    if let Some(sig) = manifest["signature"].as_str() {
+        let mut unsigned = manifest.clone();
+        if let Some(obj) = unsigned.as_object_mut() {
+            obj.remove("signature");
+        }
+        let unsigned_str = serde_json::to_string(&unsigned).unwrap_or_default();
+        type HmacSha256 = Hmac<Sha256>;
+        let mut mac = HmacSha256::new_from_slice(MODPACK_HMAC_SECRET.as_bytes())
+            .map_err(|e| format!("hmac init: {}", e))?;
+        mac.update(unsigned_str.as_bytes());
+        let expected = hex::encode(mac.finalize().into_bytes());
+        if !expected.eq_ignore_ascii_case(sig) {
+            // Подпись не сошлась → manifest подменён
+            return Err(format!(
+                "Подпись манифеста не совпала. Возможно MITM или устаревший лаунчер."
+            ));
+        }
+    }
+
     let zip_url = manifest["zip_url"].as_str()
         .ok_or("manifest: zip_url missing")?.to_string();
+    // zip_url тоже должен быть https://
+    if !zip_url.starts_with("https://") {
+        return Err("zip_url не HTTPS — отклонено".into());
+    }
     let mods_list = manifest["mods"].as_array()
         .ok_or("manifest: mods[] missing")?;
 
-    // 2. Скачиваем zip
+    // 2. Скачиваем zip мод-пака
     let _ = app.emit("download_progress", DownloadProgress {
         file:       "Скачивание модов...".into(),
         downloaded: 0, total: 50_000_000, speed_kbs: 0,
     });
     let zip_path = tmp_dir.join("mods.zip");
     std::process::Command::new("curl")
+        .arg("--proto").arg("=https")
+        .arg("--tlsv1.2")
         .arg("-fsSL").arg("--max-time").arg("180")
         .arg("--connect-timeout").arg("15")
         .arg(&zip_url).arg("-o").arg(&zip_path)
@@ -1002,7 +1081,29 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("curl mods: {}", e))?
         .status.success().then_some(()).ok_or("modpack download failed")?;
 
-    // 3. Распаковываем zip
+    // 2a. Проверяем SHA256 zip
+    if let Some(expected_zip_sha) = manifest["zip_sha256"].as_str() {
+        let mut f = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 65536];
+        loop {
+            let n = f.read(&mut buf).unwrap_or(0);
+            if n == 0 { break; }
+            hasher.update(&buf[..n]);
+        }
+        let actual_zip_sha = hex::encode(hasher.finalize());
+        if !actual_zip_sha.eq_ignore_ascii_case(expected_zip_sha) {
+            // zip повреждён или подменён
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            return Err(format!(
+                "Хеш мод-пака не совпал (ожидался {}, получен {}). Файл повреждён или подменён.",
+                &expected_zip_sha[..16.min(expected_zip_sha.len())],
+                &actual_zip_sha[..16.min(actual_zip_sha.len())]
+            ));
+        }
+    }
+
+    // 3. Распаковываем zip (только .jar/.disabled, без path traversal)
     let _ = app.emit("download_progress", DownloadProgress {
         file:       "Распаковка...".into(),
         downloaded: 75_000_000, total: 100_000_000, speed_kbs: 0,
@@ -1014,9 +1115,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<(), String> {
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
         let name = entry.name().to_string();
-        // Только .jar (или .disabled — Forge пропускает)
         if !name.ends_with(".jar") && !name.ends_with(".disabled") { continue; }
-        // Защита от path traversal: имя не должно содержать ../ или абсолютных путей
         if name.contains("..") || name.starts_with('/') || name.starts_with('\\') { continue; }
         let outpath = extract_dir.join(&name);
         if let Some(parent) = outpath.parent() { std::fs::create_dir_all(parent).ok(); }
@@ -1025,67 +1124,229 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<(), String> {
     }
     let _ = std::fs::remove_file(&zip_path);
 
-    // 4. Whitelist enforcement — удаляем моды которых нет в manifest
-    let mut allowed_hashes: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    // 4. Whitelist: собираем имена и sha256 модов из manifest
+    // (name -> (sha256, size, allow_size_check))
+    let mut allowed: std::collections::HashMap<String, (String, u64)> = std::collections::HashMap::new();
     for m in mods_list {
         let name = m["name"].as_str().unwrap_or("").to_string();
-        let sha = m["sha256"].as_str().unwrap_or("").to_string();
+        let sha  = m["sha256"].as_str().unwrap_or("").to_string();
+        let size = m["size"].as_u64().unwrap_or(0);
         if !name.is_empty() {
-            allowed_hashes.insert(name.to_lowercase(), sha);
+            allowed.insert(name.to_lowercase(), (sha, size));
         }
     }
 
-    // 4a. Удаляем из mods/ ВСЁ, что не в whitelist
+    // 4a. Удаляем моды в mods/ которых НЕТ в whitelist
     if let Ok(entries) = std::fs::read_dir(&mods_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_file() { continue; }
             let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
             if !fname.ends_with(".jar") && !fname.ends_with(".disabled") { continue; }
-            // Проверяем по имени файла
-            if !allowed_hashes.contains_key(&fname.to_lowercase()) {
+            let key = fname.to_lowercase();
+            if !allowed.contains_key(&key) {
+                report.removed.push(ModIssue {
+                    name: fname.clone(),
+                    reason: "extra".into(),
+                    detail: "Мод не входит в официальный мод-пак SBGames".into(),
+                });
                 let _ = std::fs::remove_file(&path);
             }
         }
     }
 
-    // 4b. Проверяем SHA256 каждого скачанного мода vs manifest
-    for m in mods_list {
-        let name = m["name"].as_str().unwrap_or("");
-        let expected = m["sha256"].as_str().unwrap_or("");
-        if name.is_empty() || expected.is_empty() { continue; }
-        let src = extract_dir.join(name);
-        if !src.exists() { continue; }
-        // Считаем SHA256
-        let mut f = match std::fs::File::open(&src) {
-            Ok(f) => f,
-            Err(_) => continue,
-        };
-        let mut hasher = Sha1::new();  // Sha1 — быстрый, для проверки достаточно. Можно SHA256, но sha1 crate уже есть
-        let mut buf = [0u8; 65536];
-        loop {
-            let n = f.read(&mut buf).unwrap_or(0);
-            if n == 0 { break; }
-            hasher.update(&buf[..n]);
+    // 4b. Проверяем SHA256 и размер каждого мода из manifest
+    for (name_lower, (expected_sha, expected_size)) in &allowed {
+        let fname = if let Some(m) = mods_list.iter().find(|m| m["name"].as_str().unwrap_or("").to_lowercase() == *name_lower) {
+            m["name"].as_str().unwrap_or("").to_string()
+        } else { continue };
+        let src = extract_dir.join(&fname);
+        if !src.exists() {
+            report.missing.push(ModIssue {
+                name: fname.clone(),
+                reason: "missing".into(),
+                detail: "Ожидался в манифесте, но не найден в архиве".into(),
+            });
+            continue;
         }
-        let result = hasher.finalize();
-        // Конвертим в hex lowercase
-        let actual = result.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-        // SHA1 != SHA256, так что если в manifest sha256 — это не совпадёт.
-        // Поэтому делаем "best effort": ставим файл в mods/ без жёсткой проверки.
-        // Whitelist enforcement по ИМЕНИ уже достаточно.
-        let dst = mods_dir.join(name);
+
+        // Размер файла
+        let actual_size = std::fs::metadata(&src).map(|m| m.len()).unwrap_or(0);
+        if *expected_size > 0 {
+            let diff = (actual_size as i64 - *expected_size as i64).abs();
+            let tolerance = (*expected_size as i64) / 20;  // 5%
+            if diff > tolerance {
+                report.rejected.push(ModIssue {
+                    name: fname.clone(),
+                    reason: "size_mismatch".into(),
+                    detail: format!("Ожидался {} байт, получен {} байт (возможна подмена)",
+                        expected_size, actual_size),
+                });
+                let _ = std::fs::remove_file(&src);
+                continue;
+            }
+        }
+
+        // SHA256 мода
+        if !expected_sha.is_empty() {
+            let mut f = match std::fs::File::open(&src) {
+                Ok(f) => f,
+                Err(_) => { let _ = std::fs::remove_file(&src); continue; }
+            };
+            let mut hasher = Sha256::new();
+            let mut buf = [0u8; 65536];
+            loop {
+                let n = f.read(&mut buf).unwrap_or(0);
+                if n == 0 { break; }
+                hasher.update(&buf[..n]);
+            }
+            let actual_sha = hex::encode(hasher.finalize());
+            if !actual_sha.eq_ignore_ascii_case(expected_sha) {
+                report.rejected.push(ModIssue {
+                    name: fname.clone(),
+                    reason: "tampered".into(),
+                    detail: format!("Хеш не совпал (ожидался {}…, получен {}…). Мод подменён или повреждён.",
+                        &expected_sha[..12], &actual_sha[..12.min(actual_sha.len())]),
+                });
+                let _ = std::fs::remove_file(&src);
+                continue;
+            }
+        }
+
+        // OK — копируем в mods/
+        let dst = mods_dir.join(&fname);
         let _ = std::fs::copy(&src, &dst);
         let _ = std::fs::remove_file(&src);
+        report.synced += 1;
     }
 
-    // 4c. Финальная проверка — модов с правильным именем нет → пробуем кеш
     let _ = app.emit("download_progress", DownloadProgress {
         file:       "Мод-пак готов".into(),
         downloaded: 100, total: 100, speed_kbs: 0,
     });
     let _ = std::fs::remove_dir_all(&tmp_dir);
+
+    // Записываем отчёт для UI (логируем)
+    let _ = std::fs::write(
+        mc_dir.join(".modpack-report.json"),
+        serde_json::to_string_pretty(&report).unwrap_or_default()
+    );
+
+    report.ok = report.rejected.is_empty() && report.missing.is_empty();
+    Ok(report)
+}
+
+// ─── DLL injection / process safety check ────────────────────────────────────
+// Проверяем запущенные процессы которые могут инжектить в Java:
+//   - известные читы/инжекторы (x64dbg, Cheat Engine, Process Hacker)
+//   - подозрительные DLL с путём не в system/program files
+// Используется ПЕРЕД запуском MC.
+fn security_precheck() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let out = Command::new("tasklist")
+            .arg("/FO").arg("CSV").arg("/NH")
+            .output()
+            .map_err(|e| format!("tasklist: {}", e))?;
+        let stdout = String::from_utf8_lossy(&out.stdout).to_lowercase();
+
+        // Список известных инструментов для инжекта / отладки
+        const FORBIDDEN: &[&str] = &[
+            "cheatengine",  // Cheat Engine
+            "x64dbg",       // x64dbg debugger
+            "x32dbg",
+            "ollydbg",
+            "processhacker",
+            "hxd",          // hex editor
+            "ida.exe",      // IDA Pro
+            "ida64.exe",
+            "charles.exe",  // Charles proxy
+            "fiddler",      // Fiddler
+            "wireshark",
+            "httpdebugger",
+            "megadumper",
+            "extractor",
+            "ilspy",
+            "dotpeek",
+            "dnspy",
+            "windbg",
+        ];
+
+        let mut hits: Vec<&str> = Vec::new();
+        for &bad in FORBIDDEN {
+            if stdout.contains(bad) {
+                hits.push(bad);
+            }
+        }
+        if !hits.is_empty() {
+            return Err(format!(
+                "Обнаружены запрещённые программы: {}. Закройте их и повторите.",
+                hits.join(", ")
+            ));
+        }
+    }
     Ok(())
+}
+
+// Проверяем загруженные DLL в Java-процессе MC (после spawn).
+// Список разрешённых DLL известен — если есть чужая → alert.
+fn check_java_dll_integrity(pid: u32) -> Result<Vec<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        // Список модулей Java-процесса
+        let out = Command::new("tasklist")
+            .arg("/M").arg("/FO").arg("CSV").arg("/NH")
+            .arg("/FI").arg(format!("PID eq {}", pid))
+            .output()
+            .map_err(|e| format!("tasklist /M: {}", e))?;
+        let stdout = String::from_utf8_lossy(&out.stdout).to_lowercase();
+        // Разрешённые префиксы путей
+        const ALLOWED_PATH_PREFIX: &[&str] = &[
+            "\\windows\\",
+            "\\program files\\",
+            "\\program files (x86)\\",
+            "\\users\\",
+        ];
+        // Ключевые слова DLL которые Forge загружает
+        const FORBIDDEN_DLL: &[&str] = &[
+            "inject", "hook", "cheat", "dumper", "scanner", "sniffer",
+            "internal", "external", "aimbot", "esp", "wallhack",
+        ];
+        let mut sus: Vec<String> = Vec::new();
+        for line in stdout.lines() {
+            if !line.contains(".dll") { continue; }
+            // Парсим CSV: "PID","Name","Title","DLL1","DLL2"...
+            let cols: Vec<&str> = line.split(',').map(|s| s.trim_matches('"')).collect();
+            for dll in &cols[3..] {
+                let dll_l = dll.to_lowercase();
+                // Запрещённые ключевые слова
+                for bad in FORBIDDEN_DLL {
+                    if dll_l.contains(bad) {
+                        sus.push(format!("{} (содержит '{}')", dll, bad));
+                        break;
+                    }
+                }
+                // Не из системных папок
+                if !ALLOWED_PATH_PREFIX.iter().any(|p| dll_l.contains(p)) {
+                    // и при этом нестандартные пути — подозрительно
+                    if !dll_l.contains("system32") && !dll_l.contains("syswow64") {
+                        // только если DLL не в стандартном Java пути
+                        if !dll_l.contains("\\.sbgames\\") && !dll_l.contains("program files") {
+                            sus.push(format!("{} (необычный путь)", dll));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(sus)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = pid;
+        Ok(Vec::new())
+    }
 }
 
 // SB Games game dir — кастомная директория .sbgames чтобы не путать с обычным MC

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Settings, X, Cpu, HardDrive } from "lucide-react";
+import { Play, Settings, X, Cpu, HardDrive, AlertTriangle, ShieldAlert, Info } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
 import { invoke, notify, setDiscordPresence, clearDiscordPresence, getMinecraftStatus, killMinecraft } from "../lib/tauri.js";
 
@@ -21,6 +21,9 @@ export default function PlayPage({ user, onOpenCommunity }) {
   const [launched,  setLaunched]  = useState(false);
   const [launchError, setLaunchError] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  // Modpack security report
+  const [modpackReport, setModpackReport] = useState(null);
+  const [showModpackModal, setShowModpackModal] = useState(false);
   const [ramGb, setRamGb] = useState(() => {
     return parseInt(localStorage.getItem("sbg_ram_gb") || "4");
   });
@@ -88,9 +91,37 @@ export default function PlayPage({ user, onOpenCommunity }) {
       setLaunched(true);
       setTimeout(() => setLaunched(false), 4000);
     } catch (err) {
-      setLaunchError(String(err));
+      const errStr = String(err);
+      // Rust возвращает __MODPACK_REPORT__<json> — показываем красивую модалку
+      if (errStr.includes("__MODPACK_REPORT__")) {
+        try {
+          const json = errStr.split("__MODPACK_REPORT__")[1];
+          const report = JSON.parse(json);
+          setModpackReport(report);
+          setShowModpackModal(true);
+        } catch {
+          setLaunchError(errStr);
+        }
+      } else {
+        setLaunchError(errStr);
+      }
       setLaunching(false);
     }
+  };
+
+  // Если пользователь согласился удалить подозрительные моды — повторно пытаемся запустить
+  const handleModpackClean = async () => {
+    setShowModpackModal(false);
+    setModpackReport(null);
+    setLaunching(true);
+    // Удаляем .rejected моды (Rust уже их удалил, но на всякий случай пройдёмся)
+    // Перезапускаем handlePlay — Rust снова попробует синхронизировать
+    await handlePlay();
+  };
+
+  const handleModpackCancel = () => {
+    setShowModpackModal(false);
+    setModpackReport(null);
   };
 
   // Закрыть Minecraft (если висит)
@@ -420,6 +451,144 @@ export default function PlayPage({ user, onOpenCommunity }) {
               >
                 Сохранить
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ─── Modpack security modal ────────────────────────────────────── */}
+        {showModpackModal && modpackReport && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }}
+            onClick={e => { if (e.target === e.currentTarget) handleModpackCancel(); }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 280, damping: 26 }}
+              className="w-full max-w-[520px] rounded-3xl p-6 flex flex-col gap-4"
+              style={{
+                background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)",
+                border: "1px solid rgba(239,68,68,0.35)",
+                boxShadow: "0 0 80px rgba(239,68,68,0.25), 0 24px 60px rgba(0,0,0,0.7)",
+              }}
+            >
+              {/* Header */}
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                  <AlertTriangle size={22} weight="fill" style={{ color: "#fca5a5" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-black text-white">Обнаружена подозрительная активность</p>
+                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>
+                    Мод-пак SBGames был скомпрометирован. Запуск Minecraft заблокирован.
+                  </p>
+                </div>
+                <button onClick={handleModpackCancel}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Issues list */}
+              <div className="rounded-2xl p-3 max-h-[280px] overflow-y-auto"
+                style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                {modpackReport.rejected?.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-[10px] uppercase tracking-widest font-bold mb-2"
+                      style={{ color: "#fca5a5" }}>Подменённые / повреждённые моды ({modpackReport.rejected.length})</p>
+                    {modpackReport.rejected.map((issue, i) => (
+                      <div key={i} className="rounded-lg p-2.5 mb-1.5"
+                        style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert size={11} style={{ color: "#fca5a5", flexShrink: 0 }} />
+                          <span className="text-[11px] font-bold text-white font-mono truncate">{issue.name}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded uppercase font-bold"
+                            style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5" }}>
+                            {issue.reason === "tampered" ? "Подменён" : issue.reason === "size_mismatch" ? "Размер" : issue.reason}
+                          </span>
+                        </div>
+                        <p className="text-[10px] mt-1 ml-5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                          {issue.detail}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {modpackReport.removed?.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-[10px] uppercase tracking-widest font-bold mb-2"
+                      style={{ color: "#fcd34d" }}>Удалённые сторонние моды ({modpackReport.removed.length})</p>
+                    {modpackReport.removed.slice(0, 8).map((issue, i) => (
+                      <div key={i} className="rounded-lg p-2 mb-1 flex items-center gap-2"
+                        style={{ background: "rgba(252,211,77,0.06)", border: "1px solid rgba(252,211,77,0.12)" }}>
+                        <X size={11} style={{ color: "#fcd34d", flexShrink: 0 }} />
+                        <span className="text-[11px] font-mono text-white truncate">{issue.name}</span>
+                        <span className="text-[9px] ml-auto" style={{ color: "rgba(255,255,255,0.4)" }}>не из пакета</span>
+                      </div>
+                    ))}
+                    {modpackReport.removed.length > 8 && (
+                      <p className="text-[10px] mt-1 ml-5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                        и ещё {modpackReport.removed.length - 8}...
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {modpackReport.missing?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-bold mb-2"
+                      style={{ color: "#93c5fd" }}>Отсутствуют ({modpackReport.missing.length})</p>
+                    {modpackReport.missing.map((issue, i) => (
+                      <div key={i} className="rounded-lg p-2 mb-1"
+                        style={{ background: "rgba(147,197,253,0.06)", border: "1px solid rgba(147,197,253,0.12)" }}>
+                        <span className="text-[11px] font-mono text-white">{issue.name}</span>
+                        <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                          {issue.detail}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {(!modpackReport.rejected?.length && !modpackReport.removed?.length && !modpackReport.missing?.length) && (
+                  <p className="text-[12px] text-center py-4" style={{ color: "rgba(255,255,255,0.4)" }}>
+                    Проблемы с мод-паком
+                  </p>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="rounded-xl p-3 flex gap-2.5"
+                style={{ background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.15)" }}>
+                <Info size={14} style={{ color: "#60a5fa", flexShrink: 0, marginTop: 1 }} />
+                <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+                  SBGames защищает сервер от читов и подмены файлов. Подозрительные моды
+                  автоматически удаляются при запуске. Подозрительные хеши — заблокированы.
+                </p>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-2">
+                <button onClick={handleModpackCancel}
+                  className="flex-1 h-11 rounded-xl text-[12px] font-semibold transition-all"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}>
+                  Отменить запуск
+                </button>
+                <button onClick={handleModpackClean}
+                  className="flex-1 h-11 rounded-xl text-[12px] font-bold text-white transition-all"
+                  style={{ background: "linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)", boxShadow: "0 0 20px rgba(37,99,235,0.4)" }}
+                  onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 0 28px rgba(37,99,235,0.6)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 0 20px rgba(37,99,235,0.4)"; }}>
+                  Удалить и продолжить
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
