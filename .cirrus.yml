@@ -1,0 +1,71 @@
+# SBGames Launcher — macOS + Linux builds via Cirrus CI (бесплатно для open-source)
+# Подключи репозиторий на https://cirrus-ci.com (Login with GitHub)
+
+linux_build:
+  name: Build Linux
+  container:
+    image: ubuntu:22.04
+  install_script:
+    - apt-get update
+    - apt-get install -y curl libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev libgtk-3-dev libjavascriptcoregtk-4.1-dev libssl-dev pkg-config build-essential
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    - apt-get install -y nodejs
+  cache:
+    node_modules:
+      folder: node_modules
+      fingerprint_script: cat package-lock.json 2>/dev/null || echo "no-lock"
+    cargo_registry:
+      folder: ~/.cargo/registry
+      fingerprint_script: cat src-tauri/Cargo.lock 2>/dev/null | md5sum
+    cargo_git:
+      folder: ~/.cargo/git
+      fingerprint_script: cat src-tauri/Cargo.lock 2>/dev/null | md5sum
+    target:
+      folder: src-tauri/target
+      fingerprint_script: cat src-tauri/Cargo.lock 2>/dev/null | md5sum
+  build_script:
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - node --version && rustc --version
+    - npm install
+    - npx tauri build
+  linux_artifacts:
+    path: src-tauri/target/release/bundle/deb/*.deb
+    type: application/gzip
+  appimage_artifacts:
+    path: src-tauri/target/release/bundle/appimage/*.AppImage
+    type: application/octet-stream
+
+macos_build:
+  name: Build macOS
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-ventura-base:latest
+  install_script:
+    - brew install node@20 rust
+    - export PATH="/opt/homebrew/opt/node@20/bin:/opt/homebrew/opt/rust/bin:$HOME/.cargo/bin:$PATH"
+    - node --version && rustc --version
+  cache:
+    node_modules:
+      folder: node_modules
+      fingerprint_script: cat package-lock.json 2>/dev/null || echo "no-lock"
+    cargo_registry:
+      folder: ~/.cargo/registry
+      fingerprint_script: cat src-tauri/Cargo.lock 2>/dev/null | md5sum
+    cargo_git:
+      folder: ~/.cargo/git
+      fingerprint_script: cat src-tauri/Cargo.lock 2>/dev/null | md5sum
+    target:
+      folder: src-tauri/target
+      fingerprint_script: cat src-tauri/Cargo.lock 2>/dev/null | md5sum
+  build_script:
+    - export PATH="/opt/homebrew/opt/node@20/bin:/opt/homebrew/opt/rust/bin:$HOME/.cargo/bin:$PATH"
+    - node --version && rustc --version
+    - npm install
+    - npx tauri build
+  dmg_artifacts:
+    path: src-tauri/target/release/bundle/dmg/*.dmg
+    type: application/gzip
+  app_artifacts:
+    path: src-tauri/target/release/bundle/macos/*.app
+    type: application/octet-stream

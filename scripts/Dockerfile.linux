@@ -1,0 +1,46 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# System dependencies for Tauri + WebKit
+RUN apt-get update && apt-get install -y \
+    curl wget \
+    libwebkit2gtk-4.1-dev \
+    libappindicator3-dev \
+    librsvg2-dev \
+    patchelf \
+    libglib2.0-dev \
+    libgtk-3-dev \
+    libjavascriptcoregtk-4.1-dev \
+    libssl-dev \
+    pkg-config \
+    build-essential \
+    file \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN rustup target add x86_64-unknown-linux-gnu
+
+# Install cross-compilation tools for AppImage
+RUN apt-get update && apt-get install -y \
+    fuse libfuse2 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files first (layer caching)
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Copy source
+COPY . .
+
+# Default command: build for Linux
+CMD ["bash", "-c", "npx tauri build --target x86_64-unknown-linux-gnu"]
