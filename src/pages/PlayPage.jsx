@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Settings, X, Cpu, HardDrive, AlertTriangle, ShieldAlert, Info } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
-import { invoke, notify, setDiscordPresence, clearDiscordPresence, getMinecraftStatus, killMinecraft } from "../lib/tauri.js";
+import { invoke, notifyDesktop, setDiscordPresence, clearDiscordPresence, getMinecraftStatus, killMinecraft } from "../lib/tauri.js";
 import { pushLocalActivity } from "../components/RecentActivityCard.jsx";
 
 const SERVERS = [
@@ -124,7 +124,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       });
       saveSession(selected.id, user?.username);
       sessionStorage.setItem("sbg_last_session", JSON.stringify({ serverId: selected.id, startedAt }));
-      await notify("SB Games", `${result}`);
+      await notifyDesktop("SB Games", `${result}`);
       setMcRunning(true);   // сразу блокируем кнопку
       setLaunching(false);
       setLaunched(true);

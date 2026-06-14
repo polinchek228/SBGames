@@ -14,7 +14,7 @@ import CommunityPage from "./CommunityPage.jsx";
 import LeaderboardPage from "./LeaderboardPage.jsx";
 import DownloadProgress from "../components/DownloadProgress.jsx";
 import { NotificationBell, useNotifications, pushNotification } from "../components/NotificationSystem.jsx";
-import { notify, setDiscordPresence, invoke } from "../lib/tauri.js";
+import { notifyDesktop, setDiscordPresence, invoke } from "../lib/tauri.js";
 import { WS_URL, getToken } from "../lib/api.js";
 
 const NAV_ITEMS = [
@@ -55,15 +55,15 @@ export default function MainLayout({ user, onLogout }) {
           const diff = msg.balance - balanceRef.current;
           setBalance(msg.balance);
           pushNotification("Баланс пополнен", `+${diff} СБТ · Новый баланс: ${msg.balance} СБТ`, "balance");
-          await notify("SB Games", `Баланс пополнен: ${msg.balance} СБТ`);
+          await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} СБТ`);
         }
         if (msg.type === "friend_accepted") {
           pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
-          await notify("SB Games", `${msg.byUsername} принял заявку в друзья`);
+          await notifyDesktop("SB Games", `${msg.byUsername} принял заявку в друзья`);
         }
         if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
           pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
-          await notify("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
+          await notifyDesktop("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
         }
       } catch {}
     };
@@ -93,13 +93,7 @@ export default function MainLayout({ user, onLogout }) {
         localStorage.setItem("sbg_welcomed", "1");
       }
     }, 1500);
-
-    // ТЕСТ — уведомление сразу (убрать потом)
-    const testTimer = setTimeout(() => {
-      pushNotification("Тест уведомления", "Это кастомное уведомление в Steam-стиле", "friend");
-    }, 800);
-
-    return () => { clearTimeout(timer); clearTimeout(testTimer); };
+    return () => clearTimeout(timer);
   }, [user]);
 
   // Трей-навигация: Rust шлёт window.__navigateTo('play' | 'support')

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { X, Bell, CheckCircle, Users, Coins, MessageCircle, Info, Trash2 } from "lucide-react";
+import { notifyDesktop } from "../lib/tauri.js";
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 const NotifCtx = createContext(null);
@@ -45,6 +46,9 @@ export function NotificationProvider({ children }) {
       localStorage.setItem("sbg_notifs", JSON.stringify(next));
       return next;
     });
+
+    // Кастомное десктопное уведомление (Steam-стиль)
+    notifyDesktop(title, body, type);
   }, []);
 
   useEffect(() => {
