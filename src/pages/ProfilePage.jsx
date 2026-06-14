@@ -11,7 +11,7 @@ import LibraryTab from "./LibraryTab.jsx";
 import InventoryTab from "./InventoryTab.jsx";
 import { CATALOG_BY_ID } from "./catalog.js";
 import {
-  Clock, Star, GameController, TelegramLogo, Camera,
+  Star, TelegramLogo, Camera,
 } from "@phosphor-icons/react";
 import { invoke } from "../lib/tauri.js";
 import { API_URL, authedFetch } from "../lib/api.js";
@@ -146,7 +146,6 @@ function ProfileTab({ user, equip }) {
   const badgeItem  = CATALOG_BY_ID[equip?.badge];
 
   const frameColor = frameItem?.color || "#3b82f6";
-  const bgColor    = bgItem?.color || null;
   const animColor  = animItem?.color || null;
   const badgeColor = badgeItem?.color || null;
 
@@ -159,35 +158,13 @@ function ProfileTab({ user, equip }) {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* ── Steam-style cover + avatar header ── */}
-      <div className="relative flex-shrink-0" style={{ minHeight: 200 }}>
-        {/* Cover gradient */}
-        <div className="w-full h-[140px] relative overflow-hidden"
-          style={{
-            background: bgColor
-              ? `linear-gradient(135deg, ${bgColor}40 0%, ${bgColor}15 40%, rgba(20,20,30,0.95) 100%)`
-              : "linear-gradient(135deg, rgba(30,30,50,0.9) 0%, rgba(15,15,25,0.95) 100%)",
-          }}
-        >
-          {/* Ambient glow */}
-          <div className="absolute inset-0"
-            style={{
-              background: bgColor
-                ? `radial-gradient(ellipse at 30% 50%, ${bgColor}25, transparent 60%)`
-                : "radial-gradient(ellipse at 30% 50%, rgba(96,165,250,0.12), transparent 60%)"
-            }}
-          />
-          {/* Diagonal stripe */}
-          <div className="absolute inset-0" style={{
-            background: `linear-gradient(160deg, transparent 40%, rgba(255,255,255,0.02) 50%, transparent 60%)`,
-          }} />
-        </div>
-
-        {/* Avatar overlapping cover */}
-        <div className="absolute bottom-0 left-6 flex items-end gap-4">
+      {/* ── Clean header — no ugly gradient cover ── */}
+      <div className="flex-shrink-0 px-6 pt-6 pb-5"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+      >
+        <div className="flex items-center gap-5">
           {/* Avatar with frame */}
-          <div className="relative cursor-pointer group" onClick={() => setShowAvatarPicker(true)}
-            style={{ marginBottom: -20 }}>
+          <div className="relative cursor-pointer group flex-shrink-0" onClick={() => setShowAvatarPicker(true)}>
             {/* Frame glow */}
             {equip?.frame && (
               <>
@@ -212,7 +189,7 @@ function ProfileTab({ user, equip }) {
                   filter: "blur(4px)",
                 }} />
             )}
-            <div className="relative w-[100px] h-[100px] rounded-2xl overflow-hidden transition-all duration-300 group-hover:scale-95"
+            <div className="relative w-[88px] h-[88px] rounded-2xl overflow-hidden transition-all duration-300 group-hover:scale-95"
               style={{
                 background: "rgba(255,255,255,0.06)",
                 border: equip?.frame ? `2px solid ${frameColor}50` : "2px solid rgba(255,255,255,0.08)",
@@ -228,7 +205,7 @@ function ProfileTab({ user, equip }) {
                 initial={false}
                 className="absolute inset-0 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
               >
-                <Camera size={24} weight="fill" className="text-white drop-shadow-lg" />
+                <Camera size={22} weight="fill" className="text-white drop-shadow-lg" />
               </motion.div>
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-400"
@@ -237,43 +214,39 @@ function ProfileTab({ user, equip }) {
           </div>
 
           {/* Username + status */}
-          <div className="flex items-center gap-3 pb-2">
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <p className="text-[22px] font-black text-white leading-none">{username}</p>
-                {isAdmin && (
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-widest"
-                    style={{ background: "rgba(239,68,68,0.15)", color: "rgba(252,165,165,0.9)" }}
-                  >ADMIN</span>
-                )}
-                {badgeItem && (
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider"
-                    style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
-                    {badgeItem.name}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  {isAdmin ? "Администратор" : "Игрок"}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5">
+              <p className="text-[22px] font-black text-white leading-none truncate">{username}</p>
+              {isAdmin && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-widest flex-shrink-0"
+                  style={{ background: "rgba(239,68,68,0.15)", color: "rgba(252,165,165,0.9)" }}
+                >ADMIN</span>
+              )}
+              {badgeItem && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider flex-shrink-0"
+                  style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
+                  {badgeItem.name}
                 </span>
-                <span className="text-[10px] font-mono" style={{ color: "rgba(255,255,255,0.2)" }}>
-                  #{user?.id?.toString().slice(-6) || "000000"}
+              )}
+            </div>
+            <div className="flex items-center gap-2.5 mt-1.5">
+              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                {isAdmin ? "Администратор" : "Игрок"}
+              </span>
+              <span className="text-[10px] font-mono" style={{ color: "rgba(255,255,255,0.2)" }}>
+                #{user?.id?.toString().slice(-6) || "000000"}
+              </span>
+              {user?.telegram && (
+                <span className="flex items-center gap-1 text-[11px]" style={{ color: "#60a5fa" }}>
+                  <TelegramLogo size={10} weight="fill" />@{user.telegram}
                 </span>
-                {user?.telegram && (
-                  <span className="flex items-center gap-1 text-[11px]" style={{ color: "#60a5fa" }}>
-                    <TelegramLogo size={10} weight="fill" />@{user.telegram}
-                  </span>
-                )}
-              </div>
+              )}
             </div>
           </div>
-        </div>
 
-        {/* Balance — top right */}
-        <div className="absolute top-4 right-5 flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl"
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          {/* Balance */}
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <img src="/money.png" alt="coin" className="w-4 h-4 object-contain"
               style={{ filter: "drop-shadow(0 0 5px rgba(96,165,250,0.6))" }}
             />
@@ -284,9 +257,6 @@ function ProfileTab({ user, equip }) {
           </div>
         </div>
       </div>
-
-      {/* ── Separator ── */}
-      <div className="flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 20 }} />
 
       {/* ── Content area ── */}
       <div className="flex-1 px-6 py-5 flex flex-col gap-4">
@@ -324,75 +294,60 @@ function ProfileTab({ user, equip }) {
           ))}
         </div>
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* Left — Session history */}
-          <motion.div variants={itemVariants}
-            className="rounded-2xl p-4 flex flex-col gap-3"
-            style={{ background: "rgba(255,255,255,0.03)" }}
-          >
-            <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
-              style={{ color: "rgba(255,255,255,0.18)" }}>
-              История игр
-            </p>
-            <SessionHistory />
-          </motion.div>
+        {/* Quick actions — full width */}
+        <motion.div variants={itemVariants}
+          className="rounded-2xl p-4 flex flex-col gap-3"
+          style={{ background: "rgba(255,255,255,0.03)" }}
+        >
+          <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
+            style={{ color: "rgba(255,255,255,0.18)" }}>
+            Действия
+          </p>
+          <div className="flex gap-3">
+            <motion.button
+              onClick={() => setShowScreenshots(true)}
+              whileTap={{ scale: 0.97 }}
+              className="flex-1 flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-150"
+              style={{ background: "rgba(255,255,255,0.04)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+            >
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(99,102,241,0.12)" }}>
+                <Images size={14} style={{ color: "#818cf8" }} />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-[12px] font-semibold text-white">Скриншоты</p>
+                <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  Из .minecraft/screenshots
+                </p>
+              </div>
+              <ChevronRight size={13} style={{ color: "rgba(255,255,255,0.2)" }} />
+            </motion.button>
 
-          {/* Right — Quick actions */}
-          <motion.div variants={itemVariants}
-            className="rounded-2xl p-4 flex flex-col gap-3"
-            style={{ background: "rgba(255,255,255,0.03)" }}
-          >
-            <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
-              style={{ color: "rgba(255,255,255,0.18)" }}>
-              Действия
-            </p>
-            <div className="flex flex-col gap-2">
-              <motion.button
-                onClick={() => setShowScreenshots(true)}
-                whileTap={{ scale: 0.97 }}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-150"
-                style={{ background: "rgba(255,255,255,0.04)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
-                onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+            <div className="flex-1 flex items-center gap-3 rounded-xl px-3 py-2.5"
+              style={{ background: "rgba(255,255,255,0.04)" }}
+            >
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(37,99,235,0.15)" }}
               >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(99,102,241,0.12)" }}>
-                  <Images size={14} style={{ color: "#818cf8" }} />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-[12px] font-semibold text-white">Скриншоты</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
-                    Из .minecraft/screenshots
-                  </p>
-                </div>
-                <ChevronRight size={13} style={{ color: "rgba(255,255,255,0.2)" }} />
-              </motion.button>
-
-              <div className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                style={{ background: "rgba(255,255,255,0.04)" }}
-              >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(37,99,235,0.15)" }}
-                >
-                  <TelegramLogo size={14} weight="fill" style={{ color: "#60a5fa" }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-semibold text-white">Telegram</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
-                    {user?.telegram ? `@${user.telegram}` : "Не привязан"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-400"
-                    style={{ boxShadow: "0 0 6px rgba(74,222,128,0.6)" }}
-                  />
-                  <span className="text-[10px]" style={{ color: "rgba(74,222,128,0.7)" }}>OK</span>
-                </div>
+                <TelegramLogo size={14} weight="fill" style={{ color: "#60a5fa" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold text-white">Telegram</p>
+                <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  {user?.telegram ? `@${user.telegram}` : "Не привязан"}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400"
+                  style={{ boxShadow: "0 0 6px rgba(74,222,128,0.6)" }}
+                />
+                <span className="text-[10px]" style={{ color: "rgba(74,222,128,0.7)" }}>OK</span>
               </div>
             </div>
-          </motion.div>
-        </div>
+          </div>
+        </motion.div>
       </div>
 
       <AnimatePresence>
@@ -417,50 +372,6 @@ function ProfileTab({ user, equip }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Session History
 // ─────────────────────────────────────────────────────────────────────────────
-function SessionHistory() {
-  const sessions = (() => {
-    try { return JSON.parse(localStorage.getItem("sbgames_sessions") || "[]"); }
-    catch { return []; }
-  })();
-
-  if (sessions.length === 0) {
-    return (
-      <p className="text-[11px] py-2" style={{ color: "rgba(255,255,255,0.2)" }}>
-        Нет записей
-      </p>
-    );
-  }
-
-  function ago(ts) {
-    const diff = Math.floor((Date.now() - ts) / 1000);
-    if (diff < 60)      return "только что";
-    if (diff < 3600)    return `${Math.floor(diff/60)} мин назад`;
-    if (diff < 86400)   return `${Math.floor(diff/3600)} ч назад`;
-    return `${Math.floor(diff/86400)} д назад`;
-  }
-
-  const SERVER_COLORS = { starwars: "#818cf8" };
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {sessions.slice(0, 5).map((s, i) => (
-        <div key={i} className="flex items-center gap-2.5">
-          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{ background: SERVER_COLORS[s.serverId] || "#60a5fa",
-                     boxShadow: `0 0 6px ${SERVER_COLORS[s.serverId] || "#60a5fa"}60` }}
-          />
-          <span className="text-[11px] font-medium text-white capitalize flex-1">
-            {s.serverId}
-          </span>
-          <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
-            {ago(s.time)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Personalize Tab
 // ─────────────────────────────────────────────────────────────────────────────
@@ -505,7 +416,18 @@ function PersonalizeTab({ user }) {
       initial="hidden"
       animate="show"
     >
-      {/* Left — skin upload */}
+      {/* Left — live 3D preview (sticky) */}
+      <motion.div
+        className="flex-shrink-0 sticky top-5 self-start"
+        style={{ width: 180 }}
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.35, delay: 0.1 }}
+      >
+        <SkinViewer username={skinPreview ? "__custom__" : username} customSkin={skinPreview} />
+      </motion.div>
+
+      {/* Right — skin upload + cape + nickname */}
       <div className="flex flex-col gap-3 flex-1 min-w-0">
 
         {/* Drop zone */}
@@ -661,17 +583,6 @@ function PersonalizeTab({ user }) {
         </motion.div>
       </div>
 
-      {/* Right — live 3D preview */}
-      <motion.div
-        className="flex-shrink-0"
-        style={{ width: 200 }}
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.35, delay: 0.1 }}
-      >
-        <SkinViewer username={skinPreview ? "__custom__" : username} customSkin={skinPreview} />
-      </motion.div>
-
       <AnimatePresence>
         {showPicker && (
           <FilePicker
@@ -810,7 +721,7 @@ function SettingsTab() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-[12px] text-white/55">
                       <Cpu size={13} className="text-white/30" />
-                      Выделить Minecraft
+                      Выделить память
                     </div>
                     <div className="flex items-baseline gap-1.5">
                       <motion.span

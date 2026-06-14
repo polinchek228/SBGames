@@ -73,6 +73,17 @@ export default function MainLayout({ user, onLogout }) {
     setDiscordPresence("В лаунчере", "SB Games", "sbgames");
   }, []);
 
+  // Приветственное уведомление при первом входе
+  useEffect(() => {
+    const welcomed = localStorage.getItem("sbg_welcomed");
+    if (!welcomed && user) {
+      setTimeout(() => {
+        pushNotif?.("Добро пожаловать!", `Привет, ${user.username}! Ты в лаунчере SB Games.`, "system");
+        localStorage.setItem("sbg_welcomed", "1");
+      }, 1500);
+    }
+  }, [user]);
+
   // Трей-навигация: Rust шлёт window.__navigateTo('play' | 'support')
   useEffect(() => {
     window.__navigateTo = (id) => {
