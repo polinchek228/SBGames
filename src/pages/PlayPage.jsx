@@ -233,7 +233,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <div className="w-6 h-6 rounded-md overflow-hidden flex-shrink-0">
                 <img src="/logo.jpg" alt="" className="w-full h-full object-cover" />
               </div>
-              <p className="text-[13px] font-black tracking-wide" style={{ color: "#60a5fa" }}>
+              <p className="text-[13px] font-black tracking-wide" style={{ color: "#2563eb" }}>
                 SBGames
               </p>
             </div>
@@ -259,7 +259,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     className="relative rounded-xl overflow-hidden"
                     style={{
                       boxShadow: active
-                        ? `0 0 0 1.5px #60a5fa, 0 0 12px rgba(96,165,250,0.4), 0 4px 20px ${srv.accent}20`
+                        ? `0 0 0 1.5px #2563eb, 0 0 12px rgba(37,99,235,0.4), 0 4px 20px ${srv.accent}20`
                         : "none",
                     }}
                   >
@@ -269,13 +269,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
                       {active && (
                         <div className="absolute inset-0"
-                          style={{ background: `radial-gradient(ellipse at 30% 100%, rgba(96,165,250,0.15), transparent 65%)` }}
+                          style={{ background: `radial-gradient(ellipse at 30% 100%, rgba(37,99,235,0.15), transparent 65%)` }}
                         />
                       )}
                       {active && (
                         <motion.div layoutId="srv-bar"
                           className="absolute bottom-0 left-3 right-3 h-[2.5px] rounded-full"
-                          style={{ background: "linear-gradient(90deg, transparent, #60a5fa, transparent)" }}
+                          style={{ background: "linear-gradient(90deg, transparent, #2563eb, transparent)" }}
                           transition={{ type: "spring", stiffness: 400, damping: 35 }}
                         />
                       )}
@@ -323,7 +323,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
             ) : (
               <>
                 <h1 className="text-[62px] font-display font-black leading-none tracking-tight"
-                  style={{ color: "#60a5fa", textShadow: "0 2px 40px rgba(96,165,250,0.3)" }}
+                  style={{ color: "#2563eb", textShadow: "0 2px 40px rgba(37,99,235,0.3)" }}
                 >
                   SBGames
                 </h1>
@@ -642,7 +642,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               {/* Info */}
               <div className="rounded-xl p-3 flex gap-2.5"
                 style={{ background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.15)" }}>
-                <Info size={14} style={{ color: "#60a5fa", flexShrink: 0, marginTop: 1 }} />
+                <Info size={14} style={{ color: "#2563eb", flexShrink: 0, marginTop: 1 }} />
                 <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
                   SBGames защищает сервер от читов и подмены файлов. Подозрительные моды
                   автоматически удаляются при запуске. Подозрительные хеши — заблокированы.
@@ -660,7 +660,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 </button>
                 <button onClick={handleModpackClean}
                   className="flex-1 h-11 rounded-xl text-[12px] font-bold text-white transition-all"
-                  style={{ background: "linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)", boxShadow: "0 0 20px rgba(37,99,235,0.4)" }}
+                  style={{ background: "linear-gradient(90deg, #2563eb 0%, #2563eb 100%)", boxShadow: "0 0 20px rgba(37,99,235,0.4)" }}
                   onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 0 28px rgba(37,99,235,0.6)"; }}
                   onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 0 20px rgba(37,99,235,0.4)"; }}>
                   Удалить и продолжить
@@ -723,7 +723,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
               <div className="rounded-xl p-3 flex gap-2.5"
                 style={{ background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.15)" }}>
-                <Info size={14} style={{ color: "#60a5fa", flexShrink: 0, marginTop: 1 }} />
+                <Info size={14} style={{ color: "#2563eb", flexShrink: 0, marginTop: 1 }} />
                 <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
                   Minecraft был автоматически остановлен, чтобы предотвратить
                   нечестную игру. Удалите подозрительное ПО и попробуйте снова.
