@@ -6,3 +6,6 @@ target/
 .DS_Store
 Thumbs.db
 server/node_modules/
+nul
+mimo.exe
+*.b64
