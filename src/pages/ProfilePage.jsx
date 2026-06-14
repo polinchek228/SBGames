@@ -27,6 +27,8 @@ import SkinViewer from "../components/SkinViewer.jsx";
 import FilePicker from "../components/FilePicker.jsx";
 import ProfileComments from "../components/ProfileComments.jsx";
 import RecentActivityCard, { pushLocalActivity, ACTIVITY_KEY } from "../components/RecentActivityCard.jsx";
+import AchievementShowcase, { trackDate, unlockAchievement } from "../components/AchievementShowcase.jsx";
+import AchievementSystem from "../components/AchievementSystem.jsx";
 
 const TABS = [
   { id: "profile",       label: "Профиль",        icon: User },
@@ -356,6 +358,17 @@ function ProfileTab({ user, equip }) {
 
       {/* ── Content area ── */}
       <div className="flex-1 px-6 py-5 flex flex-col gap-4">
+
+        {/* Витрина достижений — showcase */}
+        <motion.div variants={itemVariants}>
+          <AchievementShowcase user={user} equip={equip} inventory={equippedItems} />
+        </motion.div>
+
+        {/* Недавняя активность */}
+        <motion.div variants={itemVariants}>
+          <RecentActivityCard />
+        </motion.div>
+
         {/* Equipped items row — visual cards */}
         {equippedItems.length > 0 && (
           <motion.div variants={itemVariants}>
@@ -386,6 +399,11 @@ function ProfileTab({ user, equip }) {
             </div>
           </motion.div>
         )}
+
+        {/* Система достижений */}
+        <motion.div variants={itemVariants}>
+          <AchievementSystem user={user} />
+        </motion.div>
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-3">
