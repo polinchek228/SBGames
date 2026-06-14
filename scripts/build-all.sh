@@ -81,7 +81,20 @@ build_macos() {
   fi
   npm install
   npx tauri build
+
+  # Ad-hoc подпись .app чтобы Gatekeeper не ругался
+  APP_PATH=$(find src-tauri/target/release/bundle/macos -name "*.app" -maxdepth 1 2>/dev/null | head -1)
+  if [ -n "$APP_PATH" ]; then
+    echo "🔐 Ad-hoc подпись: $APP_PATH"
+    codesign --deep --force --sign - "$APP_PATH"
+    echo "✅ Подпись применена"
+  fi
+
   echo "✅ macOS билд: src-tauri/target/release/bundle/dmg/*.dmg"
+  echo ""
+  echo "📌 Если .app не открывается двойным кликом, пользователь должен выполнить:"
+  echo "   xattr -cr \"$APP_PATH\""
+  echo "   Или: правый клик по .app → Открыть"
 }
 
 build_windows() {

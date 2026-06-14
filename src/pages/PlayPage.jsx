@@ -201,7 +201,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
   }
 
   return (
-    <div className="relative h-full bg-black overflow-hidden">
+    <div className="relative h-full overflow-hidden" style={{ background: "#000" }}>
 
       {/* Background */}
       <AnimatePresence mode="wait">
@@ -209,9 +209,18 @@ export default function PlayPage({ user, onOpenCommunity }) {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <div className="absolute inset-0" style={{ background: selected ? selected.bg : "#050510" }} />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent" />
+          {selected ? (
+            <>
+              <div className="absolute inset-0" style={{ background: selected.bg }} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent" />
+            </>
+          ) : (
+            <>
+              <div className="absolute inset-0" style={{ backgroundImage: "url('/hero.jpg')", backgroundSize: "cover", backgroundPosition: "center" }} />
+              <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0.5), rgba(0,0,0,0.85))" }} />
+            </>
+          )}
         </motion.div>
       </AnimatePresence>
 
@@ -296,44 +305,41 @@ export default function PlayPage({ user, onOpenCommunity }) {
         </div>
       </div>
 
-      {/* ── Main content ── */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={selected ? selected.id : "empty"}
-          className="absolute inset-0 flex flex-col"
-          style={{ paddingLeft: 252 }}
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          transition={{ delay: 0.06, duration: 0.3 }}
-        >
-          {/* Title + description — сверху */}
+      {/* ── Content layer ── */}
+      {!selected ? (
+        /* Hero (when no server selected) */
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+          <div className="text-[64px] font-display font-black leading-none tracking-tight text-white text-center"
+            style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
+          >
+            SB GAMES
+          </div>
+          <div className="text-[56px] font-display font-black leading-none tracking-tight uppercase text-center"
+            style={{ color: "rgba(255,255,255,0.22)" }}
+          >
+            КОМПЛЕКС<br />СЕРВЕРОВ
+          </div>
+          <p className="text-[15px] font-bold max-w-[460px] text-center mt-4"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+          >
+            Один аккаунт, быстрый старт и разные режимы.
+          </p>
+        </div>
+      ) : (
+        /* Server content (when server selected) */
+        <div className="absolute inset-0 flex flex-col" style={{ paddingLeft: 252 }}>
+          {/* Title + description */}
           <div className="pt-8 pr-10 flex flex-col gap-3">
-            {selected ? (
-              <>
-                <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white"
-                  style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
-                >
-                  {selected.name}
-                </h1>
-                <p className="text-[13px] leading-[1.8] max-w-[500px]"
-                  style={{ color: "rgba(255,255,255,0.55)" }}
-                >
-                  {selected.description}
-                </p>
-              </>
-            ) : (
-              <>
-                <h1 className="text-[62px] font-display font-black leading-none tracking-tight"
-                  style={{ color: "#2563eb", textShadow: "0 2px 40px rgba(37,99,235,0.3)" }}
-                >
-                  SBGames
-                </h1>
-                <p className="text-[13px] leading-[1.8] max-w-[500px]"
-                  style={{ color: "rgba(255,255,255,0.45)" }}
-                >
-                  Выбери сервер слева, чтобы продолжить.
-                </p>
-              </>
-            )}
+            <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white"
+              style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
+            >
+              {selected.name}
+            </h1>
+            <p className="text-[13px] leading-[1.8] max-w-[500px]"
+              style={{ color: "rgba(255,255,255,0.55)" }}
+            >
+              {selected.description}
+            </p>
           </div>
 
           <div className="flex-1" />
@@ -457,8 +463,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
               )}
             </AnimatePresence>
           </div>
-        </motion.div>
-      </AnimatePresence>
+        </div>
+      )}
 
       {/* Модал настроек запуска */}
       <AnimatePresence>

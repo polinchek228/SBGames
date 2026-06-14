@@ -82,7 +82,7 @@ export default function AchievementSystem({ user }) {
 
       {/* XP Progress bar */}
       <div className="flex items-center gap-2.5">
-        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+        <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${maxXp ? (totalXp / maxXp) * 100 : 0}%` }}
@@ -91,7 +91,7 @@ export default function AchievementSystem({ user }) {
             style={{ background: "linear-gradient(90deg, #f59e0b, #fbbf24)" }}
           />
         </div>
-        <span className="text-[9px] tabular-nums" style={{ color: "rgba(255,255,255,0.25)" }}>
+        <span className="text-[9px] tabular-nums" style={{ color: "rgba(255,255,255,0.2)" }}>
           {Math.round((totalXp / maxXp) * 100) || 0}%
         </span>
       </div>

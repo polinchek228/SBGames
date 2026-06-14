@@ -93,11 +93,12 @@ export default function AchievementShowcase({ user, equip, inventory }) {
               className="flex-1 min-w-[130px] max-w-[170px] flex flex-col items-center text-center px-3 py-3.5 rounded-xl flex-shrink-0 relative overflow-hidden"
               style={{
                 background: isLocked
-                  ? "rgba(255,255,255,0.025)"
-                  : `linear-gradient(160deg, ${ach.color}12, ${ach.color}04)`,
+                  ? "rgba(255,255,255,0.04)"
+                  : `linear-gradient(160deg, ${ach.color}18, ${ach.color}08)`,
                 border: isLocked
-                  ? "1px solid rgba(255,255,255,0.04)"
-                  : `1.5px solid ${ach.color}25`,
+                  ? "1.5px solid rgba(255,255,255,0.06)"
+                  : `1.5px solid ${ach.color}35`,
+                boxShadow: isLocked ? "none" : `0 0 16px ${ach.color}10`,
               }}
             >
               {!isLocked && (
@@ -105,9 +106,10 @@ export default function AchievementShowcase({ user, equip, inventory }) {
                   style={{ background: `linear-gradient(90deg, transparent, ${ach.color}, transparent)` }} />
               )}
 
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-2 relative"
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-2 relative"
                 style={{
-                  background: isLocked ? "rgba(255,255,255,0.04)" : `${ach.color}18`,
+                  background: isLocked ? "rgba(255,255,255,0.05)" : `${ach.color}20`,
+                  border: isLocked ? "none" : `1px solid ${ach.color}20`,
                 }}>
                 <Icon size={18} style={{ color: isLocked ? "rgba(255,255,255,0.15)" : ach.color }} weight="fill" />
                 {!isLocked && (
@@ -121,11 +123,11 @@ export default function AchievementShowcase({ user, equip, inventory }) {
               </div>
 
               <p className="text-[11px] font-bold leading-tight mb-0.5"
-                style={{ color: isLocked ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.85)" }}>
+                style={{ color: isLocked ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.85)" }}>
                 {ach.name}
               </p>
               <p className="text-[9px] leading-tight"
-                style={{ color: isLocked ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.35)" }}>
+                style={{ color: isLocked ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.35)" }}>
                 {ach.desc}
               </p>
             </motion.div>

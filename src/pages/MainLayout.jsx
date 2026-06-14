@@ -153,41 +153,46 @@ export default function MainLayout({ user, onLogout }) {
 
       {/* ── Full-width header bar ── */}
       <div
-        className="w-full flex-shrink-0 relative flex items-center px-3"
+        className="w-full flex-shrink-0 grid items-center px-3"
         style={{
           height: "46px",
           background: "rgba(8,8,10,0.98)",
           borderBottom: "1px solid rgba(255,255,255,0.05)",
           backdropFilter: "blur(20px)",
           zIndex: 50,
+          gridTemplateColumns: "1fr auto 1fr",
         }}
       >
-        {/* Nav items — absolutely centered */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-0.5">
+        {/* Left spacer */}
+        <div />
+
+        {/* Nav items — centered */}
+        <div className="flex items-center gap-1 justify-self-center">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const active = page === id;
             return (
               <button
                 key={id}
                 onClick={() => setPage(id)}
-                className="flex items-center gap-1.5 px-3 h-[28px] text-[10px] font-semibold tracking-widest whitespace-nowrap transition-all duration-300 ease-out select-none active:scale-95"
+                className="flex items-center gap-2 px-4 h-[34px] text-[11px] font-bold tracking-widest whitespace-nowrap transition-all duration-300 ease-out select-none active:scale-95"
                 style={active
                   ? {
-                      background: "rgba(37,99,235,0.9)",
+                      background: "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))",
                       color: "#fff",
-                      borderRadius: "20px",
-                      boxShadow: "0 0 16px rgba(37,99,235,0.4), 0 2px 8px rgba(37,99,235,0.25)",
+                      borderRadius: "10px",
+                      boxShadow: "0 0 20px rgba(37,99,235,0.4), 0 2px 10px rgba(37,99,235,0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
                     }
                   : {
-                      background: "transparent",
-                      color: "rgba(255,255,255,0.32)",
-                      borderRadius: "20px",
+                      background: "rgba(255,255,255,0.04)",
+                      color: "rgba(255,255,255,0.4)",
+                      borderRadius: "10px",
+                      border: "1px solid rgba(255,255,255,0.04)",
                     }
                 }
-                onMouseEnter={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.32)"; }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "rgba(255,255,255,0.75)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; } }}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.04)"; } }}
               >
-                <Icon size={11} weight={active ? "fill" : "regular"} />
+                <Icon size={14} weight={active ? "fill" : "bold"} />
                 {label}
               </button>
             );
@@ -195,17 +200,17 @@ export default function MainLayout({ user, onLogout }) {
         </div>
 
         {/* Right group: balance + community + logout */}
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div className="flex items-center gap-2.5 justify-self-end">
           {/* Balance pill with coin icon */}
           <div
-            className="flex items-center gap-1.5 px-2.5 h-[28px] rounded-full select-none"
+            className="flex items-center gap-2 px-3 h-[34px] rounded-xl select-none"
             style={{
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.07)",
+              background: "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+              border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
             <img src="/money.png" alt="coin" className="w-4 h-4 object-contain" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
-            <span className="text-[12px] font-bold text-white tabular-nums">{balance}</span>
+            <span className="text-[13px] font-bold text-white tabular-nums">{balance}</span>
           </div>
 
           {/* Notification bell */}
@@ -214,17 +219,18 @@ export default function MainLayout({ user, onLogout }) {
           {/* Community toggle */}
           <button
             onClick={() => setShowCommunity(v => !v)}
-            className="relative w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+            className="relative w-[34px] h-[34px] rounded-xl flex items-center justify-center transition-all duration-150"
             style={showCommunity
-              ? { background: "rgba(37,99,235,0.7)", color: "#fff" }
-              : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)" }
+              ? { background: "linear-gradient(135deg, rgba(37,99,235,0.9), rgba(59,130,246,0.85))", color: "#fff", boxShadow: "0 0 12px rgba(37,99,235,0.3)" }
+              : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.04)" }
             }
-            onMouseEnter={e => { if (!showCommunity) e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
-            onMouseLeave={e => { if (!showCommunity) e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
+            onMouseEnter={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.75)"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; } }}
+            onMouseLeave={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; } }}
           >
-            <UsersThree size={13} weight={showCommunity ? "fill" : "regular"} />
+            <UsersThree size={15} weight={showCommunity ? "fill" : "bold"} />
             {friendBadge > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center"
+                style={{ boxShadow: "0 0 8px rgba(37,99,235,0.5)" }}>
                 {friendBadge}
               </span>
             )}
@@ -233,12 +239,12 @@ export default function MainLayout({ user, onLogout }) {
           {/* Logout */}
           <button
             onClick={onLogout}
-            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
-            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)" }}
-            onMouseEnter={e => { e.currentTarget.style.color = "rgba(239,68,68,0.85)"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+            className="w-[34px] h-[34px] rounded-xl flex items-center justify-center transition-all duration-150"
+            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "rgba(239,68,68,0.9)"; e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
           >
-            <SignOut size={13} />
+            <SignOut size={15} weight="bold" />
           </button>
         </div>
       </div>

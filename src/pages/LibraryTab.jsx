@@ -391,114 +391,124 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="group relative rounded-xl overflow-hidden cursor-pointer"
+      className="group relative rounded-xl overflow-hidden cursor-pointer flex flex-col"
       draggable={isOwned}
       onDragStart={handleDragStart}
       onClick={() => onOpen(item)}
       style={{
-        background: "rgba(30,30,40,0.6)",
+        background: "rgba(24,24,32,0.8)",
         border: isEquipped ? `1.5px solid ${item.color}50` : "1.5px solid rgba(255,255,255,0.06)",
       }}
     >
       {/* Hover highlight */}
-      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-        style={{ background: "rgba(255,255,255,0.04)" }} />
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+        style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 50%)" }} />
 
       {/* Equipped indicator — thin colored top bar */}
       {isEquipped && (
-        <div className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: item.color, boxShadow: `0 0 8px ${item.color}40` }} />
-      )}
-
-      {/* Drag handle */}
-      {isOwned && (
-        <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-40 transition-opacity">
-          <GripVertical size={12} className="text-white" />
-        </div>
+        <div className="absolute top-0 left-0 right-0 h-[2px] z-10"
+          style={{ background: `linear-gradient(90deg, transparent, ${item.color}, transparent)`, boxShadow: `0 0 8px ${item.color}40` }} />
       )}
 
       {/* Visual area */}
-      <div className="relative h-[110px] flex items-center justify-center overflow-hidden"
-        style={{ background: "rgba(0,0,0,0.25)" }}>
+      <div className="relative h-[120px] flex items-center justify-center overflow-hidden"
+        style={{ background: "rgba(0,0,0,0.35)" }}>
         <ItemVisual type={item.type} color={item.color} name={item.name} />
 
         {/* Rarity badge */}
         {rarity && (
-          <span className="absolute bottom-1.5 left-1.5 text-[7px] font-bold px-1.5 py-0.5 rounded"
-            style={{ background: `${rarity.color}20`, color: rarity.color }}>
+          <span className="absolute top-2 left-2 text-[8px] font-bold px-2 py-0.5 rounded-md z-10"
+            style={{ background: `${rarity.color}25`, color: rarity.color, border: `1px solid ${rarity.color}20` }}>
             {rarity.label}
           </span>
         )}
 
         {/* Equipped badge */}
         {isEquipped && (
-          <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded"
-            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80" }}>
+          <span className="absolute top-2 right-2 text-[8px] font-bold px-2 py-0.5 rounded-md z-10"
+            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)" }}>
             ЭКИП.
           </span>
         )}
         {!isOwned && !canAfford && (
-          <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded"
-            style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5" }}>
+          <span className="absolute top-2 right-2 text-[8px] font-bold px-2 py-0.5 rounded-md z-10"
+            style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.15)" }}>
             МАЛО СБТ
           </span>
         )}
-
-        {/* Hover overlay — buttons */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-          style={{ background: "rgba(0,0,0,0.55)" }}>
-          {isOwned ? (
-            isEquipped ? (
-              <button
-                onClick={(e) => { e.stopPropagation(); onUnequip(); }}
-                disabled={busy}
-                className="px-4 py-2 rounded-lg text-[11px] font-semibold transition-all duration-150 active:scale-95"
-                style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)" }}
-              >
-                {busy ? "…" : "Снять"}
-              </button>
-            ) : (
-              <button
-                onClick={(e) => { e.stopPropagation(); onEquip(); }}
-                disabled={busy}
-                className="px-4 py-2 rounded-lg text-[11px] font-semibold text-white transition-all duration-150 active:scale-95"
-                style={{ background: item.color, boxShadow: `0 0 12px ${item.color}40` }}
-              >
-                {busy ? "…" : "Экипировать"}
-              </button>
-            )
-          ) : (
-            <button
-              onClick={(e) => { e.stopPropagation(); onBuy(); }}
-              disabled={busy || !canAfford}
-              className="px-4 py-2 rounded-lg text-[11px] font-semibold text-white disabled:opacity-40 transition-all duration-150 active:scale-95"
-              style={{ background: item.color, boxShadow: `0 0 12px ${item.color}40` }}
-            >
-              {busy ? "…" : "Купить"}
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* Info */}
-      <div className="px-3 py-2.5">
-        <p className="text-[12px] font-semibold text-white truncate">{item.name}</p>
-        {item.desc && (
-          <p className="text-[10px] mt-0.5 leading-relaxed line-clamp-2"
-            style={{ color: "rgba(255,255,255,0.3)" }}>
-            {item.desc}
-          </p>
-        )}
-        <div className="flex items-center gap-1.5 mt-1.5">
-          <img src="/money.png" alt="" className="w-3 h-3"
-            onError={(e) => { e.currentTarget.style.display = "none"; }} />
-          <span className="text-[11px] font-semibold tabular-nums"
-            style={{
-              color: isOwned ? "#4ade80" : canAfford ? "rgba(255,255,255,0.6)" : "rgba(248,113,113,0.6)",
-            }}>
-            {isOwned ? "Куплено" : item.price.toLocaleString("en-US")}
-          </span>
+      {/* Info + button area */}
+      <div className="px-3 py-2.5 flex flex-col gap-2 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-bold text-white truncate">{item.name}</p>
+            {item.desc && (
+              <p className="text-[10px] mt-0.5 leading-relaxed line-clamp-2"
+                style={{ color: "rgba(255,255,255,0.3)" }}>
+                {item.desc}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <img src="/money.png" alt="" className="w-3 h-3"
+              onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            <span className="text-[11px] font-bold tabular-nums"
+              style={{
+                color: isOwned ? "#4ade80" : canAfford ? "rgba(255,255,255,0.6)" : "rgba(248,113,113,0.6)",
+              }}>
+              {isOwned ? "Куплено" : item.price.toLocaleString("en-US")}
+            </span>
+          </div>
         </div>
+
+        {/* Action button — always visible */}
+        {isOwned ? (
+          isEquipped ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onUnequip(); }}
+              disabled={busy}
+              className="w-full py-2 rounded-lg text-[11px] font-bold transition-all duration-150 active:scale-[0.97]"
+              style={{
+                background: "rgba(239,68,68,0.12)",
+                color: "#fca5a5",
+                border: "1px solid rgba(239,68,68,0.25)",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.2)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; }}
+            >
+              {busy ? "…" : "Снять"}
+            </button>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEquip(); }}
+              disabled={busy}
+              className="w-full py-2 rounded-lg text-[11px] font-bold text-white transition-all duration-150 active:scale-[0.97]"
+              style={{
+                background: `linear-gradient(135deg, ${item.color}, ${item.color}cc)`,
+                boxShadow: `0 2px 12px ${item.color}35`,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 4px 18px ${item.color}50`; }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 12px ${item.color}35`; }}
+            >
+              {busy ? "…" : "Экипировать"}
+            </button>
+          )
+        ) : (
+          <button
+            onClick={(e) => { e.stopPropagation(); onBuy(); }}
+            disabled={busy || !canAfford}
+            className="w-full py-2 rounded-lg text-[11px] font-bold text-white disabled:opacity-35 transition-all duration-150 active:scale-[0.97]"
+            style={{
+              background: `linear-gradient(135deg, ${item.color}, ${item.color}cc)`,
+              boxShadow: `0 2px 12px ${item.color}35`,
+            }}
+            onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.boxShadow = `0 4px 18px ${item.color}50`; }}
+            onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.boxShadow = `0 2px 12px ${item.color}35`; }}
+          >
+            {busy ? "…" : "Купить"}
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -576,6 +586,8 @@ export default function LibraryTab({ user, equip, setEquip }) {
   const [priceMax, setPriceMax] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [shopFilter, setShopFilter] = useState("all"); // "all" | "free" | "paid"
+  const [showSort, setShowSort]     = useState(false);
+  const sortRef                     = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -591,6 +603,14 @@ export default function LibraryTab({ user, equip, setEquip }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // close sort dropdown on outside click
+  useEffect(() => {
+    if (!showSort) return;
+    const handler = (e) => { if (sortRef.current && !sortRef.current.contains(e.target)) setShowSort(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSort]);
 
   const isAdmin = user?.role === "admin";
   const balance = user?.balance ?? 0;
@@ -720,26 +740,55 @@ export default function LibraryTab({ user, equip, setEquip }) {
           Фильтры
         </button>
 
-        {/* Sort */}
-        <div className="relative">
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            className="h-8 pl-2.5 pr-6 rounded-lg text-[11px] appearance-none cursor-pointer outline-none"
+        {/* Sort — custom dropdown */}
+        <div className="relative" ref={sortRef}>
+          <button
+            onClick={() => setShowSort(v => !v)}
+            className="h-8 pl-2.5 pr-7 rounded-lg text-[11px] cursor-pointer outline-none text-left"
             style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              color: "rgba(255,255,255,0.6)",
+              background: showSort ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${showSort ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)"}`,
+              color: "rgba(255,255,255,0.7)",
             }}
           >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}
-                style={{ background: "#0e0e12", color: "rgba(255,255,255,0.7)" }}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <ArrowUpDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
+            {SORT_OPTIONS.find(o => o.id === sort)?.label}
+          </button>
+          <ArrowUpDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: showSort ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.2)" }} />
+
+          <AnimatePresence>
+            {showSort && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.12 }}
+                className="absolute right-0 top-full mt-1 z-50 overflow-hidden rounded-lg"
+                style={{
+                  background: "#111116",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+                  minWidth: 110,
+                }}
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => { setSort(o.id); setShowSort(false); }}
+                    className="w-full text-left px-3 py-1.5 text-[11px] transition-colors"
+                    style={{
+                      color: sort === o.id ? "#60a5fa" : "rgba(255,255,255,0.6)",
+                      background: sort === o.id ? "rgba(96,165,250,0.1)" : "transparent",
+                    }}
+                    onMouseEnter={e => { if (sort !== o.id) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                    onMouseLeave={e => { if (sort !== o.id) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Balance */}

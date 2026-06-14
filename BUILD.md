@@ -11,12 +11,20 @@ npm run tauri build
 ## macOS (.dmg + .app)
 Запускать на Mac:
 ```bash
-npm run tauri build
+bash scripts/build-all.sh --macos
 ```
 Результат: `src-tauri/target/release/bundle/dmg/*.dmg`
 
-> Для подписи нужен Apple Developer ID — без него появится предупреждение Gatekeeper.
-> Для обхода: `xattr -cr /Applications/SBGames\ Launcher.app`
+### Важно для Mac-пользователей
+Без Apple Developer подписи macOS блокирует `.app` (Gatekeeper).
+Скрипт сборки автоматически делает ad-hoc подпись, но если `.app` всё равно не открывается двойным кликом:
+
+**Способ 1** — терминал (один раз):
+```bash
+xattr -cr /Applications/SBGames\ Launcher.app
+```
+
+**Способ 2** — правый клик по `.app` → "Открыть" (первый раз, потом запоминается)
 
 ## Linux (.deb + .rpm + .AppImage)
 ```bash
