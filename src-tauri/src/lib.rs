@@ -1237,7 +1237,21 @@ async fn launch_minecraft(
                             if let Some(arr) = v["banned"].as_array() {
                                 if arr.iter().any(|u| u.as_str() == Some(username_b.as_str())) {
                                     eprintln!("[guard] user '{}' in banned:mods — kill MC", username_b);
-                                    kill_proc(pid_b);
+                                    #[cfg(target_os = "windows")]
+                                    {
+                                        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
+                                        use windows_sys::Win32::Foundation::CloseHandle;
+                                        unsafe {
+                                            let h = OpenProcess(PROCESS_TERMINATE, 0, pid_b);
+                                            if h != 0 { TerminateProcess(h, 1); CloseHandle(h); }
+                                        }
+                                        let _ = std::process::Command::new("taskkill")
+                                            .args(["/PID", &pid_b.to_string(), "/F", "/T"]).output();
+                                    }
+                                    #[cfg(target_os = "linux")]
+                                    {
+                                        let _ = std::process::Command::new("kill").arg("-9").arg(pid_b.to_string()).output();
+                                    }
                                     let _ = std::fs::remove_file(mc_dir_b.join(".minecraft.pid"));
                                     let _ = std::fs::write(mc_dir_b.join(".guard-trigger"),
                                         "banned\nВаш аккаунт заблокирован за подозрительные моды.");
