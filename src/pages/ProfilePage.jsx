@@ -140,6 +140,7 @@ function ProfileTab({ user, equip }) {
   const [avatar, setAvatar] = useState(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [showScreenshots, setShowScreenshots] = useState(false);
+  const [savedBio, setSavedBio] = useState(user?.bio || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [editingBio, setEditingBio] = useState(false);
   const [bioSaving, setBioSaving] = useState(false);
@@ -294,7 +295,7 @@ function ProfileTab({ user, equip }) {
                   <div className="flex items-center gap-2">
                     <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>{bio.length}/200</span>
                     <div className="flex-1" />
-                    <button onClick={() => { setEditingBio(false); setBio(user?.bio || ""); }}
+                    <button onClick={() => { setEditingBio(false); setBio(savedBio); }}
                       className="text-[10px] px-3 py-1 rounded-lg transition-all duration-200"
                       style={{ color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.05)" }}
                     >
@@ -305,7 +306,7 @@ function ProfileTab({ user, equip }) {
                         setBioSaving(true);
                     try {
                       await authedFetch("/api/user/bio", { method: "PUT", body: JSON.stringify({ bio: bio.trim() }) });
-                      user.bio = bio.trim();
+                      setSavedBio(bio.trim());
                       setEditingBio(false);
                     } catch {}
                         setBioSaving(false);
@@ -320,8 +321,8 @@ function ProfileTab({ user, equip }) {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <p className="text-[11px] leading-relaxed flex-1" style={{ color: bio ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.15)" }}>
-                    {bio || "Нет описания"}
+                  <p className="text-[11px] leading-relaxed flex-1" style={{ color: savedBio ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.15)" }}>
+                    {savedBio || "Нет описания"}
                   </p>
                   <button onClick={() => setEditingBio(true)}
                     className="w-5 h-5 rounded flex items-center justify-center transition-all duration-200 flex-shrink-0"
