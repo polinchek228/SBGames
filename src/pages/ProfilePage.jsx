@@ -164,159 +164,153 @@ function ProfileTab({ user, equip }) {
   const badgeColor = badgeItem?.color || null;
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
-      {/* ═══ HEADER — compact ═══ */}
-      <div className="relative flex-shrink-0 px-6 py-5"
-        style={{
-          background: bgColor
-            ? `linear-gradient(135deg, ${bgColor}20 0%, rgba(15,15,22,0.98) 60%)`
-            : "rgba(15,15,22,0.98)",
-          borderBottom: "1px solid rgba(255,255,255,0.04)",
-        }}>
-        <div className="flex items-center gap-5">
-          {/* Avatar */}
-          <div className="relative cursor-pointer group flex-shrink-0" onClick={() => setShowAvatarPicker(true)}>
-            {frameColor && (
-              <div className="absolute -inset-1.5 rounded-[18px] pointer-events-none"
-                style={{ border: `2px solid ${frameColor}`, boxShadow: `0 0 18px ${frameColor}25` }} />
-            )}
-            <div className="relative w-[88px] h-[88px] rounded-[16px] overflow-hidden transition-all duration-300 group-hover:scale-95"
-              style={{
-                background: "rgba(255,255,255,0.06)",
-                border: frameColor ? `2px solid ${frameColor}44` : "2px solid rgba(255,255,255,0.06)",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-              }}>
-              <img src={avatar || "/logo.jpg"} alt="avatar"
-                className="w-full h-full object-cover transition-all duration-300 group-hover:brightness-50 group-hover:scale-110" />
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera size={22} className="text-white drop-shadow-lg" />
+    <div className="relative flex flex-col h-full overflow-y-auto">
+      {bgItem?.video && (
+        <video
+          src={bgItem.video}
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay muted loop playsInline
+          style={{ pointerEvents: "none", opacity: 0.6, zIndex: 0 }}
+        />
+      )}
+      {/* Gradient overlay bottom fade */}
+      <div className="absolute inset-0 z-[1] pointer-events-none"
+        style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(10,10,14,0.7) 55%, rgba(10,10,14,0.97) 100%)" }} />
+
+      <div className="relative z-10 flex flex-col h-full overflow-y-auto">
+        {/* ═══ HEADER ═══ */}
+        <div className="relative flex-shrink-0 px-6 pt-8 pb-6">
+          <div className="flex items-end gap-5">
+            {/* Avatar — larger */}
+            <div className="relative cursor-pointer group flex-shrink-0" onClick={() => setShowAvatarPicker(true)}>
+              {frameColor && frameItem?.image ? (
+                <img
+                  src={frameItem.image}
+                  alt={frameItem.name}
+                  className="absolute inset-0 w-[104px] h-[104px] rounded-[20px] pointer-events-none object-cover"
+                  style={{ zIndex: 10 }}
+                />
+              ) : frameColor && (
+                <div className="absolute -inset-[3px] rounded-[22px] pointer-events-none"
+                  style={{ border: `2.5px solid ${frameColor}`, boxShadow: `0 0 24px ${frameColor}30` }} />
+              )}
+              <div className="relative w-[104px] h-[104px] rounded-[20px] overflow-hidden transition-all duration-300 group-hover:scale-95"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: frameColor ? `2px solid ${frameColor}55` : "2px solid rgba(255,255,255,0.08)",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                }}>
+                <img src={avatar || "/logo.jpg"} alt="avatar"
+                  className="w-full h-full object-cover transition-all duration-300 group-hover:brightness-50 group-hover:scale-110" />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera size={24} className="text-white drop-shadow-lg" />
+                </div>
+              </div>
+              {/* Online dot */}
+              <div className="absolute -bottom-0.5 -right-0.5 w-[16px] h-[16px] rounded-full"
+                style={{ background: "#22c55e", border: "2.5px solid #0d0d12", zIndex: 15 }} />
+            </div>
+
+            {/* Name + info */}
+            <div className="flex-1 min-w-0 pb-1">
+              {/* Name row */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <p className="text-[26px] font-black text-white leading-none tracking-tight truncate"
+                  style={{ textShadow: "0 2px 20px rgba(0,0,0,0.6)" }}>{username}</p>
+                {isAdmin && (
+                  <span className="text-[7px] font-black px-2 py-0.5 rounded text-white tracking-[0.15em] uppercase"
+                    style={{ background: "#ef4444" }}>ADMIN</span>
+                )}
+                {badgeItem && (
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded tracking-wider"
+                    style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}35` }}>
+                    {badgeItem.name}
+                  </span>
+                )}
+              </div>
+
+              {/* Sub-row */}
+              <div className="flex items-center gap-3 mt-1.5">
+                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  {isAdmin ? "Администратор" : "Игрок"}
+                </span>
+                <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.15)" }}>
+                  #{user?.id?.toString().slice(-6) || "000000"}
+                </span>
+                {user?.telegram && (
+                  <span className="flex items-center gap-1 text-[10px]" style={{ color: "#60a5fa" }}>
+                    <TelegramLogo size={9} weight="fill" />@{user.telegram}
+                  </span>
+                )}
+              </div>
+
+              {/* Balance + Level */}
+              <div className="flex items-center gap-2 mt-3">
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  <span className="text-[14px] font-black text-white tabular-nums leading-none">
+                    {(user?.balance ?? 0).toLocaleString("ru-RU")}
+                  </span>
+                  <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.28)" }}>СБТ</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                  style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.15)" }}>
+                  <Zap size={11} style={{ color: "#60a5fa" }} />
+                  <span className="text-[13px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
+                  <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.28)" }}>LVL</span>
+                </div>
               </div>
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-green-400"
-              style={{ boxShadow: "0 0 0 2.5px #0f0f16, 0 0 8px rgba(74,222,128,0.5)" }} />
           </div>
 
-          {/* Name + meta */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <p className="text-[22px] font-black text-white leading-none truncate">{username}</p>
-              {isAdmin && (
-                <span className="text-[8px] font-black px-2.5 py-0.5 rounded tracking-widest"
-                  style={{ background: "rgba(239,68,68,0.2)", color: "rgba(252,165,165,0.9)", border: "1px solid rgba(239,68,68,0.25)" }}
-                >ADMIN</span>
-              )}
-              {badgeItem && (
-                <span className="text-[8px] font-black px-2.5 py-0.5 rounded tracking-wider"
-                  style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
-                  {badgeItem.name}
-                </span>
-              )}
-              <span className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.28)" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400" style={{ boxShadow: "0 0 6px rgba(74,222,128,0.5)" }} />
-                В сети
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3 mt-1.5">
-              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-                {isAdmin ? "Администратор" : "Игрок"}
-              </span>
-              <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.18)" }}>
-                #{user?.id?.toString().slice(-6) || "000000"}
-              </span>
-              {user?.telegram && (
-                <span className="flex items-center gap-1 text-[10px]" style={{ color: "#60a5fa" }}>
-                  <TelegramLogo size={9} weight="fill" />@{user.telegram}
-                </span>
-              )}
-            </div>
-
-            {/* Balance + Level — inline */}
-            <div className="flex items-center gap-3 mt-2.5">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                <span className="text-[14px] font-black text-white tabular-nums leading-none">
-                  {(user?.balance ?? 0).toLocaleString("ru-RU")}
-                </span>
-                <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>СБТ</span>
+          {/* Bio */}
+          <div className="mt-4 max-w-[480px]">
+            {editingBio ? (
+              <div className="flex flex-col gap-2">
+                <textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={200} rows={2}
+                  placeholder="Расскажи о себе..."
+                  className="rounded-xl px-3 py-2 text-[11px] outline-none resize-none transition-all duration-200"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onFocus={e => e.currentTarget.style.borderColor = "rgba(37,99,235,0.5)"}
+                  onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
+                  autoFocus />
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>{bio.length}/200</span>
+                  <div className="flex-1" />
+                  <button onClick={() => { setEditingBio(false); setBio(savedBio); }}
+                    className="text-[10px] px-3 py-1 rounded-lg transition-all"
+                    style={{ color: "rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.05)" }}>Отмена</button>
+                  <button onClick={async () => { setBioSaving(true); try { await authedFetch("/api/user/bio", { method: "PUT", body: JSON.stringify({ bio: bio.trim() }) }); setSavedBio(bio.trim()); setEditingBio(false); } catch {} setBioSaving(false); }}
+                    disabled={bioSaving} className="text-[10px] px-3 py-1 rounded-lg font-bold disabled:opacity-40 transition-all"
+                    style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}>
+                    {bioSaving ? "..." : "Сохранить"}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-                style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.12)" }}>
-                <Zap size={11} style={{ color: "#3b82f6" }} />
-                <span className="text-[13px] font-black tabular-nums leading-none" style={{ color: "#3b82f6" }}>1</span>
-                <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>LVL</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bio */}
-        <div className="mt-4 max-w-[520px]">
-          {editingBio ? (
-            <div className="flex flex-col gap-2">
-              <textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={200} rows={2}
-                placeholder="Расскажи о себе..."
-                className="rounded-xl px-3 py-2 text-[11px] outline-none resize-none transition-all duration-200"
-                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.08)" }}
-                onFocus={e => e.currentTarget.style.borderColor = "rgba(37,99,235,0.5)"}
-                onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
-                autoFocus />
+            ) : (
               <div className="flex items-center gap-2">
-                <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>{bio.length}/200</span>
-                <div className="flex-1" />
-                <button onClick={() => { setEditingBio(false); setBio(savedBio); }}
-                  className="text-[10px] px-3 py-1 rounded-lg transition-all"
-                  style={{ color: "rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.05)" }}>Отмена</button>
-                <button onClick={async () => { setBioSaving(true); try { await authedFetch("/api/user/bio", { method: "PUT", body: JSON.stringify({ bio: bio.trim() }) }); setSavedBio(bio.trim()); setEditingBio(false); } catch {} setBioSaving(false); }}
-                  disabled={bioSaving} className="text-[10px] px-3 py-1 rounded-lg font-bold disabled:opacity-40 transition-all"
-                  style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}>
-                  {bioSaving ? "..." : "Сохранить"}
+                <p className="text-[11px] leading-relaxed flex-1"
+                  style={{ color: savedBio ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.12)" }}>
+                  {savedBio || "Нет описания"}
+                </p>
+                <button onClick={() => setEditingBio(true)} className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
+                  style={{ color: "rgba(255,255,255,0.18)" }}
+                  onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.45)"}
+                  onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.18)"}>
+                  <Pencil size={10} />
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <p className="text-[11px] leading-relaxed flex-1" style={{ color: savedBio ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.15)" }}>
-                {savedBio || "Нет описания"}
-              </p>
-              <button onClick={() => setEditingBio(true)} className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
-                style={{ color: "rgba(255,255,255,0.18)" }}
-                onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.45)"}
-                onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.18)"}>
-                <Pencil size={10} />
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
 
       {/* ═══ CONTENT ═══ */}
-      <div className="flex-1 flex flex-col gap-4 px-6 py-5 min-h-0">
+      <div className="flex-1 flex flex-col gap-4 px-6 py-5 min-h-0"
+        style={{ background: "rgba(10,10,12,0.6)", borderRadius: "20px 20px 0 0", marginTop: -8, paddingTop: 28 }}>
 
-        {/* Equipped items */}
-        {equippedItems.length > 0 && (
-          <motion.div variants={itemVariants}>
-            <div className="rounded-xl p-3 flex flex-col gap-2"
-              style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-              <p className="text-[9px] uppercase tracking-[0.14em] font-bold"
-                style={{ color: "rgba(255,255,255,0.2)" }}>Экипировано</p>
-              <div className="flex flex-wrap gap-2">
-                {equippedItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                    style={{ background: `${item.color}08`, border: `1px solid ${item.color}15` }}>
-                    <div className="w-2 h-2 rounded-full" style={{ background: item.color, boxShadow: `0 0 6px ${item.color}60` }} />
-                    <span className="text-[11px] font-semibold" style={{ color: item.color }}>{item.name}</span>
-                    <span className="text-[9px] capitalize" style={{ color: "rgba(255,255,255,0.18)" }}>{TYPE_META[item.equipType]?.label || item.equipType}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Achievement showcase */}
+        {/* ── Achievement showcase ── */}
         <motion.div variants={itemVariants}>
           <AchievementShowcase user={user} equip={equip} inventory={equippedItems} />
         </motion.div>
@@ -342,6 +336,7 @@ function ProfileTab({ user, equip }) {
       <AnimatePresence>
         {showScreenshots && <ScreenshotsModal onClose={() => setShowScreenshots(false)} />}
       </AnimatePresence>
+    </div>
     </div>
   );
 }
@@ -920,270 +915,277 @@ function PublicProfileView({ viewer, targetId, onBack }) {
   );
 
   return (
-    <div className="flex-1 flex h-full overflow-hidden">
+    <div className="relative flex-1 flex h-full overflow-hidden">
+      {bgItem?.video && (
+        <video
+          src={bgItem.video}
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay muted loop playsInline
+          style={{ pointerEvents: "none", opacity: 0.55, zIndex: 0 }}
+        />
+      )}
+      <div className="relative z-10 flex h-full overflow-hidden">
 
-      {/* ═══ Left Sidebar ═══ */}
-      <div className="w-[240px] flex-shrink-0 flex flex-col border-r"
-        style={{ borderColor: "rgba(255,255,255,0.05)", overflowY: "auto" }}
-      >
-        <div className="p-5 flex flex-col items-center gap-4">
-          {/* Back button */}
-          <button onClick={onBack}
-            className="self-start w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150 mb-[-8px]"
-            style={{ color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.04)" }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
-          >
-            <CaretLeft size={14} weight="bold" />
-          </button>
-
-          {/* Avatar */}
-          <div className="relative">
-            {frameColor && (
-              <div className="absolute -inset-3 rounded-[22px] pointer-events-none"
-                style={{ background: `radial-gradient(ellipse, ${frameColor}30, transparent 70%)`, filter: "blur(10px)" }} />
-            )}
-            {frameColor && (
-              <div className="absolute -inset-1 rounded-[18px] pointer-events-none"
-                style={{ border: `2.5px solid ${frameColor}`, boxShadow: `0 0 20px ${frameColor}25` }} />
-            )}
-            <div className="relative w-[88px] h-[88px] rounded-[16px] overflow-hidden"
-              style={{
-                background: "rgba(255,255,255,0.06)",
-                border: frameColor ? `2.5px solid ${frameColor}55` : "2.5px solid rgba(255,255,255,0.08)",
-                boxShadow: frameColor ? `0 8px 24px ${frameColor}25` : "0 8px 24px rgba(0,0,0,0.5)",
-              }}
+        {/* ═══ Left Sidebar ═══ */}
+        <div className="w-[240px] flex-shrink-0 flex flex-col border-r"
+          style={{ borderColor: "rgba(255,255,255,0.05)", overflowY: "auto", background: "rgba(10,10,12,0.55)" }}
+        >
+          <div className="p-5 flex flex-col items-center gap-4">
+            {/* Back button */}
+            <button onClick={onBack}
+              className="self-start w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150 mb-[-8px]"
+              style={{ color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.04)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
             >
-              <img src="/logo.jpg" alt="avatar" className="w-full h-full object-cover" />
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full"
-              style={{
-                background: profile.online ? "#4ade80" : "#6b7280",
-                boxShadow: profile.online
-                  ? "0 0 0 3px #1a1a24, 0 0 10px rgba(74,222,128,0.5)"
-                  : "0 0 0 3px #1a1a24",
-              }}
-            />
-          </div>
+              <CaretLeft size={14} weight="bold" />
+            </button>
 
-          {/* Username */}
-          <div className="text-center w-full">
-            <p className="text-[16px] font-black text-white leading-tight truncate">{profile.username}</p>
-            <div className="flex items-center justify-center gap-1.5 mt-1">
-              {profile.role === "admin" && (
-                <span className="text-[8px] font-black px-2 py-0.5 rounded-full tracking-widest"
-                  style={{ background: "rgba(239,68,68,0.15)", color: "rgba(252,165,165,0.9)", border: "1px solid rgba(239,68,68,0.2)" }}
-                >ADMIN</span>
+            {/* Avatar */}
+            <div className="relative">
+              {frameColor && frameItem?.image ? (
+                <img 
+                  src={frameItem.image} 
+                  alt={frameItem.name} 
+                  className="absolute inset-0 w-[88px] h-[88px] rounded-[16px] pointer-events-none object-cover"
+                  style={{ zIndex: 10 }}
+                />
+              ) : frameColor && (
+                <>
+                  <div className="absolute -inset-3 rounded-[22px] pointer-events-none"
+                    style={{ background: `radial-gradient(ellipse, ${frameColor}30, transparent 70%)`, filter: "blur(10px)" }} />
+                  <div className="absolute -inset-1 rounded-[18px] pointer-events-none"
+                    style={{ border: `2.5px solid ${frameColor}`, boxShadow: `0 0 20px ${frameColor}25` }} />
+                </>
               )}
-              {badgeItem && (
-                <span className="text-[8px] font-black px-2 py-0.5 rounded-full tracking-wider"
-                  style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
-                  {badgeItem.name}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Online status */}
-          <div className="flex items-center gap-2 text-[11px]"
-            style={{ color: profile.online ? "rgba(74,222,128,0.7)" : "rgba(255,255,255,0.3)" }}>
-            <div className="w-2 h-2 rounded-full"
-              style={{ background: profile.online ? "#4ade80" : "#6b7280", boxShadow: profile.online ? "0 0 6px rgba(74,222,128,0.5)" : "none" }} />
-            {profile.online ? "В сети" : "Не в сети"}
-          </div>
-
-          {/* Stats */}
-          <div className="w-full grid grid-cols-2 gap-2">
-            {[
-              { label: "Друзей",  value: profile.friendCount ?? 0, color: "#3b82f6" },
-              { label: "Предм.",  value: ownedItems.length,          color: "#a855f7" },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="rounded-xl p-2.5 flex flex-col gap-1"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                <p className="text-[16px] font-black leading-none tabular-nums" style={{ color }}>{value}</p>
-                <p className="text-[8px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.2)" }}>{label}</p>
+              <div className="relative w-[88px] h-[88px] rounded-[16px] overflow-hidden"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: frameColor ? `2.5px solid ${frameColor}55` : "2.5px solid rgba(255,255,255,0.08)",
+                  boxShadow: frameColor ? `0 8px 24px ${frameColor}25` : "0 8px 24px rgba(0,0,0,0.5)",
+                }}
+              >
+                <img src="/logo.jpg" alt="avatar" className="w-full h-full object-cover" />
               </div>
-            ))}
-          </div>
-
-          {/* Meta */}
-          <div className="w-full flex flex-col gap-1.5">
-            <div className="flex items-center gap-2 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
-              <span className="font-mono">#{profile.id?.toString().slice(-6) || "000000"}</span>
+              <div className="absolute -bottom-1 -right-1 w-[18px] h-[18px] rounded-full"
+                style={{
+                  background: profile.online ? "#22c55e" : "#6b7280",
+                  border: "2.5px solid #0f0f16",
+                  zIndex: 15
+                }}
+              />
             </div>
-            {profile.createdAt && (
-              <div className="flex items-center gap-2 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
-                <span>На сайте с {new Date(profile.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}</span>
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* Equipped in sidebar */}
-        {equippedItems.length > 0 && (
-          <div className="px-5 pb-5">
-            <p className="text-[9px] uppercase tracking-widest font-semibold mb-2"
-              style={{ color: "rgba(255,255,255,0.18)" }}>
-              Экипировано
-            </p>
-            <div className="flex flex-col gap-1.5">
-              {equippedItems.map((item) => (
-                <div key={item.id}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
-                  style={{
-                    background: `linear-gradient(135deg, ${item.color}12, ${item.color}05)`,
-                    border: `1px solid ${item.color}20`,
-                  }}
-                >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ background: item.color, boxShadow: `0 0 6px ${item.color}60` }} />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[10px] font-semibold truncate" style={{ color: item.color }}>{item.name}</span>
-                    <span className="text-[8px] truncate" style={{ color: "rgba(255,255,255,0.2)" }}>
-                      {TYPE_META[item.type]?.label || item.type}
-                    </span>
-                  </div>
+            {/* Username */}
+            <div className="text-center w-full">
+              <p className="text-[16px] font-black text-white leading-tight truncate">{profile.username}</p>
+              <div className="flex items-center justify-center gap-1.5 mt-1">
+                {profile.role === "admin" && (
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-md text-white tracking-widest"
+                    style={{ background: "#ef4444" }}
+                  >ADMIN</span>
+                )}
+                {badgeItem && (
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full tracking-wider"
+                    style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
+                    {badgeItem.name}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Online status */}
+            <div className="flex items-center gap-2 text-[11px]"
+              style={{ color: profile.online ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
+              <div className="w-1.5 h-1.5 rounded-full"
+                style={{ background: profile.online ? "#22c55e" : "#6b7280" }} />
+              {profile.online ? "В сети" : "Не в сети"}
+            </div>
+
+            {/* Stats */}
+            <div className="w-full grid grid-cols-2 gap-2">
+              {[
+                { label: "Друзей",  value: profile.friendCount ?? 0, color: "#3b82f6" },
+                { label: "Предм.",  value: ownedItems.length,          color: "#a855f7" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="rounded-xl p-2.5 flex flex-col gap-1"
+                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                  <p className="text-[16px] font-black leading-none tabular-nums" style={{ color }}>{value}</p>
+                  <p className="text-[8px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.2)" }}>{label}</p>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* ═══ Right Content ═══ */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        {/* Banner */}
-        <div className="relative h-[120px] overflow-hidden"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
-        >
-          {bgColor ? (
-            <div className="absolute inset-0"
-              style={{
-                background: `
-                  radial-gradient(ellipse at 15% 50%, ${bgColor}35, transparent 60%),
-                  radial-gradient(ellipse at 85% 30%, ${bgColor}20, transparent 50%),
-                  radial-gradient(ellipse at 50% 100%, ${bgColor}10, transparent 50%)
-                `,
-              }}
-            />
-          ) : (
-            <div className="absolute inset-0"
-              style={{
-                background: `
-                  radial-gradient(ellipse at 15% 50%, rgba(99,102,241,0.15), transparent 60%),
-                  radial-gradient(ellipse at 85% 30%, rgba(59,130,246,0.1), transparent 50%),
-                  linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005))
-                `,
-              }}
-            />
+            {/* Meta */}
+            <div className="w-full flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+                <span className="font-mono">#{profile.id?.toString().slice(-6) || "000000"}</span>
+              </div>
+              {profile.createdAt && (
+                <div className="flex items-center gap-2 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  <span>На сайте с {new Date(profile.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Equipped in sidebar */}
+          {equippedItems.length > 0 && (
+            <div className="px-5 pb-5">
+              <p className="text-[9px] uppercase tracking-widest font-semibold mb-2"
+                style={{ color: "rgba(255,255,255,0.18)" }}>
+                Экипировано
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {equippedItems.map((item) => (
+                  <div key={item.id}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+                    style={{
+                      background: `linear-gradient(135deg, ${item.color}12, ${item.color}05)`,
+                      border: `1px solid ${item.color}20`,
+                    }}
+                  >
+                    <div className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: item.color, boxShadow: `0 0 6px ${item.color}60` }} />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-semibold truncate" style={{ color: item.color }}>{item.name}</span>
+                      <span className="text-[8px] truncate" style={{ color: "rgba(255,255,255,0.2)" }}>
+                        {TYPE_META[item.type]?.label || item.type}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-          <div className="absolute inset-0 opacity-[0.015]"
-            style={{
-              backgroundImage: `linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)`,
-              backgroundSize: "40px 40px",
-            }}
-          />
-          <div className="absolute bottom-0 left-0 right-0 h-12"
-            style={{ background: "linear-gradient(transparent, rgba(10,10,15,0.8))" }} />
         </div>
 
-        {/* Sections */}
-        <div className="px-6 py-5 flex flex-col gap-6">
-
-          {/* Bio */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-4 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} />
-              <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>Описание</p>
-            </div>
-            <div className="rounded-2xl p-5"
+        {/* ═══ Right Content ═══ */}
+        <div className="flex-1 min-w-0 overflow-y-auto">
+          {/* Banner */}
+          <div className="relative h-[120px] overflow-hidden"
+            style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(10,10,12,0.55)" }}
+          >
+            {bgColor && !bgItem?.video && (
+              <div className="absolute inset-0"
+                style={{
+                  background: `
+                    radial-gradient(ellipse at 15% 50%, ${bgColor}35, transparent 60%),
+                    radial-gradient(ellipse at 85% 30%, ${bgColor}20, transparent 50%),
+                    radial-gradient(ellipse at 50% 100%, ${bgColor}10, transparent 50%)
+                  `,
+                }}
+              />
+            )}
+            <div className="absolute inset-0 opacity-[0.015]"
               style={{
-                background: "linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))",
-                border: "1px solid rgba(255,255,255,0.05)",
+                backgroundImage: `linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)`,
+                backgroundSize: "40px 40px",
               }}
-            >
-              <p className="text-[12px] leading-relaxed whitespace-pre-wrap"
-                style={{ color: profile.bio ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)" }}>
-                {profile.bio || "Пользователь пока не добавил описание"}
-              </p>
-            </div>
+            />
+            <div className="absolute bottom-0 left-0 right-0 h-12"
+              style={{ background: "linear-gradient(transparent, rgba(10,10,15,0.8))" }} />
           </div>
 
-          {/* Inventory */}
-          {ownedItems.length > 0 && (
+          {/* Sections */}
+          <div className="px-6 py-5 flex flex-col gap-6"
+            style={{ background: "rgba(10,10,12,0.55)", borderRadius: "20px 20px 0 0", marginTop: -20, paddingTop: 40 }}>
+
+            {/* Bio */}
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-1 h-4 rounded-full" style={{ background: "#a855f7" }} />
-                <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  Инвентарь
+                <div className="w-1 h-4 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} />
+                <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>Описание</p>
+              </div>
+              <div className="rounded-2xl p-5"
+                style={{
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                <p className="text-[12px] leading-relaxed whitespace-pre-wrap"
+                  style={{ color: profile.bio ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)" }}>
+                  {profile.bio || "Пользователь пока не добавил описание"}
                 </p>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-mono"
-                  style={{ background: "rgba(168,85,247,0.1)", color: "rgba(168,85,247,0.6)" }}>
-                  {ownedItems.length}
-                </span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {ownedItems.map((item, i) => {
-                  const isEquipped = Object.values(equip).includes(item.id);
-                  const rarity = RARITIES[item.rarity] || RARITIES.common;
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className="group rounded-xl p-3 flex flex-col gap-2 relative overflow-hidden"
-                      style={{
-                        background: isEquipped ? `${rarity.color}10` : "rgba(255,255,255,0.03)",
-                        border: isEquipped ? `1.5px solid ${rarity.color}30` : "1.5px solid rgba(255,255,255,0.05)",
-                      }}
-                    >
-                      {isEquipped && (
-                        <div className="absolute top-0 left-0 right-0 h-[2px]"
-                          style={{ background: rarity.color }} />
-                      )}
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ background: item.color, boxShadow: `0 0 6px ${item.color}50` }} />
-                        <span className="text-[10px] font-bold truncate" style={{ color: item.color }}>{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[8px] px-1.5 py-0.5 rounded"
-                          style={{ background: `${rarity.color}15`, color: rarity.color }}>
-                          {rarity.label}
-                        </span>
-                        <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.2)" }}>
-                          {TYPE_META[item.type]?.label || item.type}
-                        </span>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Skin + Comments row */}
-          <div className="flex gap-5">
-            {/* Skin */}
-            <div className="w-[180px] flex-shrink-0">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-1 h-4 rounded-full" style={{ background: "#22c55e" }} />
-                <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>Скин</p>
-              </div>
-              <SkinViewer username={profile.username} />
             </div>
 
-            {/* Comments */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-1 h-4 rounded-full" style={{ background: "#f59e0b" }} />
-                <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>Комментарии</p>
+            {/* Inventory */}
+            {ownedItems.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1 h-4 rounded-full" style={{ background: "#a855f7" }} />
+                  <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    Инвентарь
+                  </p>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono"
+                    style={{ background: "rgba(168,85,247,0.1)", color: "rgba(168,85,247,0.6)" }}>
+                    {ownedItems.length}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {ownedItems.map((item, i) => {
+                    const isEquipped = Object.values(equip).includes(item.id);
+                    const rarity = RARITIES[item.rarity] || RARITIES.common;
+                    return (
+                      <motion.div
+                        key={item.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.03 }}
+                        className="group rounded-xl p-3 flex flex-col gap-2 relative overflow-hidden"
+                        style={{
+                          background: isEquipped ? `${rarity.color}10` : "rgba(255,255,255,0.03)",
+                          border: isEquipped ? `1.5px solid ${rarity.color}30` : "1.5px solid rgba(255,255,255,0.05)",
+                        }}
+                      >
+                        {isEquipped && (
+                          <div className="absolute top-0 left-0 right-0 h-[2px]"
+                            style={{ background: rarity.color }} />
+                        )}
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ background: item.color, boxShadow: `0 0 6px ${item.color}50` }} />
+                          <span className="text-[10px] font-bold truncate" style={{ color: item.color }}>{item.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[8px] px-1.5 py-0.5 rounded"
+                            style={{ background: `${rarity.color}15`, color: rarity.color }}>
+                            {rarity.label}
+                          </span>
+                          <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+                            {TYPE_META[item.type]?.label || item.type}
+                          </span>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
-              <ProfileComments targetId={targetId} viewer={viewer} />
+            )}
+
+            {/* Skin + Comments row */}
+            <div className="flex gap-5">
+              {/* Skin */}
+              <div className="w-[180px] flex-shrink-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1 h-4 rounded-full" style={{ background: "#22c55e" }} />
+                  <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>Скин</p>
+                </div>
+                <SkinViewer username={profile.username} />
+              </div>
+
+              {/* Comments */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1 h-4 rounded-full" style={{ background: "#f59e0b" }} />
+                  <p className="text-[11px] uppercase tracking-[0.12em] font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>Комментарии</p>
+                </div>
+                <ProfileComments targetId={targetId} viewer={viewer} />
+              </div>
             </div>
+
           </div>
-
         </div>
       </div>
     </div>

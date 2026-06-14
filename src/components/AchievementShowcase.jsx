@@ -1,20 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Trophy, Star, Flame, Shield, Target, Swords, Crown, Zap, Award } from "lucide-react";
 
 const ACHIEVEMENTS = [
-  { id: "first_join",      icon: Star,      color: "#3b82f6", name: "Первый вход",       desc: "Впервые зашёл на сервер",               category: "general" },
-  { id: "play_10h",        icon: Flame,     color: "#f59e0b", name: "Новичок",           desc: "Накопил 10 часов на сервере",            category: "general" },
-  { id: "play_50h",        icon: Flame,     color: "#f97316", name: "Завсегдатай",        desc: "Накопил 50 часов на сервере",            category: "general" },
-  { id: "play_100h",       icon: Flame,     color: "#ef4444", name: "Захватчик",          desc: "100 часов на сервере",                   category: "general" },
-  { id: "first_friend",    icon: Shield,    color: "#10b981", name: "Первый друг",        desc: "Добавил первого друга",                  category: "social" },
-  { id: "friends_5",       icon: Shield,    color: "#06b6d4", name: "Социальная бабочка", desc: "5 друзей в списке",                      category: "social" },
-  { id: "first_item",      icon: Award,     color: "#8b5cf6", name: "Коллекционер",       desc: "Получил первый предмет",                 category: "store" },
-  { id: "items_10",        icon: Award,     color: "#a855f7", name: "Скупщик",            desc: "10 предметов в инвентаре",               category: "store" },
-  { id: "admin",           icon: Crown,     color: "#ef4444", name: "Админ",              desc: "Получил роль администратора",            category: "special" },
-  { id: "skin_changed",    icon: Target,    color: "#ec4899", name: "Модник",             desc: "Сменил скин в лаунчере",                 category: "general" },
-  { id: "server_starwars", icon: Swords,    color: "#6366f1", name: "Звёздные войны",     desc: "Заходил на сервер STARWARS",             category: "servers" },
-  { id: "first_purchase",  icon: Zap,       color: "#eab308", name: "Первая покупка",     desc: "Купил первый предмет в каталоге",        category: "store" },
+  { id: "first_join",      symbol: "◈", color: "#3b82f6", name: "Первый вход",        category: "general" },
+  { id: "play_10h",        symbol: "◉", color: "#f59e0b", name: "Новичок",            category: "general" },
+  { id: "play_50h",        symbol: "◉", color: "#f97316", name: "Завсегдатай",        category: "general" },
+  { id: "play_100h",       symbol: "◉", color: "#ef4444", name: "Захватчик",          category: "general" },
+  { id: "first_friend",    symbol: "◎", color: "#10b981", name: "Первый друг",        category: "social"  },
+  { id: "friends_5",       symbol: "◎", color: "#06b6d4", name: "Социальная бабочка", category: "social"  },
+  { id: "first_item",      symbol: "◇", color: "#8b5cf6", name: "Коллекционер",       category: "store"   },
+  { id: "items_10",        symbol: "◇", color: "#a855f7", name: "Скупщик",            category: "store"   },
+  { id: "admin",           symbol: "◆", color: "#ef4444", name: "Администратор",      category: "special" },
+  { id: "skin_changed",    symbol: "◈", color: "#ec4899", name: "Модник",             category: "general" },
+  { id: "server_starwars", symbol: "⬡", color: "#6366f1", name: "Звёздные войны",     category: "servers" },
+  { id: "first_purchase",  symbol: "◈", color: "#eab308", name: "Первая покупка",     category: "store"   },
 ];
 
 export function getUnlockedAchievements() {
@@ -30,15 +29,7 @@ export function unlockAchievement(id) {
   return true;
 }
 
-function formatDate(id) {
-  try {
-    const dates = JSON.parse(localStorage.getItem("sbgames_achievement_dates") || "{}");
-    if (dates[id]) return new Date(dates[id]).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-  } catch {}
-  return "";
-}
-
-function trackDate(id) {
+export function trackDate(id) {
   try {
     const dates = JSON.parse(localStorage.getItem("sbgames_achievement_dates") || "{}");
     if (!dates[id]) { dates[id] = Date.now(); localStorage.setItem("sbgames_achievement_dates", JSON.stringify(dates)); }
@@ -57,79 +48,71 @@ export default function AchievementShowcase({ user, equip, inventory }) {
   }, []);
 
   const unlockedSet = new Set(unlocked);
+  const totalUnlocked = ACHIEVEMENTS.filter(a => unlockedSet.has(a.id)).length;
+  const progress = Math.round((totalUnlocked / ACHIEVEMENTS.length) * 100);
 
-  const featured = ACHIEVEMENTS.filter(a => unlockedSet.has(a.id)).slice(0, 5);
+  // Show 5 slots: unlocked first, then locked placeholders
+  const featured = [
+    ...ACHIEVEMENTS.filter(a => unlockedSet.has(a.id)).slice(0, 5),
+  ];
   while (featured.length < 5) {
     const locked = ACHIEVEMENTS.find(a => !unlockedSet.has(a.id) && !featured.some(f => f.id === a.id));
     if (!locked) break;
     featured.push({ ...locked, locked: true });
   }
 
-  const totalUnlocked = ACHIEVEMENTS.filter(a => unlockedSet.has(a.id)).length;
-
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
+        <span className="text-[9px] uppercase tracking-[0.18em] font-bold"
           style={{ color: "rgba(255,255,255,0.18)" }}>
-          Витрина достижений
-        </p>
-        <span className="text-[10px] tabular-nums" style={{ color: "rgba(255,255,255,0.3)" }}>
-          {totalUnlocked}/{ACHIEVEMENTS.length}
+          Витрина
         </span>
+        <div className="flex items-center gap-2">
+          <div className="w-20 h-[2px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+            <div className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${progress}%`, background: "rgba(255,255,255,0.3)" }} />
+          </div>
+          <span className="text-[9px] tabular-nums" style={{ color: "rgba(255,255,255,0.25)" }}>
+            {totalUnlocked}/{ACHIEVEMENTS.length}
+          </span>
+        </div>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+      {/* 5 slots */}
+      <div className="flex gap-2">
         {featured.map((ach, i) => {
-          const Icon = ach.icon;
           const isLocked = ach.locked;
           return (
             <motion.div
               key={ach.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07, type: "spring", stiffness: 350, damping: 24 }}
-              whileHover={{ y: -3, scale: 1.03 }}
-              className="flex-1 min-w-[130px] max-w-[170px] flex flex-col items-center text-center px-3 py-3.5 rounded-xl flex-shrink-0 relative overflow-hidden"
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.05, type: "spring", stiffness: 400, damping: 22 }}
+              whileHover={!isLocked ? { scale: 1.06, y: -2 } : {}}
+              title={isLocked ? "???" : ach.name}
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl relative overflow-hidden cursor-default"
               style={{
-                background: isLocked
-                  ? "rgba(255,255,255,0.04)"
-                  : `linear-gradient(160deg, ${ach.color}18, ${ach.color}08)`,
-                border: isLocked
-                  ? "1.5px solid rgba(255,255,255,0.06)"
-                  : `1.5px solid ${ach.color}35`,
-                boxShadow: isLocked ? "none" : `0 0 16px ${ach.color}10`,
+                background: isLocked ? "rgba(255,255,255,0.02)" : `${ach.color}0e`,
+                border: isLocked ? "1px solid rgba(255,255,255,0.04)" : `1px solid ${ach.color}25`,
               }}
             >
               {!isLocked && (
-                <div className="absolute top-0 left-0 right-0 h-[2px]"
-                  style={{ background: `linear-gradient(90deg, transparent, ${ach.color}, transparent)` }} />
+                <div className="absolute top-0 left-0 right-0 h-px"
+                  style={{ background: `linear-gradient(90deg, transparent, ${ach.color}70, transparent)` }} />
               )}
-
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-2 relative"
+              <span className="text-[22px] leading-none select-none"
                 style={{
-                  background: isLocked ? "rgba(255,255,255,0.05)" : `${ach.color}20`,
-                  border: isLocked ? "none" : `1px solid ${ach.color}20`,
+                  color: isLocked ? "rgba(255,255,255,0.07)" : ach.color,
+                  filter: !isLocked ? `drop-shadow(0 0 8px ${ach.color}55)` : "none",
                 }}>
-                <Icon size={18} style={{ color: isLocked ? "rgba(255,255,255,0.15)" : ach.color }} weight="fill" />
-                {!isLocked && (
-                  <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center"
-                    style={{ background: ach.color, boxShadow: `0 0 8px ${ach.color}50` }}>
-                    <svg width="7" height="7" viewBox="0 0 12 12" fill="white">
-                      <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-[11px] font-bold leading-tight mb-0.5"
-                style={{ color: isLocked ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.85)" }}>
-                {ach.name}
-              </p>
-              <p className="text-[9px] leading-tight"
-                style={{ color: isLocked ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.35)" }}>
-                {ach.desc}
-              </p>
+                {isLocked ? "·" : ach.symbol}
+              </span>
+              <span className="text-[8px] font-bold leading-none text-center w-full px-1 truncate"
+                style={{ color: isLocked ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.4)" }}>
+                {isLocked ? "???" : ach.name.split(" ")[0]}
+              </span>
             </motion.div>
           );
         })}
@@ -138,4 +121,4 @@ export default function AchievementShowcase({ user, equip, inventory }) {
   );
 }
 
-export { ACHIEVEMENTS, trackDate };
+export { ACHIEVEMENTS };

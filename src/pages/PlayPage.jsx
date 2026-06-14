@@ -225,7 +225,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       </AnimatePresence>
 
       {/* ── Sidebar ── */}
-      <div className="absolute left-0 top-0 bottom-0 z-10" style={{ width: 220, padding: "16px 0 16px 16px" }}>
+      <div className="absolute left-0 top-0 bottom-0 z-20" style={{ width: 220, padding: "16px 0 16px 16px" }}>
         <div className="h-full rounded-2xl flex flex-col overflow-hidden"
           style={{
             background: "rgba(8,8,8,0.92)",

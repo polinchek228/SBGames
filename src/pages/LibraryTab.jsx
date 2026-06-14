@@ -26,28 +26,68 @@ const SORT_OPTIONS = [
 
 /* ── Item visual previews (clean, Steam-style) ──────────────────────────────── */
 
-function FramePreview({ color }) {
+function FramePreview({ color, item, large }) {
+  const outerSz = large ? 120 : 82;
+  const br = large ? 20 : 14;
+
   return (
-    <div className="relative w-[80px] h-[80px] flex items-center justify-center">
-      {/* Solid colored border frame */}
-      <div className="absolute inset-0 rounded-[18px]"
-        style={{
-          border: `3px solid ${color}`,
-          boxShadow: `0 0 20px ${color}25`,
-        }} />
-      {/* Inner content */}
-      <div className="relative w-[60px] h-[60px] rounded-[12px] flex items-center justify-center"
-        style={{ background: "rgba(255,255,255,0.04)" }}>
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
-          <circle cx="12" cy="8" r="4" fill={color} />
-          <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
-        </svg>
+    <div className="relative w-full h-full flex items-center justify-center">
+      <div className="relative" style={{ width: outerSz, height: outerSz }}>
+        {/* Actual Avatar Image */}
+        <img
+          src="/logo.jpg"
+          alt="Avatar"
+          className="absolute inset-[3px] object-cover"
+          style={{
+            width: `calc(100% - 6px)`,
+            height: `calc(100% - 6px)`,
+            borderRadius: br,
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+          onError={(e) => {
+            e.currentTarget.src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80";
+          }}
+        />
+
+        {/* Frame Image Overlay */}
+        {item?.image ? (
+          <img
+            src={item.image}
+            alt={item.name}
+            className="absolute inset-0 w-full h-full object-contain z-10 select-none pointer-events-none"
+          />
+        ) : (
+          <div
+            className="absolute inset-0 z-10"
+            style={{
+              border: `3px solid ${color}`,
+              borderRadius: br + 2,
+              boxShadow: `0 0 16px ${color}40`,
+            }}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function BackgroundPreview({ color }) {
+function BackgroundPreview({ color, item, large }) {
+  if (item?.video) {
+    return (
+      <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden">
+        <video
+          src={item.video}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover opacity-80"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
+      </div>
+    );
+  }
+
   return (
     <div className="w-[80px] h-[56px] rounded-xl overflow-hidden relative"
       style={{ border: `1.5px solid ${color}20` }}>
@@ -113,12 +153,12 @@ function BadgePreview({ color, name }) {
   );
 }
 
-function ItemVisual({ type, color, name }) {
+function ItemVisual({ type, color, name, item, large = false }) {
   switch (type) {
-    case "frame":           return <FramePreview color={color} name={name} />;
-    case "background":      return <BackgroundPreview color={color} />;
-    case "avatar_animated": return <AnimatedPreview color={color} />;
-    case "badge":           return <BadgePreview color={color} name={name} />;
+    case "frame":           return <FramePreview color={color} item={item} large={large} />;
+    case "background":      return <BackgroundPreview color={color} item={item} large={large} />;
+    case "avatar_animated": return <AnimatedPreview color={color} large={large} />;
+    case "badge":           return <BadgePreview color={color} name={name} large={large} />;
     default:                return <Package size={32} style={{ color: "rgba(255,255,255,0.15)" }} />;
   }
 }
@@ -248,124 +288,157 @@ function EquipSlot({ type, meta, equippedItem, onDrop, onClear }) {
 
 function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy, onEquip, onUnequip, onClose }) {
   if (!item) return null;
-  const meta = TYPE_META[item.type] || TYPE_META.all;
-  const rarity = RARITIES[item.rarity];
 
   return (
     <motion.div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
+      transition={{ duration: 0.18 }}
       onClick={onClose}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0"
-        style={{ background: "rgba(0,0,0,0.75)" }} />
+      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.85)" }} />
+
+      {/* Ambient glow behind modal */}
+      <div className="absolute pointer-events-none"
+        style={{
+          width: 340, height: 340,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${item.color}25 0%, transparent 70%)`,
+          filter: "blur(40px)",
+        }} />
 
       {/* Modal */}
       <motion.div
-        className="relative w-full max-w-[480px] rounded-2xl overflow-hidden"
+        className="relative w-full max-w-[340px] rounded-2xl overflow-hidden"
         style={{
-          background: "rgb(22,22,30)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
+          background: "linear-gradient(180deg, #111118 0%, #0d0d12 100%)",
+          boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 40px 80px rgba(0,0,0,0.85), 0 0 80px ${item.color}18`,
         }}
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        transition={{ duration: 0.15 }}
+        initial={{ scale: 0.92, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.92, opacity: 0, y: 20 }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close button */}
+        {/* Close */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 p-1.5 rounded-xl transition-all"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}
+          className="absolute top-3 right-3 z-30 w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+          style={{ background: "rgba(0,0,0,0.4)", color: "rgba(255,255,255,0.4)", backdropFilter: "blur(8px)" }}
+          onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,255,255,0.8)"; }}
+          onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
         >
-          <X size={14} />
+          <X size={13} />
         </button>
 
-        {/* Preview area */}
-        <div className="relative h-[220px] flex items-center justify-center"
-          style={{
-            background: `radial-gradient(ellipse at 50% 120%, ${item.color}18 0%, transparent 70%), rgba(0,0,0,0.3)`,
-          }}>
-          <ItemVisualLarge type={item.type} color={item.color} name={item.name} />
+        {/* Preview — full bleed */}
+        <div className="relative overflow-hidden"
+          style={{ height: item.type === "background" ? 240 : 210, background: item.type === "background" ? "#000" : "#09090e" }}>
+
+          {/* Colored ambient inside preview */}
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ background: `radial-gradient(ellipse at 50% 80%, ${item.color}18 0%, transparent 65%)` }} />
+
+          <ItemVisual type={item.type} color={item.color} name={item.name} item={item} large />
+
+          {/* Gradient fade into info section */}
+          <div className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none"
+            style={{ background: "linear-gradient(to bottom, transparent 0%, #0d0d12 100%)" }} />
+
+          {/* Equipped badge */}
+          {isEquipped && (
+            <div className="absolute top-3 left-3 z-20">
+              <span className="text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider"
+                style={{ background: "rgba(34,197,94,0.2)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)", backdropFilter: "blur(6px)" }}>
+                ✓ В экипировке
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Content */}
-        <div className="p-5 flex flex-col gap-3">
-          {/* Type + rarity */}
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider"
-              style={{ background: `${meta.color}18`, color: meta.color, border: `1px solid ${meta.color}25` }}>
-              {meta.label}
-            </span>
-            {rarity && (
-              <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider"
-                style={{ background: `${rarity.color}18`, color: rarity.color, border: `1px solid ${rarity.color}25` }}>
-                {rarity.label}
-              </span>
-            )}
-          </div>
+        {/* Info — overlaps preview via negative margin */}
+        <div className="px-5 pb-5 -mt-8 relative z-10 flex flex-col gap-3.5">
 
           {/* Name */}
-          <h3 className="text-[18px] font-black text-white">{item.name}</h3>
+          <h3 className="text-[22px] font-black text-white leading-tight tracking-tight"
+            style={{ textShadow: `0 0 40px ${item.color}40` }}>
+            {item.name}
+          </h3>
 
-          {/* Description */}
-          {item.desc && (
-            <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {item.desc}
-            </p>
-          )}
+          {/* Divider */}
+          <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
 
-          {/* Price + actions */}
-          <div className="flex items-center gap-3 mt-2">
-            <div className="flex items-center gap-2">
-              <img src="/money.png" alt="" className="w-4 h-4"
-                onError={(e) => { e.currentTarget.style.display = "none"; }} />
-              <span className="text-[16px] font-black tabular-nums"
-                style={{ color: isOwned ? "#4ade80" : canAfford ? "rgba(255,255,255,0.8)" : "rgba(248,113,113,0.6)" }}>
-                {isOwned ? "Куплено" : item.price.toLocaleString("en-US")}
-              </span>
-              {!isOwned && <span className="text-[10px] text-white/20">SBT</span>}
-            </div>
-
-            <div className="flex-1" />
-
+          {/* Price row */}
+          <div className="flex items-center justify-between">
             {isOwned ? (
-              isEquipped ? (
-                <button
-                  onClick={() => onUnequip(item.type)}
-                  disabled={busy}
-                  className="px-5 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-150 active:scale-95"
-                  style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" }}
-                >
-                  {busy ? "…" : "Снять"}
-                </button>
-              ) : (
-                <button
-                  onClick={() => onEquip(item)}
-                  disabled={busy}
-                  className="px-5 py-2.5 rounded-xl text-[12px] font-semibold text-white transition-all duration-150 active:scale-95"
-                  style={{ background: item.color, boxShadow: `0 0 16px ${item.color}35` }}
-                >
-                  {busy ? "…" : "Экипировать"}
-                </button>
-              )
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-[12px] font-bold" style={{ color: "rgba(255,255,255,0.5)" }}>Уже в коллекции</span>
+              </div>
             ) : (
-              <button
-                onClick={() => onBuy(item)}
-                disabled={busy || !canAfford}
-                className="px-5 py-2.5 rounded-xl text-[12px] font-semibold text-white disabled:opacity-40 transition-all duration-150 active:scale-95"
-                style={{ background: item.color, boxShadow: `0 0 16px ${item.color}35` }}
-              >
-                {busy ? "…" : "Купить"}
-              </button>
+              <div className="flex items-center gap-2">
+                <img src="/money.png" alt="" className="w-4 h-4 object-contain"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                <span className="text-[18px] font-black tabular-nums leading-none"
+                  style={{ color: canAfford ? "rgba(255,255,255,0.9)" : "#f87171" }}>
+                  {item.price.toLocaleString("en-US")}
+                </span>
+                <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.2)" }}>SBT</span>
+              </div>
             )}
           </div>
+
+          {/* Action button */}
+          {isOwned ? (
+            isEquipped ? (
+              <button
+                onClick={() => onUnequip(item.type)}
+                disabled={busy}
+                className="w-full py-3 rounded-xl text-[13px] font-black tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-40"
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  color: "rgba(255,255,255,0.35)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                {busy ? "…" : "Снять"}
+              </button>
+            ) : (
+              <button
+                onClick={() => onEquip(item)}
+                disabled={busy}
+                className="w-full py-3 rounded-xl text-[13px] font-black tracking-wide text-white transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+                style={{
+                  background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}cc 100%)`,
+                  boxShadow: `0 4px 24px ${item.color}50`,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 32px ${item.color}70`; }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 4px 24px ${item.color}50`; }}
+              >
+                {busy ? "…" : "Экипировать"}
+              </button>
+            )
+          ) : (
+            <button
+              onClick={() => onBuy(item)}
+              disabled={busy || !canAfford}
+              className="w-full py-3 rounded-xl text-[13px] font-black tracking-wide text-white transition-all duration-200 active:scale-[0.98] disabled:opacity-35"
+              style={{
+                background: canAfford
+                  ? `linear-gradient(135deg, ${item.color} 0%, ${item.color}cc 100%)`
+                  : "rgba(255,255,255,0.05)",
+                boxShadow: canAfford ? `0 4px 24px ${item.color}50` : "none",
+                color: canAfford ? "white" : "rgba(255,255,255,0.3)",
+              }}
+              onMouseEnter={e => { if (canAfford && !busy) e.currentTarget.style.boxShadow = `0 6px 32px ${item.color}70`; }}
+              onMouseLeave={e => { if (canAfford && !busy) e.currentTarget.style.boxShadow = `0 4px 24px ${item.color}50`; }}
+            >
+              {busy ? "…" : canAfford ? "Купить" : "Недостаточно SBT"}
+            </button>
+          )}
         </div>
       </motion.div>
     </motion.div>
@@ -396,8 +469,22 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
       onDragStart={handleDragStart}
       onClick={() => onOpen(item)}
       style={{
-        background: "rgba(24,24,32,0.8)",
-        border: isEquipped ? `1.5px solid ${item.color}50` : "1.5px solid rgba(255,255,255,0.06)",
+        background: "rgba(13,13,18,0.7)",
+        backdropFilter: "blur(12px)",
+        border: isEquipped ? `1.5px solid ${item.color}80` : "1.5px solid rgba(255,255,255,0.05)",
+        boxShadow: isEquipped 
+          ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
+          : "0 4px 20px rgba(0,0,0,0.4)",
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = isEquipped ? `${item.color}` : "rgba(255,255,255,0.12)";
+        e.currentTarget.style.boxShadow = `0 12px 30px -8px ${item.color}45, 0 0 0 1px ${item.color}20`;
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = isEquipped ? `${item.color}80` : "rgba(255,255,255,0.05)";
+        e.currentTarget.style.boxShadow = isEquipped 
+          ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
+          : "0 4px 20px rgba(0,0,0,0.4)";
       }}
     >
       {/* Hover highlight */}
@@ -406,109 +493,58 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
 
       {/* Equipped indicator — thin colored top bar */}
       {isEquipped && (
-        <div className="absolute top-0 left-0 right-0 h-[2px] z-10"
+        <div className="absolute top-0 left-0 right-0 h-[2px] z-25"
           style={{ background: `linear-gradient(90deg, transparent, ${item.color}, transparent)`, boxShadow: `0 0 8px ${item.color}40` }} />
       )}
 
       {/* Visual area */}
-      <div className="relative h-[120px] flex items-center justify-center overflow-hidden"
-        style={{ background: "rgba(0,0,0,0.35)" }}>
-        <ItemVisual type={item.type} color={item.color} name={item.name} />
-
-        {/* Rarity badge */}
-        {rarity && (
-          <span className="absolute top-2 left-2 text-[8px] font-bold px-2 py-0.5 rounded-md z-10"
-            style={{ background: `${rarity.color}25`, color: rarity.color, border: `1px solid ${rarity.color}20` }}>
-            {rarity.label}
-          </span>
-        )}
+      <div className="relative w-full overflow-hidden transition-all duration-300 group-hover:brightness-110"
+        style={{ 
+          height: item.type === "background" ? 150 : 130,
+          background: item.type === "background" ? "#000" : `linear-gradient(160deg, #0c0c14 0%, ${item.color}10 60%, #08080f 100%)`,
+          borderBottom: "1px solid rgba(255,255,255,0.03)"
+        }}
+      >
+        <ItemVisual type={item.type} color={item.color} name={item.name} item={item} />
 
         {/* Equipped badge */}
         {isEquipped && (
-          <span className="absolute top-2 right-2 text-[8px] font-bold px-2 py-0.5 rounded-md z-10"
-            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)" }}>
-            ЭКИП.
-          </span>
-        )}
-        {!isOwned && !canAfford && (
-          <span className="absolute top-2 right-2 text-[8px] font-bold px-2 py-0.5 rounded-md z-10"
-            style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.15)" }}>
-            МАЛО СБТ
+          <span className="absolute top-2 right-2 text-[8px] font-black px-2 py-0.5 rounded-md z-20 uppercase tracking-wider"
+            style={{ background: "rgba(34,197,94,0.2)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)", backdropFilter: "blur(6px)" }}>
+            ✓
           </span>
         )}
       </div>
 
-      {/* Info + button area */}
-      <div className="px-3 py-2.5 flex flex-col gap-2 flex-1">
+      {/* Info */}
+      <div className="px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-bold text-white truncate">{item.name}</p>
+            <p className="text-[12px] font-black text-white leading-tight truncate">{item.name}</p>
             {item.desc && (
-              <p className="text-[10px] mt-0.5 leading-relaxed line-clamp-2"
-                style={{ color: "rgba(255,255,255,0.3)" }}>
+              <p className="text-[10px] mt-1 leading-relaxed line-clamp-1"
+                style={{ color: "rgba(255,255,255,0.28)" }}>
                 {item.desc}
               </p>
             )}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <img src="/money.png" alt="" className="w-3 h-3"
-              onError={(e) => { e.currentTarget.style.display = "none"; }} />
-            <span className="text-[11px] font-bold tabular-nums"
-              style={{
-                color: isOwned ? "#4ade80" : canAfford ? "rgba(255,255,255,0.6)" : "rgba(248,113,113,0.6)",
-              }}>
-              {isOwned ? "Куплено" : item.price.toLocaleString("en-US")}
+          {/* Price or owned badge */}
+          {isOwned ? (
+            <span className="text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0"
+              style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)" }}>
+              ✓
             </span>
-          </div>
-        </div>
-
-        {/* Action button — always visible */}
-        {isOwned ? (
-          isEquipped ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); onUnequip(); }}
-              disabled={busy}
-              className="w-full py-2 rounded-lg text-[11px] font-bold transition-all duration-150 active:scale-[0.97]"
-              style={{
-                background: "rgba(239,68,68,0.12)",
-                color: "#fca5a5",
-                border: "1px solid rgba(239,68,68,0.25)",
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.2)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; }}
-            >
-              {busy ? "…" : "Снять"}
-            </button>
           ) : (
-            <button
-              onClick={(e) => { e.stopPropagation(); onEquip(); }}
-              disabled={busy}
-              className="w-full py-2 rounded-lg text-[11px] font-bold text-white transition-all duration-150 active:scale-[0.97]"
-              style={{
-                background: `linear-gradient(135deg, ${item.color}, ${item.color}cc)`,
-                boxShadow: `0 2px 12px ${item.color}35`,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 4px 18px ${item.color}50`; }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 12px ${item.color}35`; }}
-            >
-              {busy ? "…" : "Экипировать"}
-            </button>
-          )
-        ) : (
-          <button
-            onClick={(e) => { e.stopPropagation(); onBuy(); }}
-            disabled={busy || !canAfford}
-            className="w-full py-2 rounded-lg text-[11px] font-bold text-white disabled:opacity-35 transition-all duration-150 active:scale-[0.97]"
-            style={{
-              background: `linear-gradient(135deg, ${item.color}, ${item.color}cc)`,
-              boxShadow: `0 2px 12px ${item.color}35`,
-            }}
-            onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.boxShadow = `0 4px 18px ${item.color}50`; }}
-            onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.boxShadow = `0 2px 12px ${item.color}35`; }}
-          >
-            {busy ? "…" : "Купить"}
-          </button>
-        )}
+            <div className="flex items-center gap-1 flex-shrink-0 bg-white/[0.03] px-1.5 py-0.5 rounded-lg border border-white/[0.04]">
+              <img src="/money.png" alt="" className="w-3 h-3 object-contain"
+                onError={(e) => { e.currentTarget.style.display = "none"; }} />
+              <span className="text-[10px] font-black tabular-nums"
+                style={{ color: canAfford ? "rgba(255,255,255,0.75)" : "#f87171" }}>
+                {item.price.toLocaleString("en-US")}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </motion.div>
   );
