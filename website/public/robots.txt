@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+
+User-agent: Googlebot
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Crawl-delay: 1
+
+User-agent: Yandex
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Crawl-delay: 1
+
+Sitemap: https://sbgames.hyperionsearch.xyz/sitemap.xml

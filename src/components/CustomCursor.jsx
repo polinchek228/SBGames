@@ -59,8 +59,8 @@ export default function CustomCursor() {
       if (isSaber) {
         saber.style.transform = `translate(${mx - TIP_X}px, ${my - TIP_Y}px)`;
       } else {
-        rx += (mx - rx) * 0.12;
-        ry += (my - ry) * 0.12;
+        rx = mx;
+        ry = my;
         const sz = hovering ? 24 : 18;
         const sc = clicking ? 0.75 : hovering ? 1.4 : 1;
         ring.style.width       = `${sz}px`;
@@ -121,7 +121,7 @@ export default function CustomCursor() {
         width:18, height:18, borderRadius:"50%",
         border:"1.5px solid rgba(255,255,255,0.5)",
         pointerEvents:"none",
-        transition:"width .15s, height .15s, border-color .15s, background .15s",
+        transition:"none",
         willChange:"transform",
       }}/>
 
@@ -130,7 +130,7 @@ export default function CustomCursor() {
         position:"fixed", top:0, left:0, zIndex:9999,
         width:4, height:4, borderRadius:"50%",
         background:"#fff", pointerEvents:"none",
-        transition:"background .15s, opacity .1s",
+        transition:"none",
         willChange:"transform",
       }}/>
 
@@ -140,7 +140,7 @@ export default function CustomCursor() {
         width:20, height:20, borderRadius:"50%",
         background:"radial-gradient(circle, rgba(196,181,253,0.9) 0%, rgba(129,140,248,0.5) 40%, transparent 70%)",
         opacity:0, display:"none",
-        transition:"opacity 0.18s ease-out, transform 0.18s ease-out",
+        transition:"none",
         willChange:"transform, opacity",
       }}/>
 

@@ -37,7 +37,25 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
   const [tab, setTab] = useState(() => localStorage.getItem("sbg_profile_tab") || "profile");
   useEffect(() => { localStorage.setItem("sbg_profile_tab", tab); }, [tab]);
 
-  const [equip, setEquip] = useState(user?.equip && typeof user.equip === "object" ? user.equip : {});
+  const [equip, setEquipRaw] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("sbgames_user") || "null");
+      const e = saved?.equip;
+      return e && typeof e === "object" ? e : (user?.equip && typeof user.equip === "object" ? user.equip : {});
+    } catch { return user?.equip && typeof user.equip === "object" ? user.equip : {}; }
+  });
+
+  const setEquip = useCallback((updater) => {
+    setEquipRaw(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      try {
+        const current = JSON.parse(localStorage.getItem("sbgames_user") || "{}");
+        current.equip = next;
+        localStorage.setItem("sbgames_user", JSON.stringify(current));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   return (
     <div className="flex h-full bg-black overflow-hidden">
@@ -110,7 +128,7 @@ const itemVariants = {
   show:   { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-function ProfileTab({ user }) {
+function ProfileTab({ user, equip }) {
   const username = user?.username || "Player";
   const [avatar, setAvatar] = useState(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
@@ -123,6 +141,20 @@ function ProfileTab({ user }) {
   ];
 
   const isAdmin = user?.role === "admin";
+
+  const equippedItems = Object.entries(equip || {})
+    .map(([type, id]) => CATALOG_BY_ID[id])
+    .filter(Boolean);
+
+  const frameItem  = CATALOG_BY_ID[equip?.frame];
+  const bgItem     = CATALOG_BY_ID[equip?.background];
+  const animItem   = CATALOG_BY_ID[equip?.avatar_animated];
+  const badgeItem  = CATALOG_BY_ID[equip?.badge];
+
+  const frameColor = frameItem?.color || "#3b82f6";
+  const bgColor    = bgItem?.color || null;
+  const animColor  = animItem?.color || null;
+  const badgeColor = badgeItem?.color || null;
 
   return (
     <div className="flex gap-4 p-5">
@@ -137,18 +169,55 @@ function ProfileTab({ user }) {
         {/* Hero card */}
         <motion.div variants={itemVariants}
           className="relative rounded-3xl overflow-hidden"
-          style={{ background: "rgba(255,255,255,0.03)" }}
+          style={{
+            background: bgColor
+              ? `linear-gradient(135deg, ${bgColor}18 0%, ${bgColor}08 40%, rgba(255,255,255,0.02) 100%)`
+              : "rgba(255,255,255,0.03)",
+          }}
         >
           {/* Ambient glow */}
           <div className="absolute inset-0 pointer-events-none"
-            style={{ background: "radial-gradient(ellipse at 20% 50%, rgba(37,99,235,0.08) 0%, transparent 65%)" }}
+            style={{
+              background: bgColor
+                ? `radial-gradient(ellipse at 20% 50%, ${bgColor}15 0%, transparent 65%)`
+                : "radial-gradient(ellipse at 20% 50%, rgba(37,99,235,0.08) 0%, transparent 65%)"
+            }}
           />
 
           <div className="relative flex items-center gap-4 p-5">
-            {/* Avatar */}
+            {/* Avatar with frame */}
             <div className="relative flex-shrink-0 cursor-pointer group" onClick={() => setShowAvatarPicker(true)}>
-              <div className="w-[80px] h-[80px] rounded-2xl overflow-hidden transition-all duration-300 group-hover:scale-95"
-                style={{ background: "rgba(255,255,255,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
+              {/* Frame glow */}
+              {equip?.frame && (
+                <>
+                  <div className="absolute -inset-2 rounded-[22px] pointer-events-none"
+                    style={{
+                      background: `radial-gradient(ellipse, ${frameColor}25, transparent 70%)`,
+                      filter: "blur(6px)",
+                    }} />
+                  <div className="absolute -inset-0.5 rounded-[18px] pointer-events-none"
+                    style={{
+                      background: `linear-gradient(135deg, ${frameColor}50, ${frameColor}20, ${frameColor}50)`,
+                      boxShadow: `0 0 20px ${frameColor}25`,
+                    }} />
+                </>
+              )}
+              {/* Animated avatar glow */}
+              {equip?.avatar_animated && (
+                <div className="absolute -inset-3 rounded-[24px] pointer-events-none"
+                  style={{
+                    background: `conic-gradient(from 0deg, ${animColor}30, transparent 25%, ${animColor}20 50%, transparent 75%, ${animColor}30)`,
+                    animation: "spin 4s linear infinite",
+                    filter: "blur(3px)",
+                  }} />
+              )}
+              <div className="relative w-[80px] h-[80px] rounded-2xl overflow-hidden transition-all duration-300 group-hover:scale-95"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  boxShadow: equip?.frame
+                    ? `0 8px 32px ${frameColor}20, 0 0 0 1.5px ${frameColor}40`
+                    : "0 8px 32px rgba(0,0,0,0.4)",
+                }}
               >
                 <img src={avatar || "/logo.jpg"} alt="avatar"
                   className="w-full h-full object-cover transition-all duration-300 group-hover:brightness-50"
@@ -173,6 +242,12 @@ function ProfileTab({ user }) {
                   <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-widest"
                     style={{ background: "rgba(239,68,68,0.15)", color: "rgba(252,165,165,0.9)" }}
                   >ADMIN</span>
+                )}
+                {badgeItem && (
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider"
+                    style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
+                    {badgeItem.name}
+                  </span>
                 )}
               </div>
 
@@ -211,6 +286,29 @@ function ProfileTab({ user }) {
             </div>
           </div>
         </motion.div>
+
+        {/* Equipped items */}
+        {equippedItems.length > 0 && (
+          <motion.div variants={itemVariants}
+            className="rounded-2xl px-4 py-3"
+            style={{ background: "rgba(255,255,255,0.03)" }}
+          >
+            <p className="text-[10px] uppercase tracking-[0.14em] font-semibold mb-2"
+              style={{ color: "rgba(255,255,255,0.18)" }}>
+              Экипировано
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {equippedItems.map(item => (
+                <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
+                  style={{ background: `${item.color}12`, border: `1px solid ${item.color}20` }}>
+                  <div className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background: item.color, boxShadow: `0 0 6px ${item.color}60` }} />
+                  <span className="text-[11px] font-medium" style={{ color: item.color }}>{item.name}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2.5">

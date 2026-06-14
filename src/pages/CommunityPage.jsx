@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   UsersThree, ChatCircle, X, UserCirclePlus,
   WifiHigh, WifiSlash, PaperPlaneTilt, Check, Checks,
-  CaretLeft,
+  CaretLeft, Users, UserPlus, SignOut,
 } from "@phosphor-icons/react";
 import { WS_URL, getToken, authFetch } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
@@ -81,6 +81,13 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
   const [searching,  setSearching]  = useState(false);
   const [chatWith,    setChatWith]    = useState(null);
   const [messages,    setMessages]    = useState([]);
+  const [viewProfile, setViewProfile] = useState(null); // player id to view
+
+  // Группы
+  const [groups,         setGroups]         = useState([]);
+  const [groupInvites,   setGroupInvites]   = useState([]);
+  const [activeGroup,    setActiveGroup]    = useState(null);
+  const [groupMessages,  setGroupMessages]  = useState([]);
 
   // Debounced поиск по всем зарегистрированным игрокам
   useEffect(() => {
@@ -121,10 +128,12 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
         break;
       case "friend_accepted":
         setFriends(prev => [...prev, { id: msg.byId, username: msg.byUsername }]);
+        pushNotif?.("Заявка принята", `${msg.byUsername} теперь твой друг`, "friend");
         break;
       case "friend_request_sent":
         setAddStatus({ ok: true, msg: `Заявка отправлена → ${msg.toUsername}` });
         setAddNick("");
+        pushNotif?.("Заявка отправлена", `Ждём ответа от ${msg.toUsername}`, "info");
         break;
       case "friend_error":
         setAddStatus({ ok: false, msg: msg.message });
@@ -136,15 +145,53 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
       case "dm_message":
         if (chatWith && (msg.with === chatWith.id || msg.message.from === chatWith.id)) {
           setMessages(prev => [...prev, msg.message]);
+        } else {
+          pushNotif?.("Новое сообщение", `От @${msg.message.fromUsername || "игрока"}`, "dm");
         }
+        break;
+      case "profile_comment":
+        pushNotif?.("Комментарий", `@${msg.comment.fromUsername} оставил комментарий`, "comment");
+        break;
+      case "market_sold":
+        pushNotif?.("Предмет продан", `${msg.buyerName} купил твой лот за ${msg.price} SBT`, "market");
+        break;
+      case "group_message":
+        if (activeGroup?.id === msg.groupId) {
+          setGroupMessages(prev => [...prev, msg.message]);
+        }
+        break;
+      case "group_update":
+        setGroups(prev => prev.map(g => g.id === msg.group.id ? msg.group : g));
+        if (activeGroup?.id === msg.group.id) setActiveGroup(msg.group);
+        break;
+      case "group_invite":
+        setGroupInvites(prev => [...prev, msg.invite]);
+        pushNotif?.("Приглашение в группу", `${msg.invite.fromUsername} зовёт в «${msg.invite.groupName}»`, "group");
         break;
       case "dm_history":
         setMessages(msg.messages || []);
         break;
     }
-  }, [chatWith, onBadgeChange]);
+  }, [chatWith, onBadgeChange, pushNotif, activeGroup]);
 
   const { connected, send } = useCommunityWS(user, handleEvent);
+
+  // Загрузить мои группы и приглашения при готовности WS
+  useEffect(() => {
+    if (!connected) return;
+    (async () => {
+      try {
+        const r1 = await authFetch("/api/groups");
+        const d1 = await r1.json();
+        setGroups(d1.groups || []);
+      } catch {}
+      try {
+        const r2 = await authFetch("/api/groups/invites");
+        const d2 = await r2.json();
+        setGroupInvites(d2.invites || []);
+      } catch {}
+    })();
+  }, [connected]);
 
   const sendFriendRequest = () => {
     if (!addNick.trim()) return;
@@ -228,6 +275,7 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
             { id: "friends", label: "Друзья",   icon: UsersThree, badge: 0 },
             { id: "add",     label: "Добавить",  icon: UserCirclePlus, badge: 0 },
             { id: "chats",   label: "Запросы",   icon: ChatCircle, badge: totalBadge },
+            { id: "groups",  label: "Группы",    icon: Users, badge: groupInvites.length },
           ].map(({ id, label, icon: Icon, badge }) => (
             <button key={id} onClick={() => { setTab(id); if (id !== "chats") setChatWith(null); }}
               className="flex-1 relative flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-150"
@@ -250,6 +298,17 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
 
       {/* Content */}
       <AnimatePresence mode="wait">
+        {/* PLAYER PROFILE VIEW */}
+        {viewProfile && (
+          <PlayerProfileView
+            key="profile"
+            userId={viewProfile}
+            viewer={user}
+            onBack={() => setViewProfile(null)}
+            onOpenChat={(friend) => { setViewProfile(null); openChat(friend); }}
+          />
+        )}
+
         {/* FRIENDS */}
         {tab === "friends" && (
           <motion.div key="fr" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -273,7 +332,7 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
                   Друзья · {friends.length}
                 </p>
                 {friends.map((f, i) => (
-                  <FriendRow key={f.id} f={f} online={onlineIds.has(f.id)} i={i} onChat={() => openChat(f)} />
+                  <FriendRow key={f.id} f={f} online={onlineIds.has(f.id)} i={i} onChat={() => openChat(f)} onProfile={() => setViewProfile(f.id)} />
                 ))}
               </>
             )}
@@ -457,9 +516,62 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
             className="flex-1 flex flex-col overflow-hidden"
           >
             <DMChat
+              chatWith={chatWith}
               messages={messages}
               userId={user?.id}
               onSend={sendDM}
+            />
+          </motion.div>
+        )}
+
+        {/* GROUPS LIST */}
+        {tab === "groups" && !activeGroup && (
+          <GroupsPanel
+            user={user}
+            groups={groups}
+            groupInvites={groupInvites}
+            onlineIds={onlineIds}
+            onOpenGroup={async (g) => {
+              setActiveGroup(g);
+              try {
+                const r = await authFetch(`/api/groups/${g.id}/messages`);
+                const d = await r.json();
+                setGroupMessages(d.messages || []);
+              } catch {}
+            }}
+            onCreate={(g) => setGroups(prev => [g, ...prev])}
+            onAcceptInvite={async (gid) => {
+              try {
+                const r = await authFetch(`/api/groups/${gid}/respond`, { method: "POST", body: JSON.stringify({ accept: true }) });
+                const d = await r.json();
+                setGroupInvites(prev => prev.filter(i => i.groupId !== gid));
+                setGroups(prev => prev.find(x => x.id === gid) ? prev.map(x => x.id === gid ? d.group : x) : [d.group, ...prev]);
+              } catch {}
+            }}
+            onDeclineInvite={async (gid) => {
+              try {
+                await authFetch(`/api/groups/${gid}/respond`, { method: "POST", body: JSON.stringify({ accept: false }) });
+              } catch {}
+              setGroupInvites(prev => prev.filter(i => i.groupId !== gid));
+            }}
+          />
+        )}
+
+        {/* GROUP CHAT */}
+        {tab === "groups" && activeGroup && (
+          <motion.div key={`grp-${activeGroup.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col overflow-hidden">
+            <GroupChat
+              group={activeGroup}
+              user={user}
+              messages={groupMessages}
+              send={send}
+              onLeave={async () => {
+                try { await authFetch(`/api/groups/${activeGroup.id}/leave`, { method: "POST" }); } catch {}
+                setGroups(prev => prev.filter(x => x.id !== activeGroup.id));
+                setActiveGroup(null);
+                setGroupMessages([]);
+              }}
             />
           </motion.div>
         )}
@@ -469,7 +581,7 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
 }
 
 // ─── Friend row ───────────────────────────────────────────────────────────────
-function FriendRow({ f, online, i, onChat }) {
+function FriendRow({ f, online, i, onChat, onProfile }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 6 }}
@@ -479,7 +591,7 @@ function FriendRow({ f, online, i, onChat }) {
       onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
       onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
     >
-      <div className="relative flex-shrink-0">
+      <button onClick={onProfile} className="relative flex-shrink-0 cursor-pointer">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black"
           style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.45)" }}
         >
@@ -488,13 +600,13 @@ function FriendRow({ f, online, i, onChat }) {
         <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-black"
           style={{ background: online ? STATUS_DOT.online : STATUS_DOT.offline }}
         />
-      </div>
-      <div className="flex-1 min-w-0">
+      </button>
+      <button onClick={onProfile} className="flex-1 min-w-0 text-left">
         <p className="text-[11px] font-semibold truncate" style={{ color: "rgba(255,255,255,0.82)" }}>{f.username}</p>
         <p className="text-[9px]" style={{ color: online ? "rgba(74,222,128,0.7)" : "rgba(255,255,255,0.2)" }}>
           {online ? "в сети" : "не в сети"}
         </p>
-      </div>
+      </button>
       <button onClick={onChat}
         className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
         style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)" }}
@@ -503,6 +615,181 @@ function FriendRow({ f, online, i, onChat }) {
       >
         <ChatCircle size={13} />
       </button>
+    </motion.div>
+  );
+}
+
+// ─── Player Profile View ──────────────────────────────────────────────────────
+function PlayerProfileView({ userId, viewer, onBack, onOpenChat }) {
+  const [profile, setProfile] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await authFetch(`/api/user/${userId}`);
+        const d = await r.json();
+        setProfile(d);
+      } catch {}
+      try {
+        const r = await authFetch(`/api/user/${userId}/comments`);
+        const d = await r.json();
+        setComments(d.comments || []);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [userId]);
+
+  const sendComment = async () => {
+    if (!commentText.trim() || sending) return;
+    setSending(true);
+    try {
+      const r = await authFetch(`/api/user/${userId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ text: commentText.trim() }),
+      });
+      const d = await r.json();
+      if (d.comment) setComments(prev => [d.comment, ...prev]);
+      setCommentText("");
+    } catch {}
+    setSending(false);
+  };
+
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-5 h-5 border-2 border-white/10 border-t-white/40 rounded-full animate-spin" />
+    </div>
+  );
+
+  if (!profile) return (
+    <div className="flex-1 flex items-center justify-center">
+      <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.3)" }}>Профиль не найден</p>
+    </div>
+  );
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+      className="flex-1 flex flex-col overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-3 flex-shrink-0"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+      >
+        <button onClick={onBack} className="w-6 h-6 rounded-lg flex items-center justify-center"
+          style={{ color: "rgba(255,255,255,0.4)" }}>
+          <CaretLeft size={14} weight="bold" />
+        </button>
+        <p className="text-[12px] font-bold text-white flex-1 truncate">{profile.username}</p>
+        {profile.role === "admin" && (
+          <span className="text-[8px] px-1.5 py-0.5 rounded font-bold"
+            style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5" }}>ADMIN</span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+        {/* Profile card */}
+        <div className="rounded-xl p-3 flex items-center gap-3"
+          style={{ background: "rgba(255,255,255,0.03)" }}
+        >
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-black flex-shrink-0"
+            style={{ background: profile.role === "admin" ? "rgba(239,68,68,0.15)" : "rgba(37,99,235,0.15)",
+              color: profile.role === "admin" ? "#fca5a5" : "#93c5fd" }}
+          >
+            {profile.username?.slice(0, 2).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold text-white truncate">{profile.username}</p>
+            <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+              #{profile.id?.toString().slice(-6)}
+            </p>
+          </div>
+        </div>
+
+        {/* Bio */}
+        {profile.bio && (
+          <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+            <p className="text-[9px] uppercase tracking-widest mb-1.5" style={{ color: "rgba(255,255,255,0.18)" }}>Описание</p>
+            <p className="text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>{profile.bio}</p>
+          </div>
+        )}
+
+        {/* Equip preview */}
+        {profile.equip && Object.keys(profile.equip).length > 0 && (
+          <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+            <p className="text-[9px] uppercase tracking-widest mb-1.5" style={{ color: "rgba(255,255,255,0.18)" }}>Экипировка</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {Object.entries(profile.equip).map(([type, itemId]) => (
+                <span key={type} className="text-[9px] px-2 py-1 rounded-lg"
+                  style={{ background: "rgba(99,102,241,0.12)", color: "#93c5fd" }}>
+                  {itemId.replace(/^(frame|bg|avatar_animated|badge)_/, "")}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <button onClick={() => {
+            const friend = { id: profile.id, username: profile.username };
+            onOpenChat(friend);
+          }}
+            className="flex-1 py-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5"
+            style={{ background: "rgba(37,99,235,0.18)", color: "#93c5fd" }}
+          >
+            <ChatCircle size={12} /> Написать
+          </button>
+        </div>
+
+        {/* Comments */}
+        <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <p className="text-[9px] uppercase tracking-widest mb-2" style={{ color: "rgba(255,255,255,0.18)" }}>
+            Комментарии ({comments.length})
+          </p>
+
+          {/* Add comment */}
+          {viewer?.id !== userId && (
+            <div className="flex gap-2 mb-3">
+              <input value={commentText} onChange={e => setCommentText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") sendComment(); }}
+                placeholder="Написать комментарий..."
+                className="flex-1 rounded-lg text-[11px] px-3 py-1.5 outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }}
+              />
+              <button onClick={sendComment} disabled={!commentText.trim() || sending}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold disabled:opacity-30"
+                style={{ background: "rgba(37,99,235,0.3)", color: "#93c5fd" }}>
+                {sending ? "..." : "→"}
+              </button>
+            </div>
+          )}
+
+          {/* Comment list */}
+          {comments.length === 0 ? (
+            <p className="text-[10px] text-center py-3" style={{ color: "rgba(255,255,255,0.2)" }}>
+              Пока нет комментариев
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {comments.map(c => (
+                <div key={c.id} className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.02)" }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] font-semibold" style={{ color: "#93c5fd" }}>@{c.fromUsername}</span>
+                    <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+                      {new Date(c.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>{c.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -573,6 +860,185 @@ function DMChat({ messages, userId, onSend }) {
           style={{ background: "#2563EB", color: "#fff" }}
         >
           <PaperPlaneTilt size={14} weight="fill" />
+        </button>
+      </form>
+    </>
+  );
+}
+
+
+// GroupsPanel
+function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCreate, onAcceptInvite, onDeclineInvite }) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const create = async () => {
+    if (busy || name.trim().length < 2) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await authFetch("/api/groups", { method: "POST", body: JSON.stringify({ name: name.trim() }) });
+      const d = await r.json();
+      onCreate(d.group);
+      setName(""); setCreating(false);
+    } catch (e) { setErr("Ошибка создания"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto px-2 pb-2">
+      {groupInvites.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[9px] uppercase tracking-widest px-2 py-2"
+            style={{ color: "rgba(168,85,247,0.7)" }}>
+            Приглашения ({groupInvites.length})
+          </p>
+          {groupInvites.map((inv, i) => (
+            <div key={i} className="rounded-2xl p-3 mb-1.5"
+              style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}>
+              <p className="text-[11px] text-white">
+                <b>@{inv.fromUsername}</b> зовёт в <b>{'«'}{inv.groupName}{'»'}</b>
+              </p>
+              <div className="flex gap-1.5 mt-2">
+                <button onClick={() => onAcceptInvite(inv.groupId)}
+                  className="flex-1 py-1.5 rounded-lg text-[10px] font-bold text-white"
+                  style={{ background: "rgba(168,85,247,0.5)" }}>Принять</button>
+                <button onClick={() => onDeclineInvite(inv.groupId)}
+                  className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>Отклонить</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!creating ? (
+        <button onClick={() => setCreating(true)}
+          className="w-full mb-3 py-2.5 rounded-2xl text-[12px] font-bold flex items-center justify-center gap-1.5 text-white"
+          style={{ background: "linear-gradient(90deg, #6366f1, #a855f7)" }}>
+          + Создать группу
+        </button>
+      ) : (
+        <div className="mb-3 rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+          <input value={name} onChange={e => setName(e.target.value)} maxLength={40}
+            placeholder="Название команды…"
+            className="w-full rounded-xl px-3 py-2 text-[12px] outline-none"
+            style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+          <div className="flex gap-1.5 mt-2">
+            <button onClick={() => { setCreating(false); setName(""); setErr(null); }}
+              className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold"
+              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>Отмена</button>
+            <button onClick={create} disabled={busy || name.trim().length < 2}
+              className="flex-1 py-1.5 rounded-lg text-[10px] font-bold text-white disabled:opacity-40"
+              style={{ background: "rgba(168,85,247,0.5)" }}>Создать</button>
+          </div>
+          {err && <p className="text-[10px] mt-1" style={{ color: "#fca5a5" }}>{err}</p>}
+        </div>
+      )}
+
+      <p className="text-[9px] uppercase tracking-widest px-2 py-2"
+        style={{ color: "rgba(255,255,255,0.18)" }}>
+        Мои группы · {groups.length}
+      </p>
+      {groups.length === 0 ? (
+        <p className="text-[11px] text-center py-8" style={{ color: "rgba(255,255,255,0.2)" }}>
+          Создай свою первую команду — пригласи друзей.
+        </p>
+      ) : (
+        groups.map(g => {
+          const onlineCount = g.members.filter(m => onlineIds.has(m)).length;
+          return (
+            <button key={g.id} onClick={() => onOpenGroup(g)}
+              className="w-full text-left rounded-2xl px-3 py-2.5 mb-1.5 transition-colors"
+              style={{ background: "rgba(255,255,255,0.03)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff", fontWeight: 700, fontSize: 13 }}>
+                  {g.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-semibold text-white truncate">{g.name}</p>
+                  <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    {g.members.length} участников · {onlineCount} в сети
+                  </p>
+                </div>
+                {g.ownerId === user?.id && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded"
+                    style={{ background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.9)" }}>OWNER</span>
+                )}
+              </div>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// GroupChat
+function GroupChat({ group, user, messages, send, onLeave }) {
+  const [input, setInput] = useState("");
+  const bottomRef = useRef(null);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  const submit = (e) => {
+    e?.preventDefault();
+    const t = input.trim();
+    if (!t) return;
+    send({ type: "group_send", groupId: group.id, text: t });
+    setInput("");
+  };
+  return (
+    <>
+      <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+        <button onClick={onLeave} className="w-6 h-6 rounded-lg flex items-center justify-center"
+          style={{ color: "rgba(255,255,255,0.4)" }}>
+          <CaretLeft size={14} weight="bold" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-bold text-white truncate">{group.name}</p>
+          <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+            {group.members.length} участников
+          </p>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-1.5">
+        {messages.length === 0 ? (
+          <p className="text-[11px] text-center py-8" style={{ color: "rgba(255,255,255,0.2)" }}>
+            Начни общение с командой.
+          </p>
+        ) : (
+          messages.map((m, i) => {
+            const isMe = m.fromId === user?.id;
+            return (
+              <div key={m.id || i} className={"flex flex-col gap-0.5 max-w-[78%] " + (isMe ? "self-end items-end" : "self-start items-start")}>
+                {!isMe && <span className="text-[9px] px-1" style={{ color: "rgba(255,255,255,0.22)" }}>@{m.fromUsername}</span>}
+                <div className="px-3 py-1.5 rounded-2xl text-[12px] leading-relaxed"
+                  style={isMe
+                    ? { background: "rgba(168,85,247,0.4)", color: "#fff", borderBottomRightRadius: 4 }
+                    : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.85)", borderBottomLeftRadius: 4 }
+                  }>{m.text}</div>
+              </div>
+            );
+          })
+        )}
+        <div ref={bottomRef} />
+      </div>
+      <form onSubmit={submit}
+        className="flex items-end gap-2 px-4 py-3 flex-shrink-0"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+        <textarea value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(e); } }}
+          placeholder="Сообщение команде…" rows={1}
+          className="flex-1 rounded-2xl text-[12px] px-3 py-2 outline-none resize-none"
+          style={{ background: "rgba(255,255,255,0.05)", color: "#fff", maxHeight: 80, caretColor: "#c4b5fd" }} />
+        <button type="submit" disabled={!input.trim()}
+          className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center disabled:opacity-30"
+          style={{ background: "rgba(168,85,247,0.5)", color: "#fff" }}>
+          <PaperPlaneTilt size={12} weight="fill" />
         </button>
       </form>
     </>

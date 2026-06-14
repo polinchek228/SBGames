@@ -13,7 +13,7 @@ const Redis        = require("ioredis");
 const { WebSocketServer, WebSocket } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
-const BOT_TOKEN       = "8507862760:AAFfOVKJRJeVL10WA55nKsTofxmSu2y7GCk";
+const BOT_TOKEN       = "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
 const JWT_SECRET      = process.env.JWT_SECRET || crypto.randomBytes(48).toString("hex");
 const NEWS_CHANNEL    = "@sb7games";
 const PORT            = 3000;
@@ -57,11 +57,29 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: "32kb" })); // Ограничение размера тела
+// Webhook от Telegram — отдельный лимит (там большие update'ы с inline_keyboard)
+app.use("/tg-webhook", express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "32kb" })); // Ограничение размера тела для всего остального
 
 // Rate limiters
-const authLimiter = rateLimit({ windowMs: 60_000, max: 10,  message: { message: "Слишком много запросов" }, standardHeaders: true, legacyHeaders: false });
+const authLimiter = rateLimit({
+  windowMs: 60_000, max: 10,
+  message: { message: "Слишком много запросов" },
+  standardHeaders: true, legacyHeaders: false,
+  // Не трогаем дешёвые no-op эндпоинты — для них свой мягкий лимит
+  skip: (req) => req.path === "/create-code" || req.path === "/check-code",
+});
+const authLightLimiter = rateLimit({
+  windowMs: 60_000, max: 120,
+  message: { message: "Слишком частые запросы" },
+  standardHeaders: true, legacyHeaders: false,
+});
 const apiLimiter  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+
+// Мягкий лимит для /auth/create-code и /auth/check-code
+app.use("/auth/create-code", authLightLimiter);
+app.use("/auth/check-code",  authLightLimiter);
+// Строгий лимит на всё остальное /auth/*
 app.use("/auth", authLimiter);
 app.use("/api",  apiLimiter);
 
@@ -157,9 +175,11 @@ app.post("/auth/tg-login", async (req, res) => {
       username: cleanNick,
       telegram: tgUser.username || null,
       firstName: sanitize(tgUser.first_name || "", 64),
-      balance: 0,
+      balance: 100, // стартовый бонус для проб (покупка и трейд)
       role: isAdmin(tgUser.username || cleanNick) ? "admin" : "user",
       createdAt: Date.now(),
+      // Стартовый набор market-предметов (1-2 шт) — чтобы было что выставить на торговую площадку
+      market_inventory: ["m_cosmic_chest", "m_ember_token"],
     };
   } else {
     account.username = cleanNick;
@@ -201,6 +221,468 @@ app.get("/user/search", (req, res) => {
   const found = [...accounts.values()].find(a => (a.username || "").toLowerCase() === q);
   if (!found) return res.json({ found: false });
   res.json({ found: true, id: found.id, username: found.username });
+});
+
+// ─── Публичный профиль (без авторизации) ─────────────────────────────────────
+app.get("/api/user/:id", async (req, res) => {
+  const id = sanitize(req.params.id, 64);
+  const acc = await redisAccounts.get(id);
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
+  res.json({
+    id: acc.id,
+    username: acc.username,
+    role: acc.role,
+    bio: acc.bio || "",
+    equip: acc.equip || {},
+    createdAt: acc.createdAt,
+  });
+});
+
+// ─── Комментарии профиля (rate-limit + sanitization) ─────────────────────────
+const profileComments = new Map(); // userId -> [{id, fromId, fromUsername, text, time}]
+const lastCommentAt   = new Map(); // fromId -> ts (1 в 10с)
+const commentHourly   = new Map(); // fromId -> [ts...]
+
+function wsClientsByUserId(uid) {
+  for (const c of wsClients.values()) if (c.userId === uid) return c;
+  return null;
+}
+
+app.get("/api/user/:id/comments", (req, res) => {
+  const id = sanitize(req.params.id, 64);
+  const list = profileComments.get(id) || [];
+  res.json({ comments: list.slice(-50).reverse() });
+});
+
+app.post("/api/user/:id/comments", requireAuth, (req, res) => {
+  const id = sanitize(req.params.id, 64);
+  if (id === req.userId) return res.status(400).json({ message: "Нельзя комментировать свой профиль" });
+  const text = sanitize(req.body.text || "", 200);
+  if (text.length < 2) return res.status(400).json({ message: "Слишком короткий комментарий" });
+
+  const now = Date.now();
+  const last = lastCommentAt.get(req.userId) || 0;
+  if (now - last < 10_000) return res.status(429).json({ message: "Подожди 10 секунд" });
+  const hourly = (commentHourly.get(req.userId) || []).filter(t => now - t < 3600_000);
+  if (hourly.length >= 5) return res.status(429).json({ message: "Слишком много комментариев — попробуй позже" });
+  lastCommentAt.set(req.userId, now);
+  commentHourly.set(req.userId, [...hourly, now]);
+
+  // username возьмём из WS-клиента, или из accounts map
+  let fromUsername = "Player";
+  const ws = wsClientsByUserId(req.userId);
+  if (ws?.username) fromUsername = ws.username;
+  else {
+    for (const a of accounts.values()) if (a.id === req.userId) { fromUsername = a.username; break; }
+  }
+
+  const list = profileComments.get(id) || [];
+  const c = { id: uuidv4(), fromId: req.userId, fromUsername, text, time: now };
+  list.push(c);
+  profileComments.set(id, list.slice(-200));
+  sendToUser(id, { type: "profile_comment", userId: id, comment: c });
+  res.json({ ok: true, comment: c });
+});
+
+// ─── JWT middleware для /api/* (некоторые эндпоинты опциональны) ──────────────
+function optionalAuth(req, _res, next) {
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  req.userId = token ? verifyToken(token)?.sub : null;
+  next();
+}
+function requireAuth(req, res, next) {
+  optionalAuth(req, res, () => {
+    if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
+    next();
+  });
+}
+
+// ─── Inventory (Библиотека: рамки / фоны / анимированные аватарки / бейджи) ────
+// Каталог — на сервере, ownership — у юзера (id-шники купленных предметов).
+const SHOP_CATALOG = [
+  { id: "frame_basic_blue",  type: "frame",    name: "Синяя рамка",         price: 200,  preview: "#3b82f6" },
+  { id: "frame_neon",        type: "frame",    name: "Неоновая рамка",      price: 500,  preview: "#a855f7" },
+  { id: "frame_gold",        type: "frame",    name: "Золотая рамка",       price: 1500, preview: "#facc15" },
+  { id: "frame_galaxy",      type: "frame",    name: "Галактика",           price: 3000, preview: "linear-gradient(135deg,#6366f1,#a855f7,#ec4899)" },
+  { id: "bg_aurora",         type: "background", name: "Аврора",            price: 400,  preview: "linear-gradient(135deg,#0ea5e9,#6366f1,#a855f7)" },
+  { id: "bg_ember",          type: "background", name: "Уголёк",            price: 400,  preview: "linear-gradient(135deg,#7f1d1d,#dc2626,#f59e0b)" },
+  { id: "bg_void",           type: "background", name: "Пустота",           price: 800,  preview: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)" },
+  { id: "avatar_animated_1", type: "avatar_animated", name: "Аним. Импульс",   price: 1200, preview: "#60a5fa" },
+  { id: "avatar_animated_2", type: "avatar_animated", name: "Аним. Пламя",     price: 1200, preview: "#f97316" },
+  { id: "badge_vip",         type: "badge",    name: "VIP",                  price: 1000, preview: "#facc15" },
+  { id: "badge_founder",     type: "badge",    name: "Основатель",           price: 5000, preview: "#a855f7" },
+  { id: "badge_tester",      type: "badge",    name: "Тестер",               price: 250,  preview: "#34d399" },
+];
+
+// Каталог ТОЛЬКО для торговой площадки (P2P). Не пересекается с SHOP_CATALOG.
+const MARKET_CATALOG = [
+  { id: "m_cosmic_chest",   type: "chest",      name: "Космический кейс",  preview: "linear-gradient(135deg,#1e1b4b,#7c3aed,#ec4899)" },
+  { id: "m_saber_relic",    type: "relic",      name: "Реликвия Силы",     preview: "linear-gradient(135deg,#0c4a6e,#0ea5e9,#22d3ee)" },
+  { id: "m_dragon_scale",   type: "material",   name: "Драконья чешуя",    preview: "linear-gradient(135deg,#7f1d1d,#dc2626,#fb923c)" },
+  { id: "m_ghost_cape",     type: "skin",       name: "Призрачный плащ",   preview: "linear-gradient(135deg,#1e293b,#475569,#94a3b8)" },
+  { id: "m_ember_token",    type: "token",      name: "Угольный жетон",    preview: "linear-gradient(135deg,#7f1d1d,#ea580c)" },
+  { id: "m_neon_disc",      type: "disc",       name: "Неоновый диск",     preview: "linear-gradient(135deg,#581c87,#a855f7,#22d3ee)" },
+  { id: "m_void_pearl",     type: "pearl",      name: "Жемчужина Бездны",  preview: "linear-gradient(135deg,#020617,#1e1b4b,#0ea5e9)" },
+  { id: "m_aurora_shard",   type: "shard",      name: "Осколок Авроры",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
+];
+
+app.get("/api/inventory/catalog", (_req, res) => {
+  res.json({ items: SHOP_CATALOG });
+});
+
+app.get("/api/inventory", requireAuth, async (req, res) => {
+  const acc = await redisAccounts.get(req.userId);
+  const owned     = Array.isArray(acc?.inventory)     ? acc.inventory     : [];
+  const marketOwn = Array.isArray(acc?.market_inventory) ? acc.market_inventory : [];
+  const equip = acc?.equip && typeof acc.equip === "object" ? acc.equip : {};
+  res.json({ owned, market: marketOwn, equip, catalog: SHOP_CATALOG, marketCatalog: MARKET_CATALOG });
+});
+
+app.post("/api/inventory/buy", requireAuth, async (req, res) => {
+  const itemId = sanitize(req.body.itemId || "", 64);
+  const item = SHOP_CATALOG.find(i => i.id === itemId);
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  const acc = await redisAccounts.get(req.userId);
+  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
+  if (owned.includes(itemId)) return res.status(400).json({ message: "Уже куплено" });
+  if ((acc.balance || 0) < item.price)
+    return res.status(400).json({ message: "Недостаточно СБТ", need: item.price, have: acc.balance || 0 });
+  acc.balance   = (acc.balance || 0) - item.price;
+  acc.inventory = [...owned, itemId];
+  await redisAccounts.set(req.userId, acc);
+  res.json({ ok: true, balance: acc.balance, inventory: acc.inventory });
+});
+
+app.post("/api/inventory/equip", requireAuth, async (req, res) => {
+  const itemId = sanitize(req.body.itemId || "", 64);
+  const acc = await redisAccounts.get(req.userId);
+  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
+  if (!owned.includes(itemId)) return res.status(400).json({ message: "Сначала купи предмет" });
+  const item = SHOP_CATALOG.find(i => i.id === itemId);
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  acc.equip = { ...(acc.equip || {}), [item.type]: itemId };
+  await redisAccounts.set(req.userId, acc);
+  res.json({ ok: true, equip: acc.equip });
+});
+
+app.post("/api/inventory/unequip", requireAuth, async (req, res) => {
+  const type = sanitize(req.body.type || "", 32); // frame | background | avatar_animated | badge
+  if (!["frame","background","avatar_animated","badge"].includes(type))
+    return res.status(400).json({ message: "Неверный тип" });
+  const acc = await redisAccounts.get(req.userId);
+  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  acc.equip = { ...(acc.equip || {}) };
+  delete acc.equip[type];
+  await redisAccounts.set(req.userId, acc);
+  res.json({ ok: true, equip: acc.equip });
+});
+
+// ─── Bio (описание профиля) ───────────────────────────────────────────────────
+app.get("/api/user/bio", requireAuth, async (req, res) => {
+  const acc = await redisAccounts.get(req.userId);
+  res.json({ bio: acc?.bio || "" });
+});
+
+app.put("/api/user/bio", requireAuth, async (req, res) => {
+  const bio = sanitize(req.body.bio || "", 300);
+  const acc = await redisAccounts.get(req.userId);
+  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  acc.bio = bio;
+  await redisAccounts.set(req.userId, acc);
+  res.json({ ok: true, bio: acc.bio });
+});
+
+// ─── Activity (когда играл, сколько часов на каком сервере) ───────────────────
+// Источник — клиент шлёт сессии через POST /api/activity, агрегаты читаем через GET.
+const activityStore = new Map(); // userId -> [{ serverId, startedAt, endedAt, durationSec }]
+
+app.post("/api/activity", requireAuth, (req, res) => {
+  const { serverId, startedAt, endedAt, durationSec } = req.body || {};
+  if (!serverId || typeof startedAt !== "number" || typeof endedAt !== "number")
+    return res.status(400).json({ message: "Неверные поля" });
+  const dur = Math.max(0, Math.min(60 * 60 * 24, Math.floor(durationSec || (endedAt - startedAt) / 1000)));
+  const list = activityStore.get(req.userId) || [];
+  list.push({ serverId: sanitize(serverId, 32), startedAt, endedAt, durationSec: dur });
+  // Храним последние 200 сессий
+  activityStore.set(req.userId, list.slice(-200));
+  res.json({ ok: true });
+});
+
+app.get("/api/activity", requireAuth, (req, res) => {
+  const list = activityStore.get(req.userId) || [];
+  // Агрегат по серверам
+  const byServer = {};
+  let totalSec = 0;
+  let lastSession = null;
+  for (const s of list) {
+    byServer[s.serverId] = (byServer[s.serverId] || 0) + s.durationSec;
+    totalSec += s.durationSec;
+    if (!lastSession || s.endedAt > lastSession) lastSession = s.endedAt;
+  }
+  res.json({
+    totalSec,
+    byServer,
+    lastSessionAt: lastSession || null,
+    recent: list.slice(-10).reverse(),
+  });
+});
+
+// ─── Marketplace (глобальный P2P трейд предметами из Библиотеки) ───────────────
+// Листинг — это продажа itemId из инвентаря за SBT между игроками.
+const listings = new Map();
+let listingCounter = 0;
+
+function publicListing(l) {
+  return {
+    id: l.id,
+    itemId: l.itemId,
+    itemType: l.itemType,
+    name: l.name,
+    preview: l.preview,
+    price: l.price,
+    sellerId: l.sellerId,
+    sellerName: l.sellerName,
+    createdAt: l.createdAt,
+    status: l.status,
+  };
+}
+
+app.get("/api/market/listings", (req, res) => {
+  const type = req.query.type ? sanitize(String(req.query.type), 32) : null;
+  const out = [...listings.values()]
+    .filter(l => l.status === "active")
+    .filter(l => !type || l.itemType === type)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(publicListing);
+  res.json({ listings: out });
+});
+
+app.get("/api/market/my", requireAuth, (req, res) => {
+  const out = [...listings.values()]
+    .filter(l => l.sellerId === req.userId)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(publicListing);
+  res.json({ listings: out });
+});
+
+app.get("/api/market/catalog", (_req, res) => {
+  res.json({ items: MARKET_CATALOG });
+});
+
+// Админ-выдача market-предмета юзеру (для теста)
+app.post("/api/market/grant", requireAuth, async (req, res) => {
+  const acc = await redisAccounts.get(req.userId);
+  if (!acc || acc.role !== "admin") return res.status(403).json({ message: "Только админ" });
+  const targetId = sanitize(req.body.userId || "", 64);
+  const itemId   = sanitize(req.body.itemId || "", 64);
+  const target = await redisAccounts.get(targetId);
+  if (!target) return res.status(404).json({ message: "Игрок не найден" });
+  const item = MARKET_CATALOG.find(i => i.id === itemId);
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  target.market_inventory = Array.isArray(target.market_inventory) ? [...target.market_inventory, itemId] : [itemId];
+  await redisAccounts.set(targetId, target);
+  res.json({ ok: true, market: target.market_inventory });
+});
+
+app.post("/api/market/sell", requireAuth, async (req, res) => {
+  const { itemId, price } = req.body || {};
+  const cleanId = sanitize(String(itemId || ""), 64);
+  const priceNum = parseInt(price, 10);
+  if (!cleanId) return res.status(400).json({ message: "Не указан предмет" });
+  if (!Number.isFinite(priceNum) || priceNum < 10 || priceNum > 100000)
+    return res.status(400).json({ message: "Цена: 10–100000 СБТ" });
+  const acc = await redisAccounts.get(req.userId);
+  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  const marketOwn = Array.isArray(acc.market_inventory) ? acc.market_inventory : [];
+  if (!marketOwn.includes(cleanId)) return res.status(400).json({ message: "Сначала получи этот предмет (он выдаётся за активности или покупки)" });
+  const item = MARKET_CATALOG.find(i => i.id === cleanId);
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  const hasActive = [...listings.values()].some(l => l.status === "active" && l.sellerId === req.userId && l.itemId === cleanId);
+  if (hasActive) return res.status(400).json({ message: "У тебя уже есть активный листинг на этот предмет" });
+
+  acc.market_inventory = marketOwn.filter(x => x !== cleanId);
+  await redisAccounts.set(req.userId, acc);
+
+  const id = String(++listingCounter);
+  const listing = {
+    id,
+    itemId: cleanId,
+    itemType: item.type,
+    name: item.name,
+    preview: item.preview,
+    price: priceNum,
+    sellerId: req.userId,
+    sellerName: acc.username,
+    createdAt: Date.now(),
+    status: "active",
+  };
+  listings.set(id, listing);
+  res.json({ ok: true, listing: publicListing(listing) });
+});
+
+app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
+  const id = sanitize(req.params.id, 32);
+  const listing = listings.get(id);
+  if (!listing) return res.status(404).json({ message: "Листинг не найден" });
+  if (listing.status !== "active") return res.status(400).json({ message: "Листинг уже завершён" });
+  if (listing.sellerId === req.userId) return res.status(400).json({ message: "Нельзя купить свой листинг" });
+
+  const buyer = await redisAccounts.get(req.userId);
+  if (!buyer) return res.status(404).json({ message: "Аккаунт не найден" });
+  if ((buyer.balance || 0) < listing.price)
+    return res.status(400).json({ message: "Недостаточно СБТ", need: listing.price, have: buyer.balance || 0 });
+
+  const seller = await redisAccounts.get(listing.sellerId);
+  if (!seller) return res.status(404).json({ message: "Продавец не найден" });
+
+  buyer.balance  = (buyer.balance  || 0) - listing.price;
+  seller.balance = (seller.balance || 0) + listing.price;
+  buyer.market_inventory = Array.isArray(buyer.market_inventory) ? [...buyer.market_inventory, listing.itemId] : [listing.itemId];
+
+  const ageMs = Date.now() - listing.createdAt;
+  if (ageMs > 14 * 24 * 3600 * 1000) {
+    const fee = Math.ceil(listing.price * 0.05);
+    seller.balance -= fee;
+    buyer.balance  += fee;
+  }
+  await redisAccounts.set(req.userId, buyer);
+  await redisAccounts.set(listing.sellerId, seller);
+
+  listing.status = "sold";
+  listing.soldTo = req.userId;
+  listing.soldAt = Date.now();
+  listings.set(id, listing);
+
+  sendToUser(listing.sellerId, { type: "market_sold", listingId: id, price: listing.price, buyerName: buyer.username });
+  res.json({ ok: true, balance: buyer.balance, market: buyer.market_inventory });
+});
+
+app.delete("/api/market/:id", requireAuth, async (req, res) => {
+  const id = sanitize(req.params.id, 32);
+  const listing = listings.get(id);
+  if (!listing) return res.status(404).json({ message: "Листинг не найден" });
+  if (listing.sellerId !== req.userId) return res.status(403).json({ message: "Это не твой листинг" });
+  if (listing.status !== "active") return res.status(400).json({ message: "Уже завершён" });
+  const acc = await redisAccounts.get(req.userId);
+  if (acc) {
+    acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId];
+    await redisAccounts.set(req.userId, acc);
+  }
+  listing.status = "cancelled";
+  listings.set(id, listing);
+  res.json({ ok: true });
+});
+
+// ─── Группы / команды (3+ игроков) ───────────────────────────────────────────
+const groups        = new Map(); // id -> { id, name, ownerId, members: Set, createdAt }
+const groupMessages = new Map(); // id -> [{ id, fromId, fromUsername, text, time }]
+const groupInvites  = new Map(); // groupId -> [{ toId, fromId, time }]
+let groupCounter   = 0;
+const GROUP_MAX    = 8;
+
+function publicGroup(g) {
+  return {
+    id: g.id,
+    name: g.name,
+    ownerId: g.ownerId,
+    members: [...g.members],
+    createdAt: g.createdAt,
+  };
+}
+
+app.get("/api/groups", requireAuth, (req, res) => {
+  // все группы, в которых состоит юзер
+  const out = [...groups.values()]
+    .filter(g => g.members.has(req.userId))
+    .map(publicGroup);
+  res.json({ groups: out });
+});
+
+app.post("/api/groups", requireAuth, (req, res) => {
+  const name = sanitize(req.body.name || "", 40);
+  if (name.length < 2 || name.length > 40) return res.status(400).json({ message: "Название: 2–40 символов" });
+  const id = String(++groupCounter);
+  const g = { id, name, ownerId: req.userId, members: new Set([req.userId]), createdAt: Date.now() };
+  groups.set(id, g);
+  groupMessages.set(id, []);
+  res.json({ ok: true, group: publicGroup(g) });
+});
+
+app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
+  const gid = sanitize(req.params.id, 32);
+  const g = groups.get(gid);
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!g.members.has(req.userId)) return res.status(403).json({ message: "Ты не в группе" });
+  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Максимум ${GROUP_MAX} человек` });
+  const targetNick = sanitize(req.body.username || "", 32).toLowerCase();
+  const target = [...accounts.values()].find(a => (a.username || "").toLowerCase() === targetNick);
+  if (!target) return res.status(404).json({ message: "Игрок не найден" });
+  if (g.members.has(target.id)) return res.status(400).json({ message: "Уже в группе" });
+  const list = groupInvites.get(gid) || [];
+  if (list.find(i => i.toId === target.id)) return res.status(400).json({ message: "Уже приглашён" });
+  const invite = { toId: target.id, fromId: req.userId, fromUsername: "Player", groupId: gid, groupName: g.name, time: Date.now() };
+  // username инициатора
+  const from = wsClientsByUserId(req.userId);
+  invite.fromUsername = from?.username || "Player";
+  list.push(invite);
+  groupInvites.set(gid, list);
+  sendToUser(target.id, { type: "group_invite", invite });
+  res.json({ ok: true });
+});
+
+app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
+  const gid = sanitize(req.params.id, 32);
+  const g = groups.get(gid);
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  const accept = !!req.body.accept;
+  const list = (groupInvites.get(gid) || []).filter(i => i.toId !== req.userId);
+  groupInvites.set(gid, list);
+  if (accept) {
+    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "Группа уже заполнена" });
+    g.members.add(req.userId);
+    // уведомим всех в группе
+    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+  }
+  res.json({ ok: true, group: publicGroup(g) });
+});
+
+app.post("/api/groups/:id/leave", requireAuth, (req, res) => {
+  const gid = sanitize(req.params.id, 32);
+  const g = groups.get(gid);
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  g.members.delete(req.userId);
+  if (g.members.size === 0) {
+    groups.delete(gid);
+    groupMessages.delete(gid);
+    groupInvites.delete(gid);
+  } else if (g.ownerId === req.userId) {
+    // передаём владение первому оставшемуся
+    g.ownerId = g.members.values().next().value;
+    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+  } else {
+    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+  }
+  res.json({ ok: true });
+});
+
+app.get("/api/groups/:id/messages", requireAuth, (req, res) => {
+  const gid = sanitize(req.params.id, 32);
+  const g = groups.get(gid);
+  if (!g || !g.members.has(req.userId)) return res.status(403).json({ message: "Нет доступа" });
+  res.json({ messages: (groupMessages.get(gid) || []).slice(-100) });
+});
+
+app.get("/api/groups/invites", requireAuth, (req, res) => {
+  const out = [];
+  for (const [gid, list] of groupInvites.entries()) {
+    for (const inv of list) {
+      if (inv.toId === req.userId) out.push({ ...inv, groupId: gid });
+    }
+  }
+  res.json({ invites: out });
 });
 
 // Список онлайн юзеров
@@ -449,6 +931,23 @@ wss.on("connection", (ws) => {
         if (ticket) send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
         break;
       }
+
+      // Групповой чат
+      case "group_send": {
+        const gid = String(msg.groupId || "");
+        const g = groups.get(gid);
+        if (!g || !g.members.has(client.userId)) return;
+        const text = sanitize(msg.text || "", 1000);
+        if (!text) return;
+        const m = { id: uuidv4(), fromId: client.userId, fromUsername: client.username || "Player", text, time: Date.now() };
+        const list = groupMessages.get(gid) || [];
+        list.push(m);
+        groupMessages.set(gid, list.slice(-200));
+        for (const memberId of g.members) {
+          sendToUser(memberId, { type: "group_message", groupId: gid, message: m });
+        }
+        break;
+      }
     }
   });
 
@@ -631,9 +1130,30 @@ app.get("/cryptobot/paid", (req, res) => {
   res.send("ok");
 });
 
-// ─── Telegram Bot ──────────────────────────────────────────────────────────────
+// ─── Telegram Bot (webhook) ────────────────────────────────────────────────────
 const TelegramBot = require("node-telegram-bot-api");
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+// Создаём без polling — будем принимать апдейты через /tg-webhook
+const bot = new TelegramBot(BOT_TOKEN, { polling: false });
+
+// Webhook endpoint — Telegram шлёт сюда апдейты
+app.post("/tg-webhook", (req, res) => {
+  try { bot.processUpdate(req.body); } catch (e) { console.error("[tg-webhook]", e.message); }
+  res.sendStatus(200);
+});
+
+// Регистрируем webhook при старте (после listen, с задержкой)
+async function setupBotWebhook() {
+  const url = `https://api.sbgames.hyperionsearch.xyz:8443/tg-webhook`;
+  try {
+    // Сначала снимаем старый webhook (если был)
+    await bot.deleteWebHook({ drop_pending_updates: true });
+    await bot.setWebHook(url, { allowed_updates: ["message", "callback_query", "channel_post"] });
+    const me = await bot.getMe();
+    console.log(`[bot] webhook set → ${me.username} (${url})`);
+  } catch (e) {
+    console.error("[bot] webhook setup failed:", e.message);
+  }
+}
 
 // Состояния диалога: chatId -> { state, data }
 const botSessions = new Map();
@@ -919,6 +1439,8 @@ bot.on("polling_error", (err) => {
 // HTTP
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`SBGames HTTP  :${PORT}`);
+  // Регистрируем webhook после старта сервера
+  setTimeout(setupBotWebhook, 1500);
 });
 
 // HTTPS — для macOS WebKit (ATS блокирует HTTP)

@@ -50,34 +50,42 @@ export default function LoginPage({ onLogin }) {
     if (pollRef.current) clearInterval(pollRef.current);
   };
 
-  const tryAutoLogin = async (tgUser) => {
-    // Пробуем залогиниться без ника — если аккаунт уже есть, сервер вернёт {user, token}
-    try {
-      const res = await fetch(`${API_URL}/auth/widget-login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tgUser }),
-      });
-      const data = await res.json();
-      if (data.user && data.token) {
-        setStep("success");
-        setTimeout(() => onLogin(data), 700);
-        return true;
-      }
-      if (data.needNick) {
-        setTgUser(data.tgUser);
-        setStep("nick");
-        return false;
-      }
-    } catch {}
+  const tryAutoLogin = async (tgUser, retries = 3) => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const res = await fetch(`${API_URL}/auth/tg-login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tgUser }),
+        });
+        if (res.status === 429) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        const data = await res.json();
+        if (data.user && data.token) {
+          setStep("success");
+          setTimeout(() => onLogin(data), 700);
+          return true;
+        }
+        if (data.needNick) {
+          setTgUser(tgUser);
+          setStep("nick");
+          return false;
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, 1000));
+    }
     return false;
   };
 
   const startPolling = (authCode) => {
     stopPolling();
+    if (!authCode) return; // не поллим пока код не получен
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/auth/check-code?code=${authCode}`);
+        if (res.status === 429) return; // ждём, не спамим
         const data = await res.json();
         if (data.confirmed && data.tgUser) {
           clearInterval(pollRef.current);
@@ -85,7 +93,7 @@ export default function LoginPage({ onLogin }) {
           await tryAutoLogin(data.tgUser);
         }
       } catch {}
-    }, 2000);
+    }, 2500);
   };
 
   const handleQRAuth = async () => {
@@ -95,6 +103,11 @@ export default function LoginPage({ onLogin }) {
     setError("");
     try {
       const res = await fetch(`${API_URL}/auth/create-code`, { method: "POST" });
+      if (res.status === 429) {
+        setError("Слишком часто — подожди минуту");
+        setLoading(false);
+        return;
+      }
       const data = await res.json();
       setCode(data.code);
       setLoading(false);

@@ -25,12 +25,15 @@ const STATUS_META = {
 function useWS(url, user, onMessage) {
   const ws = useRef(null);
   const [connected, setConnected] = useState(false);
+  const deadRef = useRef(false);
 
   const connect = useCallback(() => {
-    if (ws.current?.readyState === WebSocket.OPEN) return;
+    if (deadRef.current) return;
+    if (ws.current?.readyState === WebSocket.OPEN || ws.current?.readyState === WebSocket.CONNECTING) return;
     const socket = new WebSocket(url);
     ws.current = socket;
     socket.onopen = () => {
+      if (deadRef.current) { socket.close(); return; }
       setConnected(true);
       socket.send(JSON.stringify({
         type: "auth",
@@ -40,11 +43,15 @@ function useWS(url, user, onMessage) {
       }));
     };
     socket.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch {} };
-    socket.onclose   = () => { setConnected(false); setTimeout(connect, 3000); };
+    socket.onclose   = () => { if (!deadRef.current) { setConnected(false); setTimeout(connect, 3000); } };
     socket.onerror   = () => socket.close();
   }, [url, user]);
 
-  useEffect(() => { connect(); return () => ws.current?.close(); }, [connect]);
+  useEffect(() => {
+    deadRef.current = false;
+    connect();
+    return () => { deadRef.current = true; ws.current?.close(); };
+  }, [connect]);
 
   const send = useCallback((data) => {
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(data));
@@ -353,9 +360,11 @@ function AdminPanel({ user }) {
 // CHAT VIEW
 // ═══════════════════════════════════════════
 function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, onConfirmPayment, isAdmin, onClose }) {
-  const [input,      setInput]      = useState("");
+  const draftKey = `sbg_chat_draft_${ticket.id}_${isAdmin ? "admin" : "user"}`;
+  const reqKey   = `sbg_chat_req_${ticket.id}_${isAdmin ? "admin" : "user"}`;
+  const [input,      setInput]      = useState(() => localStorage.getItem(draftKey) || "");
   const [showReq,    setShowReq]    = useState(false);
-  const [reqText,    setReqText]    = useState("");
+  const [reqText,    setReqText]    = useState(() => localStorage.getItem(reqKey) || "");
   const [showPay,    setShowPay]    = useState(false);
   const [payAmount,  setPayAmount]  = useState(String(ticket.paymentAmount || ""));
   const [confirmed,  setConfirmed]  = useState(false);
@@ -364,17 +373,20 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
   const isPayment = ticket.category === "Пополнение баланса";
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // Persist input draft per ticket — не теряем незаконченное сообщение
+  useEffect(() => { if (input) localStorage.setItem(draftKey, input); }, [input, draftKey]);
+  useEffect(() => { if (reqText) localStorage.setItem(reqKey, reqText); }, [reqText, reqKey]);
 
   const handleSend = (e) => {
     e.preventDefault();
     const t = input.trim(); if (!t) return;
-    onSend(t); setInput("");
+    onSend(t); setInput(""); localStorage.removeItem(draftKey);
   };
 
   const handleSendRequisites = () => {
     if (!reqText.trim()) return;
     onSendRequisites(reqText.trim());
-    setReqText(""); setShowReq(false);
+    setReqText(""); setShowReq(false); localStorage.removeItem(reqKey);
   };
 
   const handleConfirmPayment = () => {
@@ -619,9 +631,14 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
 // ═══════════════════════════════════════════
 // NEW TICKET FORM
 // ═══════════════════════════════════════════
+const DRAFT_KEY = "sbg_support_draft";
 function NewTicketForm({ user, onBack, onCreated }) {
-  const [category, setCategory] = useState("");
-  const [text,     setText]     = useState("");
+  const [category, setCategory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "{}").category || ""; } catch { return ""; }
+  });
+  const [text,     setText]     = useState(() => {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "{}").text || ""; } catch { return ""; }
+  });
   const [loading,  setLoading]  = useState(false);
   const [catOpen,  setCatOpen]  = useState(false);
   const dropRef = useRef(null);
@@ -631,6 +648,13 @@ function NewTicketForm({ user, onBack, onCreated }) {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  // Persist draft — текст не должен теряться при перезаходе
+  useEffect(() => {
+    if (category || text) {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ category, text }));
+    }
+  }, [category, text]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -655,6 +679,8 @@ function NewTicketForm({ user, onBack, onCreated }) {
         { id: "m1",  from: user?.id, username: user?.username, role: "user", text: text.trim(), time: now },
       ],
     });
+    // Очистим черновик — обращение отправлено
+    localStorage.removeItem(DRAFT_KEY);
     setLoading(false);
   };
 

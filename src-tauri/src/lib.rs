@@ -855,6 +855,17 @@ async fn launch_minecraft(
     // Сохраняем PID в файл
     let _ = std::fs::write(mc_dir.join(".minecraft.pid"), pid.to_string());
 
+    // ─── Lock mods/ read-only через attrib (best-effort) ─────────────────────
+    // attrib +R +S блокирует случайное удаление. Обходится через attrib -R,
+    // поэтому НЕ основная защита, а дополнительный слой к SHA256 watcher'у.
+    #[cfg(target_os = "windows")]
+    {
+        let mods_dir = mc_dir.join("mods");
+        let _ = std::process::Command::new("attrib")
+            .args(["+R", "/S", "/D", &mods_dir.to_string_lossy()])
+            .output();
+    }
+
     // ─── Win32: помещаем Java в Job Object ───────────────────────────────────
     // Job Object позволяет нам:
     //   1. Убить всё дерево процессов при закрытии лаунчера
@@ -1007,27 +1018,27 @@ async fn launch_minecraft(
                         || p.contains("\\jbr\\")              // JetBrains runtime
                 };
 
-                // Baseline: ждём 8 сек пока MC прогрузит свои нативные DLL,
-                // затем фиксируем "доверенный" набор. Всё новое сверх него
-                // из чужого пути = инжект.
+                // Baseline: ждём 4 сек пока MC прогрузит свои нативные DLL
+                // (ускорено — раньше было 8 сек, читер мог успеть до baseline)
                 let mut baseline: std::collections::HashSet<String> = std::collections::HashSet::new();
                 let mut baseline_done = false;
                 let mut tick: u32 = 0;
 
                 loop {
-                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    // 100мс polling — быстрее не даст EnumProcessModules
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     if !proc_alive(pid_watch) {
                         let _ = std::fs::remove_file(&pid_file);
                         break;
                     }
 
-                    // Baseline собираем первые ~8 сек (32 тика по 250мс)
+                    // Baseline собираем первые 4 сек (40 тиков по 100мс)
                     if !baseline_done {
                         for dll in enum_dlls(pid_watch) { baseline.insert(dll); }
-                        if tick >= 32 { baseline_done = true; }
+                        if tick >= 40 { baseline_done = true; }
                     }
 
-                    // ── mods/ integrity по SHA256 (каждые 500мс) ──
+                    // ── mods/ integrity по SHA256 (каждые 200мс) ──
                     if tick % 2 == 0 {
                         let mut violation: Option<String> = None;
                         let mut seen = 0usize;
@@ -1044,10 +1055,8 @@ async fn launch_minecraft(
                                 }
                             }
                         }
-                        // Лишний/чужой мод ИЛИ пропал официальный мод → kill
                         if violation.is_some() || (expected_mod_count > 0 && seen != expected_mod_count) {
-                            eprintln!("[guard] mods tampered ({:?}, seen {} expected {}) — kill",
-                                violation, seen, expected_mod_count);
+                            eprintln!("[guard] mods tampered ({:?}) — kill", violation);
                             kill_proc(pid_watch);
                             let _ = std::fs::remove_file(&pid_file);
                             let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
@@ -1056,20 +1065,17 @@ async fn launch_minecraft(
                         }
                     }
 
-                    // ── DLL injection scan (каждую секунду после baseline) ──
-                    if baseline_done && tick % 4 == 0 {
+                    // ── DLL injection scan (каждые 100мс после baseline) ──
+                    if baseline_done {
                         for dll in enum_dlls(pid_watch) {
-                            if baseline.contains(&dll) { continue; }     // была на старте — ок
-                            if is_trusted_path(&dll) {                   // из доверенной папки — ок
-                                baseline.insert(dll);                    // подтверждаем как норму
-                                continue;
-                            }
-                            // Новая DLL из чужого места = инжект
-                            eprintln!("[guard] inject DLL detected: {} — kill PID {}", dll, pid_watch);
+                            if baseline.contains(&dll) { continue; }
+                            if is_trusted_path(&dll) { baseline.insert(dll); continue; }
+                            // НОВАЯ DLL из ненадёжного пути = инжект
+                            eprintln!("[guard] INJECT detected: {} — kill", dll);
                             kill_proc(pid_watch);
                             let _ = std::fs::remove_file(&pid_file);
                             let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
-                                format!("inject\nОбнаружена посторонняя библиотека:\n{}", dll));
+                                format!("inject\nОбнаружена посторонняя DLL:\n{}", dll));
                             return;
                         }
                     }
@@ -1140,6 +1146,7 @@ async fn launch_minecraft(
     // Когда у тебя появится MC плагин — он заберёт сессию из Redis
     // и закикает читера. Сейчас без плагина — лаунчер блокирует запуск сам.
     {
+        // Собираем хеши
         use sha2::{Sha256, Digest};
         use std::io::Read as _;
         let mut hashes: Vec<String> = Vec::new();
@@ -1157,7 +1164,7 @@ async fn launch_minecraft(
                 }
             }
         }
-        // POST /api/verify/report
+        // POST хеши на сервер
         let body = serde_json::json!({
             "user": username,
             "serverId": server_id,
@@ -1166,7 +1173,6 @@ async fn launch_minecraft(
             "forgeVersion": forge_version,
         });
         let body_str = body.to_string();
-        // Пишем во временный файл чтобы избежать проблем с экранированием
         let body_path = std::env::temp_dir().join("sbgames_verify.json");
         let _ = std::fs::write(&body_path, &body_str);
         let out = std::process::Command::new("curl")
@@ -1184,19 +1190,88 @@ async fn launch_minecraft(
                     let unknown = v["unknown"].as_u64().unwrap_or(0);
                     let missing = v["missing"].as_u64().unwrap_or(0);
                     if !ok {
-                        let _ = app.emit("download_progress", DownloadProgress {
-                            file: format!("Сервер отклонил: {} лишних, {} недостающих", unknown, missing),
-                            downloaded: 0, total: 1, speed_kbs: 0,
-                        });
-                        // Сохраняем guard trigger чтобы UI показал модалку
                         let _ = std::fs::write(mc_dir.join(".guard-trigger"),
                             format!("server\nСервер отклонил мод-пак:\n• Лишних модов: {}\n• Отсутствует: {}", unknown, missing));
-                        // Закрываем трей-попап / UI — пусть сам обработает
                         return Err("__GUARD__server".into());
                     }
                 }
             }
         }
+    }
+
+    // ─── Server ban-checker: каждые 30 сек проверяем banned:mods в Redis ──
+    // Если юзер уже в бане (например, подкинул мод после запуска и сервер поймал)
+    // → kill MC немедленно.
+    {
+        let username_b = username.clone();
+        let pid_b = pid;
+        let mc_dir_b = mc_dir.clone();
+        std::thread::spawn(move || {
+            #[cfg(target_os = "windows")]
+            fn kill_proc(pid: u32) {
+                use windows_sys::Win32::System::Threading::{
+                    OpenProcess, PROCESS_TERMINATE, TerminateProcess,
+                };
+                use windows_sys::Win32::Foundation::CloseHandle;
+                unsafe {
+                    let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
+                    if h != 0 { TerminateProcess(h, 1); CloseHandle(h); }
+                }
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/F", "/T"]).output();
+            }
+            let mut last_emit: u32 = 0;
+            for i in 0..3600u32 {  // max 30 минут
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                if i - last_emit < 6 { continue; } // 30 сек
+                last_emit = i;
+                let url = format!(
+                    "https://api.sbgames.hyperionsearch.xyz:8443/api/verify/banlist");
+                let out = std::process::Command::new("curl")
+                    .arg("--proto").arg("=https").arg("--tlsv1.2")
+                    .arg("-fsSL").arg("--max-time").arg("10")
+                    .arg(&url).output();
+                if let Ok(o) = out {
+                    if o.status.success() {
+                        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&o.stdout) {
+                            if let Some(arr) = v["banned"].as_array() {
+                                if arr.iter().any(|u| u.as_str() == Some(username_b.as_str())) {
+                                    eprintln!("[guard] user '{}' in banned:mods — kill MC", username_b);
+                                    kill_proc(pid_b);
+                                    let _ = std::fs::remove_file(mc_dir_b.join(".minecraft.pid"));
+                                    let _ = std::fs::write(mc_dir_b.join(".guard-trigger"),
+                                        "banned\nВаш аккаунт заблокирован за подозрительные моды.");
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    // Сервер сверяет с whitelist, кладёт сессию в Redis.
+    // Когда у тебя появится MC плагин — он заберёт сессию из Redis
+    // и закикает читера. Сейчас без плагина — лаунчер блокирует запуск сам.
+    {
+        use sha2::{Sha256, Digest};
+        use std::io::Read as _;
+        let mut hashes: Vec<String> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(mc_dir.join("mods")) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() { continue; }
+                let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !fname.ends_with(".jar") { continue; }
+                if let Ok(mut f) = std::fs::File::open(&path) {
+                    let mut h = Sha256::new();
+                    let mut buf = [0u8; 65536];
+                    loop { let n = f.read(&mut buf).unwrap_or(0); if n == 0 { break; } h.update(&buf[..n]); }
+                    hashes.push(hex::encode(h.finalize()));
+                }
+            }
+        }
+        // POST /api/verify/report уже отправлен выше
     }
 
     // Сохраняем в состояние что игра запущена

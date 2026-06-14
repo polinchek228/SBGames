@@ -35,8 +35,10 @@ export default function MainLayout({ user, onLogout }) {
 
   // ─── 8. WS-уведомления (баланс, друзья, тикеты) ──────────────────────────
   useEffect(() => {
+    let dead = false;
     const ws = new WebSocket(WS_URL);
     ws.onopen = () => {
+      if (dead) { ws.close(); return; }
       ws.send(JSON.stringify({
         type: "auth",
         userId: user?.id,
@@ -63,7 +65,7 @@ export default function MainLayout({ user, onLogout }) {
       } catch {}
     };
     ws.onerror = () => {};
-    return () => ws.close();
+    return () => { dead = true; ws.close(); };
   }, [user]);
 
   // Discord — в лаунчере
@@ -135,17 +137,6 @@ export default function MainLayout({ user, onLogout }) {
           backdropFilter: "blur(20px)",
         }}
       >
-        {/* Logo — left */}
-        <div
-          className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg select-none"
-          style={{
-            background: "rgba(15,15,20,0.9)",
-            boxShadow: "0 0 12px rgba(37,99,235,0.2)",
-          }}
-        >
-          <img src="/logo.jpg" alt="G" className="w-5 h-5 rounded object-cover" />
-        </div>
-
         {/* Nav items — absolutely centered */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-0.5">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
