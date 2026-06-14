@@ -233,9 +233,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <div className="w-6 h-6 rounded-md overflow-hidden flex-shrink-0">
                 <img src="/logo.jpg" alt="" className="w-full h-full object-cover" />
               </div>
-              <p className="text-[13px] font-black tracking-wide">
-                <span className="text-white">SB </span>
-                <span style={{ color: "#818cf8" }}>GAMES</span>
+              <p className="text-[13px] font-black tracking-wide" style={{ color: "#60a5fa" }}>
+                SBGames
               </p>
             </div>
             <p className="text-[9px] font-semibold tracking-[0.15em] uppercase"
@@ -260,7 +259,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     className="relative rounded-xl overflow-hidden"
                     style={{
                       boxShadow: active
-                        ? `0 0 0 1.5px ${srv.accent}60, 0 4px 20px ${srv.accent}20`
+                        ? `0 0 0 1.5px #60a5fa, 0 0 12px rgba(96,165,250,0.4), 0 4px 20px ${srv.accent}20`
                         : "none",
                     }}
                   >
@@ -270,13 +269,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
                       {active && (
                         <div className="absolute inset-0"
-                          style={{ background: `radial-gradient(ellipse at 30% 100%, ${srv.accent}20, transparent 65%)` }}
+                          style={{ background: `radial-gradient(ellipse at 30% 100%, rgba(96,165,250,0.15), transparent 65%)` }}
                         />
                       )}
                       {active && (
                         <motion.div layoutId="srv-bar"
                           className="absolute bottom-0 left-3 right-3 h-[2.5px] rounded-full"
-                          style={{ background: `linear-gradient(90deg, transparent, ${srv.accent}, transparent)` }}
+                          style={{ background: "linear-gradient(90deg, transparent, #60a5fa, transparent)" }}
                           transition={{ type: "spring", stiffness: 400, damping: 35 }}
                         />
                       )}
@@ -323,10 +322,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
               </>
             ) : (
               <>
-                <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white"
-                  style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
+                <h1 className="text-[62px] font-display font-black leading-none tracking-tight"
+                  style={{ color: "#60a5fa", textShadow: "0 2px 40px rgba(96,165,250,0.3)" }}
                 >
-                  SB GAMES
+                  SBGames
                 </h1>
                 <p className="text-[13px] leading-[1.8] max-w-[500px]"
                   style={{ color: "rgba(255,255,255,0.45)" }}
