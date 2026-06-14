@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play, Settings, X, Cpu, HardDrive, AlertTriangle, ShieldAlert, Info } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
 import { invoke, notify, setDiscordPresence, clearDiscordPresence, getMinecraftStatus, killMinecraft } from "../lib/tauri.js";
+import { pushLocalActivity } from "../components/RecentActivityCard.jsx";
 
 const SERVERS = [
   {
@@ -16,14 +17,20 @@ const SERVERS = [
 ];
 
 export default function PlayPage({ user, onOpenCommunity }) {
-  const [selected,  setSelected]  = useState(SERVERS[0]);
+  const [selected,  setSelected]  = useState(null);
   const [launching, setLaunching] = useState(false);
   const [launched,  setLaunched]  = useState(false);
   const [launchError, setLaunchError] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(() => {
+    return localStorage.getItem("sbg_play_showSettings") === "1";
+  });
   // Modpack security report
-  const [modpackReport, setModpackReport] = useState(null);
-  const [showModpackModal, setShowModpackModal] = useState(false);
+  const [modpackReport, setModpackReport] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("sbg_play_modpackReport") || "null"); } catch { return null; }
+  });
+  const [showModpackModal, setShowModpackModal] = useState(() => {
+    return localStorage.getItem("sbg_play_showModpackModal") === "1";
+  });
   const [ramGb, setRamGb] = useState(() => {
     return parseInt(localStorage.getItem("sbg_ram_gb") || "4");
   });
@@ -42,7 +49,9 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   // ─── Minecraft running state (single-launch lock) ──────────────────────
   const [mcRunning, setMcRunning] = useState(false);
-  const [guardModal, setGuardModal] = useState(null);  // {reason, detail} или null
+  const [guardModal, setGuardModal] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("sbg_play_guardModal") || "null"); } catch { return null; }
+  });  // {reason, detail} или null
   const pollRef = useRef(null);
   useEffect(() => {
     let cancelled = false;
@@ -62,11 +71,32 @@ export default function PlayPage({ user, onOpenCommunity }) {
     return () => { cancelled = true; if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
+  // Persist модалок — не сбрасываем при перезаходе
   useEffect(() => {
+    localStorage.setItem("sbg_play_showSettings", showSettings ? "1" : "0");
+  }, [showSettings]);
+  useEffect(() => {
+    localStorage.setItem("sbg_play_showModpackModal", showModpackModal ? "1" : "0");
+    if (!showModpackModal) localStorage.removeItem("sbg_play_modpackReport");
+  }, [showModpackModal]);
+  useEffect(() => {
+    if (modpackReport) localStorage.setItem("sbg_play_modpackReport", JSON.stringify(modpackReport));
+  }, [modpackReport]);
+  useEffect(() => {
+    if (guardModal) localStorage.setItem("sbg_play_guardModal", JSON.stringify(guardModal));
+    else            localStorage.removeItem("sbg_play_guardModal");
+  }, [guardModal]);
+
+  useEffect(() => {
+    if (!selected) {
+      window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } }));
+      setDiscordPresence("В лаунчере", "Выбирает сервер", "sbgames");
+      return;
+    }
     window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
     // Discord — смена сервера
     setDiscordPresence(`Выбирает сервер: ${selected.name}`, "В лаунчере", "sbgames");
-  }, [selected.id]);
+  }, [selected]);
 
   useEffect(() => {
     // Discord RPC при открытии
@@ -77,10 +107,12 @@ export default function PlayPage({ user, onOpenCommunity }) {
   }, []);
 
   const handlePlay = async () => {
+    if (!selected) return;
     setLaunching(true);
     setLaunchError(null);
     // Discord — запуск
     await setDiscordPresence(`Играет на ${selected.name}`, "В игре · SB Games", "sbgames");
+    const startedAt = Date.now();
     try {
       // Реальный запуск через Tauri
       const result = await invoke("launch_minecraft", {
@@ -91,6 +123,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
         javaPath,
       });
       saveSession(selected.id, user?.username);
+      sessionStorage.setItem("sbg_last_session", JSON.stringify({ serverId: selected.id, startedAt }));
       await notify("SB Games", `${result}`);
       setMcRunning(true);   // сразу блокируем кнопку
       setLaunching(false);
@@ -132,7 +165,29 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   // Закрыть Minecraft (если висит)
   const handleClose = async () => {
-    try { await killMinecraft(); } catch {}
+    try {
+      const raw = sessionStorage.getItem("sbg_last_session");
+      if (raw) {
+        const s = JSON.parse(raw);
+        const durSec = Math.max(0, Math.floor((Date.now() - s.startedAt) / 1000));
+        if (durSec > 5) {
+          pushLocalActivity(s.serverId, durSec);
+          // отправим в бэкенд (best-effort)
+          try {
+            const token = localStorage.getItem("sbgames_token");
+            if (token) {
+              fetch("https://api.sbgames.hyperionsearch.xyz:8443/api/activity", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ serverId: s.serverId, startedAt: s.startedAt, endedAt: Date.now(), durationSec: durSec }),
+              }).catch(() => {});
+            }
+          } catch {}
+        }
+        sessionStorage.removeItem("sbg_last_session");
+      }
+      await killMinecraft();
+    } catch {}
     setMcRunning(false);
   };
 
@@ -150,11 +205,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
       {/* Background */}
       <AnimatePresence mode="wait">
-        <motion.div key={selected.id + "_bg"} className="absolute inset-0"
+        <motion.div key={selected ? selected.id + "_bg" : "empty_bg"} className="absolute inset-0"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <div className="absolute inset-0" style={{ background: selected.bg }} />
+          <div className="absolute inset-0" style={{ background: selected ? selected.bg : "#050510" }} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent" />
         </motion.div>
@@ -193,9 +248,9 @@ export default function PlayPage({ user, onOpenCommunity }) {
           {/* Server list */}
           <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2">
             {SERVERS.map(srv => {
-              const active = selected.id === srv.id;
+              const active = selected?.id === srv.id;
               return (
-                <button key={srv.id} onClick={() => setSelected(srv)}
+                <button key={srv.id} onClick={() => setSelected(selected?.id === srv.id ? null : srv)}
                   className="w-full text-left focus:outline-none"
                 >
                   <motion.div
@@ -245,7 +300,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       {/* ── Main content ── */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={selected.id}
+          key={selected ? selected.id : "empty"}
           className="absolute inset-0 flex flex-col"
           style={{ paddingLeft: 252 }}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -253,16 +308,33 @@ export default function PlayPage({ user, onOpenCommunity }) {
         >
           {/* Title + description — сверху */}
           <div className="pt-8 pr-10 flex flex-col gap-3">
-            <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white"
-              style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
-            >
-              {selected.name}
-            </h1>
-            <p className="text-[13px] leading-[1.8] max-w-[500px]"
-              style={{ color: "rgba(255,255,255,0.55)" }}
-            >
-              {selected.description}
-            </p>
+            {selected ? (
+              <>
+                <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white"
+                  style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
+                >
+                  {selected.name}
+                </h1>
+                <p className="text-[13px] leading-[1.8] max-w-[500px]"
+                  style={{ color: "rgba(255,255,255,0.55)" }}
+                >
+                  {selected.description}
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white"
+                  style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
+                >
+                  SB GAMES
+                </h1>
+                <p className="text-[13px] leading-[1.8] max-w-[500px]"
+                  style={{ color: "rgba(255,255,255,0.45)" }}
+                >
+                  Выбери сервер слева, чтобы продолжить.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex-1" />
@@ -325,7 +397,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <motion.button
                 onClick={handlePlay}
                 data-launch-btn
-                disabled={launching || launched}
+                disabled={launching || launched || !selected}
                 whileTap={{ scale: 0.96 }}
                 className="flex items-center gap-3 h-[44px] rounded-2xl font-black text-[14px] tracking-widest uppercase disabled:opacity-60 transition-colors duration-150"
                 style={{
@@ -336,7 +408,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     ? "0 0 24px rgba(22,163,74,0.4)"
                     : "0 0 24px rgba(37,99,235,0.4)",
                 }}
-                onMouseEnter={e => { if (!launching && !launched) e.currentTarget.style.background = "#1d4ed8"; }}
+                onMouseEnter={e => { if (!launching && !launched && selected) e.currentTarget.style.background = "#1d4ed8"; }}
                 onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = launched ? "#16a34a" : "#2563EB"; }}
               >
                 {launching ? (
