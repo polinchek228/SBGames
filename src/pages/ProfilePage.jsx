@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   User, Palette, Settings, Package,
   Send, Check, ChevronRight, Moon, Bell, Shield, Trash2,
-  RefreshCw, Cpu, Monitor, Zap, Download, Loader2,
+  RefreshCw, Monitor, Zap, Download, Loader2,
   SlidersHorizontal, CheckCircle2, Images, X,
   LayoutGrid, Pencil, Save,
 } from "lucide-react";
@@ -621,69 +621,19 @@ function loadSettings() {
 }
 function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
 
-// Получить RAM через Tauri invoke, fallback 8
-async function fetchSystemRam() {
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const gb = await invoke("get_system_ram_gb");
-    return Number(gb) || 8;
-  } catch {
-    return 8;
-  }
-}
-
 function SettingsTab() {
   const saved = loadSettings();
-  // totalRam начинаем с 0 — покажем лоадер пока Tauri не ответит
-  const [totalRam,   setTotalRam]   = useState(0);
-  const [ram,        setRam]        = useState(saved.ram ?? null); // null = ещё не знаем
   const [resolution, setResolution] = useState(saved.resolution ?? "1920×1080");
   const [notifs,     setNotifs]     = useState(saved.notifs     ?? true);
   const [autoLogin,  setAutoLogin]  = useState(saved.autoLogin  ?? false);
   const [settingTab, setSettingTab] = useState("game");
   const [savedOk,    setSavedOk]    = useState(false);
 
-  useEffect(() => {
-    fetchSystemRam().then(gb => {
-      setTotalRam(gb);
-      setRam(prev => {
-        // если уже есть сохранённое — оставить, иначе половина системной
-        if (prev !== null && prev >= 1 && prev <= gb) return prev;
-        return Math.max(2, Math.floor(gb / 2));
-      });
-    });
-  }, []);
-
   const handleSaveGame = () => {
-    saveSettings({ ...loadSettings(), ram, totalRam, resolution, notifs, autoLogin });
+    saveSettings({ ...loadSettings(), resolution, notifs, autoLogin });
     setSavedOk(true);
     setTimeout(() => setSavedOk(false), 2000);
   };
-
-  // Не рендерим пока не знаем реальный объём
-  if (totalRam === 0 || ram === null) {
-    return (
-      <div className="flex items-center justify-center h-full gap-2 text-white/20 text-[12px]">
-        <Loader2 size={14} className="animate-spin" />
-        Определяем систему...
-      </div>
-    );
-  }
-
-  const ramWarn = ram < 2
-    ? { text: "Слишком мало — игра будет вылетать", color: "rgba(248,113,113,0.8)", bg: "rgba(239,68,68,0.06)" }
-    : ram > totalRam * 0.75
-    ? { text: `Оставьте ОС минимум ${Math.max(2, totalRam - ram)} ГБ`, color: "rgba(250,204,21,0.8)", bg: "rgba(234,179,8,0.06)" }
-    : { text: "Оптимально для игры", color: "rgba(74,222,128,0.8)", bg: "rgba(34,197,94,0.06)" };
-
-  const pct = (ram / totalRam) * 100;
-
-  // Адаптивные метки: 1 ГБ шаг до 8, 2 ГБ до 16, 4 ГБ до 32
-  const _step = totalRam <= 8 ? 1 : totalRam <= 16 ? 2 : 4;
-  const ramSteps = Array.from(
-    { length: Math.floor(totalRam / _step) },
-    (_, i) => (i + 1) * _step
-  ).filter(v => v <= totalRam);
 
   return (
     <div className="flex flex-col">
@@ -714,42 +664,6 @@ function SettingsTab() {
             <motion.div key="game" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="flex flex-col gap-5 max-w-[520px]"
             >
-              {/* RAM */}
-              <Section title="Оперативная память">
-                <div className="flex flex-col gap-4">
-                  {/* Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[12px] text-white/55">
-                      <Cpu size={13} className="text-white/30" />
-                      Выделить память
-                    </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <motion.span
-                        key={ram}
-                        initial={{ scale: 1.25, color: "#60a5fa" }}
-                        animate={{ scale: 1, color: "#ffffff" }}
-                        transition={{ duration: 0.25 }}
-                        className="text-[20px] font-black tabular-nums"
-                      >{ram}</motion.span>
-                      <span className="text-[11px] text-white/30">/ {totalRam} ГБ</span>
-                    </div>
-                  </div>
-
-                  {/* Custom slider */}
-                  <RamSlider value={ram} max={totalRam} onChange={setRam} steps={ramSteps} pct={pct} />
-
-                  {/* Warn */}
-                  <motion.div
-                    key={ramWarn.text}
-                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                    style={{ background: ramWarn.bg }}
-                  >
-                    <span className="text-[11px]" style={{ color: ramWarn.color }}>{ramWarn.text}</span>
-                  </motion.div>
-                </div>
-              </Section>
-
               {/* Resolution */}
               <Section title="Разрешение окна">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -799,74 +713,6 @@ function SettingsTab() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-// ─── Custom RAM slider ────────────────────────────────────────────────────────
-function RamSlider({ value, max, onChange, steps, pct }) {
-  const trackRef = useRef(null);
-  const [dragging, setDragging] = useState(false);
-
-  const calcValue = useCallback((clientX) => {
-    const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    onChange(Math.max(1, Math.round(ratio * max)));
-  }, [max, onChange]);
-
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = e => calcValue(e.clientX);
-    const onUp   = () => setDragging(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-  }, [dragging, calcValue]);
-
-  return (
-    <div className="flex flex-col gap-2 select-none">
-      {/* Track */}
-      <div
-        ref={trackRef}
-        className="relative h-5 flex items-center cursor-pointer group"
-        onMouseDown={e => { setDragging(true); calcValue(e.clientX); }}
-      >
-        {/* Background track */}
-        <div className="absolute inset-y-0 flex items-center w-full">
-          <div className="w-full h-1.5 rounded-full bg-white/[0.08]" />
-        </div>
-        {/* Fill */}
-        <motion.div
-          className="absolute h-1.5 rounded-full bg-blue-600 origin-left"
-          style={{ width: `${pct}%` }}
-          animate={{ width: `${pct}%` }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        />
-        {/* Thumb */}
-        <motion.div
-          className="absolute w-4 h-4 rounded-full bg-white shadow-[0_0_12px_rgba(37,99,235,0.6)] -translate-x-1/2 cursor-grab active:cursor-grabbing"
-          style={{ left: `${pct}%` }}
-          animate={{ left: `${pct}%`, scale: dragging ? 1.2 : 1 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        />
-      </div>
-      {/* Step labels */}
-      <div className="relative h-4">
-        {steps.map(v => {
-          const pos = (v / max) * 100;
-          return (
-            <button
-              key={v}
-              onClick={() => onChange(v)}
-              className={`absolute -translate-x-1/2 text-[9px] transition-all duration-150 ${
-                value === v ? "text-blue-400 font-bold" : "text-white/20 hover:text-white/45"
-              }`}
-              style={{ left: `${pos}%` }}
-            >{v}Г</button>
-          );
-        })}
       </div>
     </div>
   );

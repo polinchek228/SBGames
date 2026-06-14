@@ -608,7 +608,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
     try {
       const data = await authedFetch("/api/inventory");
       setOwned(data.owned || []);
-      setEquip(data.equip || {});
+      setEquip((prev) => ({ ...prev, ...(data.equip || {}) }));
     } catch {
       setError("Не удалось загрузить инвентарь");
     } finally {
@@ -652,7 +652,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
           method: "POST",
           body: JSON.stringify({ itemId: item.id }),
         });
-        setEquip(r.equip);
+        setEquip((prev) => ({ ...prev, ...(r.equip || {}) }));
       }
     } catch (e) {
       setError(e.message);
@@ -676,7 +676,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
           method: "POST",
           body: JSON.stringify({ type }),
         });
-        setEquip(r.equip);
+        setEquip((prev) => ({ ...prev, ...(r.equip || {}) }));
       }
     } catch (e) {
       setError(e.message);
