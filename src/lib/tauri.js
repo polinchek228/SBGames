@@ -20,7 +20,16 @@ export async function notify(title, body) {
     console.warn("[notify] skipped empty/invalid:", title, body);
     return;
   }
-  return invoke("show_notification", { title, body });
+  try {
+    return await invoke("show_notification", { title, body });
+  } catch {
+    // Fallback to browser notification if Tauri native fails
+    try {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body });
+      }
+    } catch {}
+  }
 }
 
 export async function setDiscordPresence(details, status, largeImage = "sbgames") {

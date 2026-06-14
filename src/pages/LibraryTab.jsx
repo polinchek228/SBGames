@@ -24,28 +24,21 @@ const SORT_OPTIONS = [
   { id: "name",       label: "А-Я" },
 ];
 
-/* ── Item visual previews ─────────────────────────────────────────────────── */
+/* ── Item visual previews (clean, Steam-style) ──────────────────────────────── */
 
-function FramePreview({ color, name }) {
+function FramePreview({ color }) {
   return (
-    <div className="relative w-[80px] h-[80px]">
-      <div className="absolute -inset-3 rounded-2xl"
+    <div className="relative w-[80px] h-[80px] flex items-center justify-center">
+      {/* Solid colored border frame */}
+      <div className="absolute inset-0 rounded-[18px]"
         style={{
-          background: `radial-gradient(ellipse, ${color}30, transparent 70%)`,
-          filter: "blur(8px)",
+          border: `3px solid ${color}`,
+          boxShadow: `0 0 20px ${color}25`,
         }} />
-      <div className="absolute -inset-1.5 rounded-[20px]"
-        style={{
-          background: `linear-gradient(135deg, ${color}, ${color}55, ${color})`,
-          boxShadow: `0 0 24px ${color}30, inset 0 0 16px ${color}15`,
-        }} />
-      <div className="absolute -inset-0.5 rounded-[17px]"
-        style={{
-          background: `conic-gradient(from 45deg, ${color}90, transparent 25%, ${color}60 50%, transparent 75%, ${color}90)`,
-        }} />
-      <div className="relative w-full h-full rounded-[15px] flex items-center justify-center overflow-hidden"
-        style={{ background: "linear-gradient(160deg, #0c0c12, #08080e)", border: `1px solid ${color}20` }}>
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
+      {/* Inner content */}
+      <div className="relative w-[60px] h-[60px] rounded-[12px] flex items-center justify-center"
+        style={{ background: "rgba(255,255,255,0.04)" }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
           <circle cx="12" cy="8" r="4" fill={color} />
           <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
         </svg>
@@ -57,7 +50,7 @@ function FramePreview({ color, name }) {
 function BackgroundPreview({ color }) {
   return (
     <div className="w-[80px] h-[56px] rounded-xl overflow-hidden relative"
-      style={{ border: `1.5px solid ${color}18`, boxShadow: `0 0 20px ${color}10` }}>
+      style={{ border: `1.5px solid ${color}20` }}>
       <div className="absolute inset-0"
         style={{
           background: `
@@ -67,12 +60,13 @@ function BackgroundPreview({ color }) {
             linear-gradient(160deg, #06060c 0%, #0a0a18 50%, #04040a 100%)
           `,
         }} />
+      {/* Static particles */}
       <div className="absolute inset-0"
         style={{
-          background: `radial-gradient(1px 1px at 20% 30%, ${color}80, transparent),
+          background: `radial-gradient(1.5px 1.5px at 20% 30%, ${color}80, transparent),
                        radial-gradient(1px 1px at 60% 20%, ${color}60, transparent),
-                       radial-gradient(1px 1px at 80% 60%, ${color}50, transparent),
-                       radial-gradient(1px 1px at 40% 70%, ${color}40, transparent)`,
+                       radial-gradient(1.5px 1.5px at 80% 60%, ${color}50, transparent),
+                       radial-gradient(1px 1px at 40% 75%, ${color}40, transparent)`,
         }} />
     </div>
   );
@@ -80,40 +74,37 @@ function BackgroundPreview({ color }) {
 
 function AnimatedPreview({ color }) {
   return (
-    <div className="relative w-[80px] h-[80px]">
+    <div className="relative w-[80px] h-[80px] flex items-center justify-center">
+      {/* Outer ring */}
       <div className="absolute inset-0 rounded-full"
         style={{
-          background: `conic-gradient(from 0deg, ${color}, ${color}20, ${color}80, ${color}20, ${color})`,
-          animation: "spin 3s linear infinite",
-          filter: "blur(1.5px)",
+          border: `3px solid ${color}`,
+          boxShadow: `0 0 16px ${color}20`,
         }} />
-      <div className="absolute inset-[4px] rounded-full" style={{ background: "#0a0a10" }} />
-      <div className="absolute inset-[4px] rounded-full"
+      {/* Inner glow */}
+      <div className="absolute inset-[8px] rounded-full"
         style={{
-          background: `radial-gradient(circle, ${color}30, transparent 70%)`,
-          animation: "pulse 2s ease-in-out infinite",
+          background: `radial-gradient(circle, ${color}20, transparent 70%)`,
         }} />
-      <div className="relative w-full h-full rounded-full flex items-center justify-center">
-        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.4 }}>
-          <circle cx="12" cy="8" r="4" fill={color} />
-          <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
-        </svg>
-      </div>
+      {/* Avatar silhouette */}
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.35 }}>
+        <circle cx="12" cy="8" r="4" fill={color} />
+        <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
+      </svg>
     </div>
   );
 }
 
 function BadgePreview({ color, name }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
       style={{
-        background: `linear-gradient(135deg, ${color}20, ${color}08)`,
-        border: `1.5px solid ${color}35`,
-        boxShadow: `0 0 20px ${color}12`,
+        background: `${color}10`,
+        border: `1.5px solid ${color}25`,
       }}>
       <div className="w-6 h-6 rounded-full flex items-center justify-center"
         style={{ background: `${color}18` }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill={color}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill={color}>
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
         </svg>
       </div>
@@ -138,16 +129,12 @@ function ItemVisualLarge({ type, color, name }) {
   switch (type) {
     case "frame":
       return (
-        <div className="relative w-[160px] h-[160px]">
-          <div className="absolute -inset-6 rounded-3xl"
-            style={{ background: `radial-gradient(ellipse, ${color}35, transparent 70%)`, filter: "blur(12px)" }} />
-          <div className="absolute -inset-3 rounded-[28px]"
-            style={{ background: `linear-gradient(135deg, ${color}, ${color}55, ${color})`, boxShadow: `0 0 40px ${color}40, inset 0 0 24px ${color}20` }} />
-          <div className="absolute -inset-1 rounded-[24px]"
-            style={{ background: `conic-gradient(from 45deg, ${color}90, transparent 25%, ${color}60 50%, transparent 75%, ${color}90)` }} />
-          <div className="relative w-full h-full rounded-[20px] flex items-center justify-center overflow-hidden"
-            style={{ background: "linear-gradient(160deg, #0c0c12, #08080e)", border: `1.5px solid ${color}25` }}>
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.25 }}>
+        <div className="relative w-[160px] h-[160px] flex items-center justify-center">
+          <div className="absolute inset-0 rounded-[28px]"
+            style={{ border: `4px solid ${color}`, boxShadow: `0 0 40px ${color}30` }} />
+          <div className="relative w-[120px] h-[120px] rounded-[16px] flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.04)" }}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.25 }}>
               <circle cx="12" cy="8" r="4" fill={color} />
               <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
             </svg>
@@ -157,7 +144,7 @@ function ItemVisualLarge({ type, color, name }) {
     case "background":
       return (
         <div className="w-[200px] h-[130px] rounded-2xl overflow-hidden relative"
-          style={{ border: `2px solid ${color}20`, boxShadow: `0 0 40px ${color}15` }}>
+          style={{ border: `2px solid ${color}20` }}>
           <div className="absolute inset-0"
             style={{
               background: `
@@ -178,31 +165,23 @@ function ItemVisualLarge({ type, color, name }) {
       );
     case "avatar_animated":
       return (
-        <div className="relative w-[140px] h-[140px]">
+        <div className="relative w-[140px] h-[140px] flex items-center justify-center">
           <div className="absolute inset-0 rounded-full"
-            style={{
-              background: `conic-gradient(from 0deg, ${color}, ${color}20, ${color}80, ${color}20, ${color})`,
-              animation: "spin 3s linear infinite",
-              filter: "blur(2px)",
-            }} />
-          <div className="absolute inset-[6px] rounded-full" style={{ background: "#0a0a10" }} />
-          <div className="absolute inset-[6px] rounded-full"
-            style={{ background: `radial-gradient(circle, ${color}30, transparent 70%)`, animation: "pulse 2s ease-in-out infinite" }} />
-          <div className="relative w-full h-full rounded-full flex items-center justify-center">
-            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.35 }}>
-              <circle cx="12" cy="8" r="4" fill={color} />
-              <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
-            </svg>
-          </div>
+            style={{ border: `4px solid ${color}`, boxShadow: `0 0 30px ${color}20` }} />
+          <div className="absolute inset-[12px] rounded-full"
+            style={{ background: `radial-gradient(circle, ${color}18, transparent 70%)` }} />
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
+            <circle cx="12" cy="8" r="4" fill={color} />
+            <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
+          </svg>
         </div>
       );
     case "badge":
       return (
         <div className="flex items-center gap-3 px-8 py-5 rounded-2xl"
           style={{
-            background: `linear-gradient(135deg, ${color}20, ${color}08)`,
-            border: `2px solid ${color}35`,
-            boxShadow: `0 0 30px ${color}15`,
+            background: `${color}12`,
+            border: `2px solid ${color}30`,
           }}>
           <div className="w-10 h-10 rounded-full flex items-center justify-center"
             style={{ background: `${color}18` }}>
@@ -278,23 +257,25 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
       onClick={onClose}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }} />
+      <div className="absolute inset-0"
+        style={{ background: "rgba(0,0,0,0.75)" }} />
 
       {/* Modal */}
       <motion.div
-        className="relative w-full max-w-[480px] rounded-3xl overflow-hidden"
+        className="relative w-full max-w-[480px] rounded-2xl overflow-hidden"
         style={{
-          background: "linear-gradient(180deg, rgba(20,20,28,0.98) 0%, rgba(12,12,18,0.99) 100%)",
-          border: `1.5px solid ${item.color}20`,
-          boxShadow: `0 0 60px ${item.color}15, 0 25px 50px rgba(0,0,0,0.5)`,
+          background: "rgb(22,22,30)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
         }}
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        transition={{ duration: 0.15 }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
@@ -359,8 +340,8 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
                 <button
                   onClick={() => onUnequip(item.type)}
                   disabled={busy}
-                  className="px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all"
-                  style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)" }}
+                  className="px-5 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-150 active:scale-95"
+                  style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" }}
                 >
                   {busy ? "…" : "Снять"}
                 </button>
@@ -368,8 +349,8 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
                 <button
                   onClick={() => onEquip(item)}
                   disabled={busy}
-                  className="px-5 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all"
-                  style={{ background: `${item.color}cc`, boxShadow: `0 0 20px ${item.color}40` }}
+                  className="px-5 py-2.5 rounded-xl text-[12px] font-semibold text-white transition-all duration-150 active:scale-95"
+                  style={{ background: item.color, boxShadow: `0 0 16px ${item.color}35` }}
                 >
                   {busy ? "…" : "Экипировать"}
                 </button>
@@ -378,8 +359,8 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
               <button
                 onClick={() => onBuy(item)}
                 disabled={busy || !canAfford}
-                className="px-5 py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-40 transition-all"
-                style={{ background: `${item.color}cc`, boxShadow: `0 0 20px ${item.color}40` }}
+                className="px-5 py-2.5 rounded-xl text-[12px] font-semibold text-white disabled:opacity-40 transition-all duration-150 active:scale-95"
+                style={{ background: item.color, boxShadow: `0 0 16px ${item.color}35` }}
               >
                 {busy ? "…" : "Купить"}
               </button>
@@ -406,29 +387,30 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
   return (
     <motion.div
       ref={ref}
-      layout
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-200"
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="group relative rounded-xl overflow-hidden cursor-pointer"
       draggable={isOwned}
       onDragStart={handleDragStart}
       onClick={() => onOpen(item)}
       style={{
-        background: isEquipped ? `${item.color}0a` : "rgba(255,255,255,0.025)",
-        border: isEquipped ? `1.5px solid ${item.color}35` : "1.5px solid rgba(255,255,255,0.04)",
+        background: "rgba(30,30,40,0.6)",
+        border: isEquipped ? `1.5px solid ${item.color}50` : "1.5px solid rgba(255,255,255,0.06)",
       }}
     >
-      {/* Equipped glow ring */}
+      {/* Hover highlight */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+        style={{ background: "rgba(255,255,255,0.04)" }} />
+
+      {/* Equipped indicator — thin colored top bar */}
       {isEquipped && (
-        <div className="absolute -inset-px rounded-2xl pointer-events-none"
-          style={{
-            background: `conic-gradient(from 0deg, ${item.color}15, transparent 25%, ${item.color}10 50%, transparent 75%, ${item.color}15)`,
-            animation: "spin 8s linear infinite",
-          }} />
+        <div className="absolute top-0 left-0 right-0 h-[2px]"
+          style={{ background: item.color, boxShadow: `0 0 8px ${item.color}40` }} />
       )}
 
-      {/* Drag handle indicator */}
+      {/* Drag handle */}
       {isOwned && (
         <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-40 transition-opacity">
           <GripVertical size={12} className="text-white" />
@@ -437,49 +419,41 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
 
       {/* Visual area */}
       <div className="relative h-[110px] flex items-center justify-center overflow-hidden"
-        style={{
-          background: `radial-gradient(ellipse at 50% 120%, ${item.color}12 0%, transparent 70%), rgba(0,0,0,0.3)`,
-        }}>
+        style={{ background: "rgba(0,0,0,0.25)" }}>
         <ItemVisual type={item.type} color={item.color} name={item.name} />
-
-        {/* Type badge */}
-        <span className="absolute top-2 left-2 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider"
-          style={{ background: `${meta.color}18`, color: meta.color, border: `1px solid ${meta.color}25` }}>
-          {meta.label}
-        </span>
 
         {/* Rarity badge */}
         {rarity && (
-          <span className="absolute bottom-2 left-2 text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider"
-            style={{ background: `${rarity.color}15`, color: rarity.color }}>
+          <span className="absolute bottom-1.5 left-1.5 text-[7px] font-bold px-1.5 py-0.5 rounded"
+            style={{ background: `${rarity.color}20`, color: rarity.color }}>
             {rarity.label}
           </span>
         )}
 
-        {/* Status badges */}
+        {/* Equipped badge */}
         {isEquipped && (
-          <span className="absolute top-2 right-2 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider"
-            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
+          <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded"
+            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80" }}>
             ЭКИП.
           </span>
         )}
         {!isOwned && !canAfford && (
-          <span className="absolute top-2 right-2 text-[8px] font-black px-2 py-0.5 rounded-full"
+          <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded"
             style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5" }}>
             МАЛО СБТ
           </span>
         )}
 
         {/* Hover overlay — buttons */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200"
-          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}>
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          style={{ background: "rgba(0,0,0,0.55)" }}>
           {isOwned ? (
             isEquipped ? (
               <button
                 onClick={(e) => { e.stopPropagation(); onUnequip(); }}
                 disabled={busy}
-                className="px-4 py-2 rounded-xl text-[11px] font-bold transition-all"
-                style={{ background: "rgba(239,68,68,0.25)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)" }}
+                className="px-4 py-2 rounded-lg text-[11px] font-semibold transition-all duration-150 active:scale-95"
+                style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)" }}
               >
                 {busy ? "…" : "Снять"}
               </button>
@@ -487,8 +461,8 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
               <button
                 onClick={(e) => { e.stopPropagation(); onEquip(); }}
                 disabled={busy}
-                className="px-4 py-2 rounded-xl text-[11px] font-bold text-white transition-all"
-                style={{ background: `${item.color}cc`, boxShadow: `0 0 16px ${item.color}40` }}
+                className="px-4 py-2 rounded-lg text-[11px] font-semibold text-white transition-all duration-150 active:scale-95"
+                style={{ background: item.color, boxShadow: `0 0 12px ${item.color}40` }}
               >
                 {busy ? "…" : "Экипировать"}
               </button>
@@ -497,8 +471,8 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
             <button
               onClick={(e) => { e.stopPropagation(); onBuy(); }}
               disabled={busy || !canAfford}
-              className="px-4 py-2 rounded-xl text-[11px] font-bold text-white disabled:opacity-40 transition-all"
-              style={{ background: `${item.color}cc`, boxShadow: `0 0 16px ${item.color}40` }}
+              className="px-4 py-2 rounded-lg text-[11px] font-semibold text-white disabled:opacity-40 transition-all duration-150 active:scale-95"
+              style={{ background: item.color, boxShadow: `0 0 12px ${item.color}40` }}
             >
               {busy ? "…" : "Купить"}
             </button>
@@ -508,17 +482,17 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
 
       {/* Info */}
       <div className="px-3 py-2.5">
-        <p className="text-[12px] font-bold text-white truncate">{item.name}</p>
+        <p className="text-[12px] font-semibold text-white truncate">{item.name}</p>
         {item.desc && (
-          <p className="text-[10px] mt-1 leading-relaxed line-clamp-2"
+          <p className="text-[10px] mt-0.5 leading-relaxed line-clamp-2"
             style={{ color: "rgba(255,255,255,0.3)" }}>
             {item.desc}
           </p>
         )}
-        <div className="flex items-center gap-1.5 mt-2">
+        <div className="flex items-center gap-1.5 mt-1.5">
           <img src="/money.png" alt="" className="w-3 h-3"
             onError={(e) => { e.currentTarget.style.display = "none"; }} />
-          <span className="text-[11px] font-bold tabular-nums"
+          <span className="text-[11px] font-semibold tabular-nums"
             style={{
               color: isOwned ? "#4ade80" : canAfford ? "rgba(255,255,255,0.6)" : "rgba(248,113,113,0.6)",
             }}>

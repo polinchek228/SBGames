@@ -1,22 +1,27 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
-import { X, Bell, CheckCircle, Users, Coins, MessageCircle, Info } from "lucide-react";
+import { X, Bell, CheckCircle, Users, Coins, MessageCircle, Info, Trash2 } from "lucide-react";
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 const NotifCtx = createContext(null);
 export function useNotifications() { return useContext(NotifCtx); }
 
+let _globalPush = null;
+export function pushNotification(title, body, type = "system") {
+  if (_globalPush) _globalPush(title, body, type);
+}
+
 const ICONS = {
-  friend:  { icon: Users,         color: "#60a5fa", bg: "rgba(37,99,235,0.15)"  },
-  balance: { icon: Coins,         color: "#34d399", bg: "rgba(52,211,153,0.12)" },
-  ticket:  { icon: MessageCircle, color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-  system:  { icon: Info,          color: "#a78bfa", bg: "rgba(139,92,246,0.12)" },
-  success: { icon: CheckCircle,   color: "#34d399", bg: "rgba(52,211,153,0.12)" },
+  friend:  { icon: Users,         color: "#60a5fa", accent: "#3b82f6" },
+  balance: { icon: Coins,         color: "#34d399", accent: "#10b981" },
+  ticket:  { icon: MessageCircle, color: "#f59e0b", accent: "#f59e0b" },
+  system:  { icon: Info,          color: "#a78bfa", accent: "#8b5cf6" },
+  success: { icon: CheckCircle,   color: "#34d399", accent: "#10b981" },
 };
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function NotificationProvider({ children }) {
-  const [toasts, setToasts] = useState([]);          // всплывающие уведомления
+  const [toasts, setToasts] = useState([]);
   const [inbox,  setInbox]  = useState(() => {
     try { return JSON.parse(localStorage.getItem("sbg_notifs") || "[]"); }
     catch { return []; }
@@ -32,17 +37,20 @@ export function NotificationProvider({ children }) {
     const id = ++idRef.current;
     const notif = { id, title, body, type, time: Date.now(), read: false };
 
-    // Toast
     setToasts(prev => [notif, ...prev].slice(0, 5));
-    setTimeout(() => setToasts(prev => prev.filter(n => n.id !== id)), 5000);
+    setTimeout(() => setToasts(prev => prev.filter(n => n.id !== id)), 4500);
 
-    // Inbox
     setInbox(prev => {
       const next = [notif, ...prev].slice(0, 50);
       localStorage.setItem("sbg_notifs", JSON.stringify(next));
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    _globalPush = push;
+    return () => { _globalPush = null; };
+  }, [push]);
 
   const markAllRead = useCallback(() => {
     setInbox(prev => {
@@ -69,90 +77,97 @@ export function NotificationProvider({ children }) {
   );
 }
 
-// ─── Toast stack (нижний правый угол) ────────────────────────────────────────
+// ─── Toast stack — Steam style, top-right corner ─────────────────────────────
 function ToastStack({ toasts, onDismiss }) {
   return (
-    <div className="fixed bottom-5 right-5 z-[9990] flex flex-col-reverse gap-2.5 pointer-events-none"
-      style={{ width: 320 }}
+    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"
+      style={{ width: 340 }}
     >
-      <AnimatePresence mode="popLayout">
-        {toasts.map((n, idx) => (
-          <Toast key={n.id} notif={n} idx={idx} onDismiss={onDismiss} />
+      <AnimatePresence>
+        {toasts.map((n) => (
+          <Toast key={n.id} notif={n} onDismiss={onDismiss} />
         ))}
       </AnimatePresence>
     </div>
   );
 }
 
-function Toast({ notif, idx, onDismiss }) {
+function Toast({ notif, onDismiss }) {
   const meta = ICONS[notif.type] || ICONS.system;
   const Icon = meta.icon;
   const [progress, setProgress] = useState(100);
 
   useEffect(() => {
     const start = Date.now();
-    const total = 5000;
-    const raf = () => {
+    const total = 4500;
+    let raf;
+    const tick = () => {
       const pct = Math.max(0, 100 - ((Date.now() - start) / total) * 100);
       setProgress(pct);
-      if (pct > 0) requestAnimationFrame(raf);
+      if (pct > 0) raf = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(raf);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: 60, scale: 0.92 }}
+      initial={{ opacity: 0, x: 80, scale: 0.9 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 60, scale: 0.88 }}
-      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+      exit={{ opacity: 0, x: 80, scale: 0.85, filter: "blur(4px)" }}
+      transition={{ type: "spring", stiffness: 380, damping: 30 }}
       style={{ pointerEvents: "auto" }}
     >
       <div
-        className="relative rounded-2xl overflow-hidden flex items-start gap-3 p-3.5"
+        className="relative rounded-xl overflow-hidden"
         style={{
-          background: "rgba(10,10,14,0.97)",
-          boxShadow: "0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)",
-          backdropFilter: "blur(20px)",
+          background: "linear-gradient(135deg, #1a1a24 0%, #14141c 100%)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
       >
-        {/* Icon */}
-        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ background: meta.bg }}
-        >
-          <Icon size={14} style={{ color: meta.color }} />
-        </div>
+        {/* Accent top line */}
+        <div className="h-[2px] w-full" style={{ background: `linear-gradient(90deg, transparent, ${meta.accent}, transparent)` }} />
 
-        {/* Text */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-semibold text-white leading-tight">{notif.title}</p>
-          <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "rgba(255,255,255,0.5)" }}>
-            {notif.body}
-          </p>
-        </div>
+        <div className="flex items-start gap-3 p-3.5">
+          {/* Icon */}
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{
+              background: `linear-gradient(135deg, ${meta.accent}20, ${meta.accent}08)`,
+              border: `1px solid ${meta.accent}25`,
+            }}
+          >
+            <Icon size={15} style={{ color: meta.color }} />
+          </div>
 
-        {/* Close */}
-        <button
-          onClick={() => onDismiss(notif.id)}
-          className="w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-150"
-          style={{ color: "rgba(255,255,255,0.25)" }}
-          onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
-          onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.25)"}
-        >
-          <X size={10} />
-        </button>
+          {/* Text */}
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className="text-[11.5px] font-bold text-white leading-tight tracking-wide">{notif.title}</p>
+            <p className="text-[10.5px] mt-1 leading-snug" style={{ color: "rgba(255,255,255,0.45)" }}>
+              {notif.body}
+            </p>
+          </div>
+
+          {/* Close */}
+          <button
+            onClick={() => onDismiss(notif.id)}
+            className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all duration-100"
+            style={{ color: "rgba(255,255,255,0.2)" }}
+            onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.2)"}
+          >
+            <X size={11} />
+          </button>
+        </div>
 
         {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 right-0 h-[2px]"
-          style={{ background: "rgba(255,255,255,0.05)" }}
-        >
+        <div className="h-[2px] w-full" style={{ background: "rgba(255,255,255,0.03)" }}>
           <div
-            className="h-full transition-none"
+            className="h-full"
             style={{
               width: `${progress}%`,
-              background: `linear-gradient(90deg, ${meta.color}80, ${meta.color})`,
-              transition: "width 0.1s linear",
+              background: `linear-gradient(90deg, ${meta.accent}60, ${meta.accent})`,
+              transition: "width 0.08s linear",
             }}
           />
         </div>
@@ -161,7 +176,7 @@ function Toast({ notif, idx, onDismiss }) {
   );
 }
 
-// ─── Bell icon + панель ───────────────────────────────────────────────────────
+// ─── Bell icon + panel — Steam style ──────────────────────────────────────────
 export function NotificationBell() {
   const { inbox, unread, markAllRead, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
@@ -170,18 +185,16 @@ export function NotificationBell() {
   const bellRef = useRef(null);
   const panelRef = useRef(null);
 
-  // Анимация звонка при новом уведомлении
   useEffect(() => {
-    if (unread > prevUnread.current && prevUnread.current > 0) {
+    if (unread > prevUnread.current) {
       controls.start({
-        rotate: [0, -18, 18, -12, 12, -6, 6, 0],
-        transition: { duration: 0.55, ease: "easeInOut" },
+        rotate: [0, -15, 15, -10, 10, -5, 5, 0],
+        transition: { duration: 0.5, ease: "easeInOut" },
       });
     }
     prevUnread.current = unread;
   }, [unread, controls]);
 
-  // Закрываем при клике вне
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -198,89 +211,110 @@ export function NotificationBell() {
     if (!open) markAllRead();
   };
 
+  const hasInbox = inbox.length > 0;
+
   return (
     <div className="relative" style={{ zIndex: 100 }}>
-      {/* Bell button */}
       <div ref={bellRef}>
-      <motion.button
-        onClick={toggle}
-        animate={controls}
-        whileTap={{ scale: 0.88 }}
-        className="relative w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
-        style={open
-          ? { background: "rgba(139,92,246,0.2)", color: "#a78bfa" }
-          : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)" }
-        }
-        onMouseEnter={e => { if (!open) { e.currentTarget.style.color = "rgba(255,255,255,0.7)"; e.currentTarget.style.background = "rgba(255,255,255,0.09)"; } }}
-        onMouseLeave={e => { if (!open) { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background = "rgba(255,255,255,0.05)"; } }}
-      >
-        <Bell size={13} />
+        <motion.button
+          onClick={toggle}
+          animate={controls}
+          whileTap={{ scale: 0.88 }}
+          className="relative w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150"
+          style={open
+            ? { background: "rgba(139,92,246,0.25)", color: "#a78bfa" }
+            : { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.45)" }
+          }
+          onMouseEnter={e => { if (!open) { e.currentTarget.style.color = "#a78bfa"; e.currentTarget.style.background = "rgba(139,92,246,0.15)"; } }}
+          onMouseLeave={e => { if (!open) { e.currentTarget.style.color = "rgba(255,255,255,0.45)"; e.currentTarget.style.background = "rgba(255,255,255,0.06)"; } }}
+        >
+          <Bell size={14} />
 
-        {/* Badge */}
-        <AnimatePresence>
-          {unread > 0 && (
-            <motion.span
-              key="badge"
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 500, damping: 28 }}
-              className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full flex items-center justify-center text-[8px] font-black text-white"
-              style={{ background: "#7c3aed", boxShadow: "0 0 8px rgba(124,58,237,0.7)" }}
-            >
-              {unread > 9 ? "9+" : unread}
-            </motion.span>
+          <AnimatePresence>
+            {unread > 0 && (
+              <motion.span
+                key="badge"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 28 }}
+                className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full flex items-center justify-center text-[8px] font-black text-white"
+                style={{ background: "#7c3aed", boxShadow: "0 0 8px rgba(124,58,237,0.7)" }}
+              >
+                {unread > 9 ? "9+" : unread}
+              </motion.span>
+            )}
+          </AnimatePresence>
+
+          {unread === 0 && hasInbox && !open && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
+              style={{ background: "#7c3aed", boxShadow: "0 0 6px rgba(124,58,237,0.5)" }}
+            />
           )}
-        </AnimatePresence>
 
-        {/* Пульс при непрочитанных */}
-        {unread > 0 && !open && (
-          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full animate-ping"
-            style={{ background: "rgba(124,58,237,0.4)" }}
-          />
-        )}
-      </motion.button>
+          {unread > 0 && !open && (
+            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full animate-ping"
+              style={{ background: "rgba(124,58,237,0.4)" }}
+            />
+          )}
+        </motion.button>
       </div>
 
-      {/* Panel */}
+      {/* Panel — Steam style dropdown */}
       <AnimatePresence>
         {open && (
           <motion.div
             ref={panelRef}
-            initial={{ opacity: 0, scale: 0.92, y: -8 }}
+            initial={{ opacity: 0, scale: 0.95, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.92, y: -8 }}
-            transition={{ type: "spring", stiffness: 420, damping: 32 }}
-            className="absolute top-9 right-0 w-[300px] rounded-2xl overflow-hidden"
+            exit={{ opacity: 0, scale: 0.95, y: -8 }}
+            transition={{ type: "spring", stiffness: 450, damping: 32 }}
+            className="absolute top-10 right-0 w-[320px] rounded-xl overflow-hidden"
             style={{
               zIndex: 10001,
-              background: "rgba(9,9,12,0.98)",
-              boxShadow: "0 8px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07)",
+              background: "linear-gradient(180deg, #1a1a24 0%, #14141c 100%)",
+              boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
             }}
           >
-            {/* Panel header */}
+            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3"
               style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
             >
-              <p className="text-[12px] font-bold text-white">Уведомления</p>
+              <div className="flex items-center gap-2">
+                <Bell size={12} style={{ color: "rgba(255,255,255,0.3)" }} />
+                <p className="text-[11px] font-bold text-white tracking-wide uppercase">Уведомления</p>
+                {unread > 0 && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
+                    {unread}
+                  </span>
+                )}
+              </div>
               {inbox.length > 0 && (
                 <button onClick={clearAll}
-                  className="text-[10px] transition-colors duration-150"
+                  className="flex items-center gap-1 text-[9px] font-semibold transition-colors duration-100 px-2 py-1 rounded"
                   style={{ color: "rgba(255,255,255,0.25)" }}
-                  onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}
-                  onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.25)"}
+                  onMouseEnter={e => { e.currentTarget.style.color = "#f87171"; e.currentTarget.style.background = "rgba(248,113,113,0.1)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.25)"; e.currentTarget.style.background = "transparent"; }}
                 >
+                  <Trash2 size={10} />
                   Очистить
                 </button>
               )}
             </div>
 
             {/* List */}
-            <div className="max-h-[360px] overflow-y-auto">
+            <div className="max-h-[380px] overflow-y-auto">
               {inbox.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-10 opacity-30">
-                  <Bell size={22} className="text-white" />
-                  <p className="text-[11px] text-white">Нет уведомлений</p>
+                <div className="flex flex-col items-center gap-3 py-12">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                    <Bell size={20} style={{ color: "rgba(255,255,255,0.12)" }} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[11px] font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>Пусто</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.15)" }}>Уведомления появятся здесь</p>
+                  </div>
                 </div>
               ) : (
                 inbox.slice(0, 20).map((n, i) => {
@@ -289,34 +323,37 @@ export function NotificationBell() {
                   return (
                     <motion.div
                       key={n.id}
-                      initial={{ opacity: 0, x: -8 }}
+                      initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className="flex items-start gap-3 px-4 py-3 transition-all duration-150"
+                      transition={{ delay: i * 0.025 }}
+                      className="flex items-start gap-3 px-4 py-3 transition-all duration-100 cursor-default"
                       style={{
-                        background: n.read ? "transparent" : "rgba(124,58,237,0.05)",
+                        background: n.read ? "transparent" : "rgba(124,58,237,0.04)",
                         borderBottom: "1px solid rgba(255,255,255,0.03)",
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
-                      onMouseLeave={e => e.currentTarget.style.background = n.read ? "transparent" : "rgba(124,58,237,0.05)"}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
+                      onMouseLeave={e => e.currentTarget.style.background = n.read ? "transparent" : "rgba(124,58,237,0.04)"}
                     >
-                      <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-                        style={{ background: meta.bg }}
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                        style={{
+                          background: `linear-gradient(135deg, ${meta.accent}18, ${meta.accent}06)`,
+                          border: `1px solid ${meta.accent}20`,
+                        }}
                       >
                         <Icon size={12} style={{ color: meta.color }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-semibold text-white leading-tight">{n.title}</p>
-                        <p className="text-[10px] mt-0.5 leading-snug" style={{ color: "rgba(255,255,255,0.45)" }}>
+                        <p className="text-[11px] font-bold text-white leading-tight">{n.title}</p>
+                        <p className="text-[10px] mt-0.5 leading-snug" style={{ color: "rgba(255,255,255,0.4)" }}>
                           {n.body}
                         </p>
-                        <p className="text-[9px] mt-1" style={{ color: "rgba(255,255,255,0.2)" }}>
+                        <p className="text-[9px] mt-1 font-medium" style={{ color: "rgba(255,255,255,0.18)" }}>
                           {ago(n.time)}
                         </p>
                       </div>
                       {!n.read && (
                         <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5"
-                          style={{ background: "#7c3aed", boxShadow: "0 0 6px rgba(124,58,237,0.6)" }}
+                          style={{ background: meta.accent, boxShadow: `0 0 6px ${meta.accent}80` }}
                         />
                       )}
                     </motion.div>

@@ -5,6 +5,7 @@ import {
   WifiHigh, WifiSlash, PaperPlaneTilt, Check, Checks,
   CaretLeft, Users, UserPlus, SignOut,
 } from "@phosphor-icons/react";
+import { Eye } from "lucide-react";
 import { WS_URL, getToken, authFetch } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
 
@@ -69,7 +70,7 @@ export function useCommunityWS(user, onEvent) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function CommunityPage({ onClose, user, onBadgeChange }) {
+export default function CommunityPage({ onClose, user, onBadgeChange, onViewProfile }) {
   const [tab,         setTab]         = useState("friends");
   const [friends,     setFriends]     = useState([]);
   const [requests,    setRequests]    = useState([]);
@@ -81,7 +82,6 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
   const [searching,  setSearching]  = useState(false);
   const [chatWith,    setChatWith]    = useState(null);
   const [messages,    setMessages]    = useState([]);
-  const [viewProfile, setViewProfile] = useState(null); // player id to view
 
   // Группы
   const [groups,         setGroups]         = useState([]);
@@ -298,17 +298,6 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
 
       {/* Content */}
       <AnimatePresence mode="wait">
-        {/* PLAYER PROFILE VIEW */}
-        {viewProfile && (
-          <PlayerProfileView
-            key="profile"
-            userId={viewProfile}
-            viewer={user}
-            onBack={() => setViewProfile(null)}
-            onOpenChat={(friend) => { setViewProfile(null); openChat(friend); }}
-          />
-        )}
-
         {/* FRIENDS */}
         {tab === "friends" && (
           <motion.div key="fr" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -332,7 +321,7 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
                   Друзья · {friends.length}
                 </p>
                 {friends.map((f, i) => (
-                  <FriendRow key={f.id} f={f} online={onlineIds.has(f.id)} i={i} onChat={() => openChat(f)} onProfile={() => setViewProfile(f.id)} />
+                  <FriendRow key={f.id} f={f} online={onlineIds.has(f.id)} i={i} onChat={() => openChat(f)} onProfile={() => onViewProfile(f.id)} />
                 ))}
               </>
             )}
@@ -379,7 +368,7 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
             {/* Результаты поиска */}
             {addNick.length >= 2 && (
               <div className="flex flex-col gap-1 mt-1">
-                <p className="text-[9px] uppercase tracking-widest px-1 flex items-center gap-2"
+                <span className="text-[9px] uppercase tracking-widest px-1 flex items-center gap-2"
                   style={{ color: "rgba(255,255,255,0.18)" }}>
                   {searching ? "Поиск..." :
                     searchResults.length === 0 ? "Не найдено" :
@@ -387,7 +376,7 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
                   {searching && (
                     <div className="w-3 h-3 border border-white/20 border-t-white/60 rounded-full animate-spin" />
                   )}
-                </p>
+                </span>
 
                 <AnimatePresence>
                   {searchResults.map((u, i) => {
@@ -425,19 +414,31 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
                           </p>
                         </div>
                         {!isMe && !isFriend && (
-                          <motion.button
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => {
-                              setAddNick(u.username);
-                              setTimeout(sendFriendRequest, 50);
-                            }}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-150"
-                            style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}
-                            onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.4)"}
-                            onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.2)"}
-                          >
-                            <UserCirclePlus size={12} />
-                          </motion.button>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <motion.button
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => onViewProfile(u.id)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+                              style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}
+                              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+                            >
+                              <Eye size={12} />
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => {
+                                setAddNick(u.username);
+                                setTimeout(sendFriendRequest, 50);
+                              }}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+                              style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}
+                              onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.4)"}
+                              onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.2)"}
+                            >
+                              <UserCirclePlus size={12} />
+                            </motion.button>
+                          </div>
                         )}
                       </motion.div>
                     );
@@ -480,13 +481,18 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
                     className="flex items-center gap-2.5 px-2 py-2.5 rounded-xl"
                     style={{ background: "rgba(255,255,255,0.03)" }}
                   >
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                    <button onClick={() => onViewProfile(req.fromId)}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black flex-shrink-0 cursor-pointer"
                       style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.6)" }}
                     >
                       {req.fromUsername?.slice(0, 2).toUpperCase()}
-                    </div>
+                    </button>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[11px] font-semibold truncate text-white">{req.fromUsername}</p>
+                      <button onClick={() => onViewProfile(req.fromId)}
+                        className="text-left"
+                      >
+                        <p className="text-[11px] font-semibold truncate text-white hover:text-blue-300 transition-colors">{req.fromUsername}</p>
+                      </button>
                       <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>Хочет добавить вас</p>
                     </div>
                     <div className="flex gap-1">
@@ -515,6 +521,28 @@ export default function CommunityPage({ onClose, user, onBadgeChange }) {
           <motion.div key={`dm-${chatWith.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="flex-1 flex flex-col overflow-hidden"
           >
+            {/* DM Header with profile link */}
+            <div className="flex items-center gap-2 px-3 py-2.5 flex-shrink-0"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+            >
+              <button onClick={() => setChatWith(null)}
+                className="w-6 h-6 rounded-lg flex items-center justify-center"
+                style={{ color: "rgba(255,255,255,0.4)" }}
+              >
+                <CaretLeft size={14} weight="bold" />
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-bold text-white truncate">{chatWith.username}</p>
+              </div>
+              <button onClick={() => { onViewProfile(chatWith.id); setChatWith(null); }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
+              >
+                <Eye size={13} />
+              </button>
+            </div>
             <DMChat
               chatWith={chatWith}
               messages={messages}
@@ -615,181 +643,6 @@ function FriendRow({ f, online, i, onChat, onProfile }) {
       >
         <ChatCircle size={13} />
       </button>
-    </motion.div>
-  );
-}
-
-// ─── Player Profile View ──────────────────────────────────────────────────────
-function PlayerProfileView({ userId, viewer, onBack, onOpenChat }) {
-  const [profile, setProfile] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await authFetch(`/api/user/${userId}`);
-        const d = await r.json();
-        setProfile(d);
-      } catch {}
-      try {
-        const r = await authFetch(`/api/user/${userId}/comments`);
-        const d = await r.json();
-        setComments(d.comments || []);
-      } catch {}
-      setLoading(false);
-    })();
-  }, [userId]);
-
-  const sendComment = async () => {
-    if (!commentText.trim() || sending) return;
-    setSending(true);
-    try {
-      const r = await authFetch(`/api/user/${userId}/comments`, {
-        method: "POST",
-        body: JSON.stringify({ text: commentText.trim() }),
-      });
-      const d = await r.json();
-      if (d.comment) setComments(prev => [d.comment, ...prev]);
-      setCommentText("");
-    } catch {}
-    setSending(false);
-  };
-
-  if (loading) return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="w-5 h-5 border-2 border-white/10 border-t-white/40 rounded-full animate-spin" />
-    </div>
-  );
-
-  if (!profile) return (
-    <div className="flex-1 flex items-center justify-center">
-      <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.3)" }}>Профиль не найден</p>
-    </div>
-  );
-
-  return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-      className="flex-1 flex flex-col overflow-hidden"
-    >
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
-      >
-        <button onClick={onBack} className="w-6 h-6 rounded-lg flex items-center justify-center"
-          style={{ color: "rgba(255,255,255,0.4)" }}>
-          <CaretLeft size={14} weight="bold" />
-        </button>
-        <p className="text-[12px] font-bold text-white flex-1 truncate">{profile.username}</p>
-        {profile.role === "admin" && (
-          <span className="text-[8px] px-1.5 py-0.5 rounded font-bold"
-            style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5" }}>ADMIN</span>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
-        {/* Profile card */}
-        <div className="rounded-xl p-3 flex items-center gap-3"
-          style={{ background: "rgba(255,255,255,0.03)" }}
-        >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-black flex-shrink-0"
-            style={{ background: profile.role === "admin" ? "rgba(239,68,68,0.15)" : "rgba(37,99,235,0.15)",
-              color: profile.role === "admin" ? "#fca5a5" : "#93c5fd" }}
-          >
-            {profile.username?.slice(0, 2).toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-white truncate">{profile.username}</p>
-            <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>
-              #{profile.id?.toString().slice(-6)}
-            </p>
-          </div>
-        </div>
-
-        {/* Bio */}
-        {profile.bio && (
-          <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-            <p className="text-[9px] uppercase tracking-widest mb-1.5" style={{ color: "rgba(255,255,255,0.18)" }}>Описание</p>
-            <p className="text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>{profile.bio}</p>
-          </div>
-        )}
-
-        {/* Equip preview */}
-        {profile.equip && Object.keys(profile.equip).length > 0 && (
-          <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-            <p className="text-[9px] uppercase tracking-widest mb-1.5" style={{ color: "rgba(255,255,255,0.18)" }}>Экипировка</p>
-            <div className="flex gap-1.5 flex-wrap">
-              {Object.entries(profile.equip).map(([type, itemId]) => (
-                <span key={type} className="text-[9px] px-2 py-1 rounded-lg"
-                  style={{ background: "rgba(99,102,241,0.12)", color: "#93c5fd" }}>
-                  {itemId.replace(/^(frame|bg|avatar_animated|badge)_/, "")}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          <button onClick={() => {
-            const friend = { id: profile.id, username: profile.username };
-            onOpenChat(friend);
-          }}
-            className="flex-1 py-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5"
-            style={{ background: "rgba(37,99,235,0.18)", color: "#93c5fd" }}
-          >
-            <ChatCircle size={12} /> Написать
-          </button>
-        </div>
-
-        {/* Comments */}
-        <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-          <p className="text-[9px] uppercase tracking-widest mb-2" style={{ color: "rgba(255,255,255,0.18)" }}>
-            Комментарии ({comments.length})
-          </p>
-
-          {/* Add comment */}
-          {viewer?.id !== userId && (
-            <div className="flex gap-2 mb-3">
-              <input value={commentText} onChange={e => setCommentText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") sendComment(); }}
-                placeholder="Написать комментарий..."
-                className="flex-1 rounded-lg text-[11px] px-3 py-1.5 outline-none"
-                style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }}
-              />
-              <button onClick={sendComment} disabled={!commentText.trim() || sending}
-                className="px-3 py-1.5 rounded-lg text-[10px] font-bold disabled:opacity-30"
-                style={{ background: "rgba(37,99,235,0.3)", color: "#93c5fd" }}>
-                {sending ? "..." : "→"}
-              </button>
-            </div>
-          )}
-
-          {/* Comment list */}
-          {comments.length === 0 ? (
-            <p className="text-[10px] text-center py-3" style={{ color: "rgba(255,255,255,0.2)" }}>
-              Пока нет комментариев
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {comments.map(c => (
-                <div key={c.id} className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-[10px] font-semibold" style={{ color: "#93c5fd" }}>@{c.fromUsername}</span>
-                    <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.2)" }}>
-                      {new Date(c.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                  <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>{c.text}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
     </motion.div>
   );
 }

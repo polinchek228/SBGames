@@ -62,25 +62,9 @@ app.use("/tg-webhook", express.json({ limit: "1mb" }));
 app.use(express.json({ limit: "32kb" })); // Ограничение размера тела для всего остального
 
 // Rate limiters
-const authLimiter = rateLimit({
-  windowMs: 60_000, max: 10,
-  message: { message: "Слишком много запросов" },
-  standardHeaders: true, legacyHeaders: false,
-  // Не трогаем дешёвые no-op эндпоинты — для них свой мягкий лимит
-  skip: (req) => req.path === "/create-code" || req.path === "/check-code",
-});
-const authLightLimiter = rateLimit({
-  windowMs: 60_000, max: 120,
-  message: { message: "Слишком частые запросы" },
-  standardHeaders: true, legacyHeaders: false,
-});
 const apiLimiter  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
 
-// Мягкий лимит для /auth/create-code и /auth/check-code
-app.use("/auth/create-code", authLightLimiter);
-app.use("/auth/check-code",  authLightLimiter);
-// Строгий лимит на всё остальное /auth/*
-app.use("/auth", authLimiter);
+// API rate limit
 app.use("/api",  apiLimiter);
 
 // ─── Input sanitizer ──────────────────────────────────────────────────────────
@@ -228,13 +212,18 @@ app.get("/api/user/:id", async (req, res) => {
   const id = sanitize(req.params.id, 64);
   const acc = await redisAccounts.get(id);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
+  const online = [...wsClients.values()].some(c => c.userId === id);
+  const friendCount = getFriends(id).size;
   res.json({
     id: acc.id,
     username: acc.username,
     role: acc.role,
     bio: acc.bio || "",
     equip: acc.equip || {},
+    inventory: Array.isArray(acc.inventory) ? acc.inventory : [],
     createdAt: acc.createdAt,
+    online,
+    friendCount,
   });
 });
 

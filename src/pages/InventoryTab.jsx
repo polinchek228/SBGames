@@ -48,8 +48,8 @@ function ItemCard({ item, equipped, onEquip, onUnequip, busy }) {
       {item.rarity === "legendary" && (
         <div className="absolute -inset-px rounded-2xl pointer-events-none"
           style={{
-            background: `conic-gradient(from 0deg, ${rarity.color}15, transparent 25%, ${rarity.color}10 50%, transparent 75%, ${rarity.color}15)`,
-            animation: "spin 6s linear infinite",
+            border: `1.5px solid ${rarity.color}30`,
+            boxShadow: `0 0 12px ${rarity.color}15`,
           }}
         />
       )}

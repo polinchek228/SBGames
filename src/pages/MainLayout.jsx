@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   GameController, User, Trophy, ShoppingBag,
@@ -13,7 +13,7 @@ import SupportPage from "./SupportPage.jsx";
 import CommunityPage from "./CommunityPage.jsx";
 import LeaderboardPage from "./LeaderboardPage.jsx";
 import DownloadProgress from "../components/DownloadProgress.jsx";
-import { NotificationBell, useNotifications } from "../components/NotificationSystem.jsx";
+import { NotificationBell, useNotifications, pushNotification } from "../components/NotificationSystem.jsx";
 import { notify, setDiscordPresence, invoke } from "../lib/tauri.js";
 import { WS_URL, getToken } from "../lib/api.js";
 
@@ -29,11 +29,13 @@ const NAV_ITEMS = [
 export default function MainLayout({ user, onLogout }) {
   const [page, setPage] = useState("play");
   const [showCommunity, setShowCommunity] = useState(false);
+  const [viewUserId, setViewUserId] = useState(null);
   const [friendBadge, setFriendBadge] = useState(0);
   const [balance, setBalance] = useState(user?.balance ?? 0);
-  const { push: pushNotif, inbox } = useNotifications() || {};
+  const balanceRef = useRef(balance);
+  balanceRef.current = balance;
 
-  // ─── 8. WS-уведомления (баланс, друзья, тикеты) ──────────────────────────
+  // ─── WS-уведомления (баланс, друзья, тикеты) ──────────────────────────
   useEffect(() => {
     let dead = false;
     const ws = new WebSocket(WS_URL);
@@ -50,16 +52,17 @@ export default function MainLayout({ user, onLogout }) {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "balance_update") {
+          const diff = msg.balance - balanceRef.current;
           setBalance(msg.balance);
-          pushNotif?.("Баланс пополнен", `+${msg.balance - balance} СБТ · Новый баланс: ${msg.balance} СБТ`, "balance");
+          pushNotification("Баланс пополнен", `+${diff} СБТ · Новый баланс: ${msg.balance} СБТ`, "balance");
           await notify("SB Games", `Баланс пополнен: ${msg.balance} СБТ`);
         }
         if (msg.type === "friend_accepted") {
-          pushNotif?.("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
+          pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
           await notify("SB Games", `${msg.byUsername} принял заявку в друзья`);
         }
         if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
-          pushNotif?.("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
+          pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
           await notify("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
         }
       } catch {}
@@ -73,15 +76,30 @@ export default function MainLayout({ user, onLogout }) {
     setDiscordPresence("В лаунчере", "SB Games", "sbgames");
   }, []);
 
-  // Приветственное уведомление при первом входе
+  // Запрос разрешения на уведомления при первом входе
   useEffect(() => {
-    const welcomed = localStorage.getItem("sbg_welcomed");
-    if (!welcomed && user) {
-      setTimeout(() => {
-        pushNotif?.("Добро пожаловать!", `Привет, ${user.username}! Ты в лаунчере SB Games.`, "system");
-        localStorage.setItem("sbg_welcomed", "1");
-      }, 1500);
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
     }
+  }, []);
+
+  // Приветственное уведомление — только один раз за всё время
+  useEffect(() => {
+    if (!user) return;
+    if (localStorage.getItem("sbg_welcomed")) return;
+    const timer = setTimeout(() => {
+      if (!localStorage.getItem("sbg_welcomed")) {
+        pushNotification("Добро пожаловать!", `Привет, ${user.username}! Это SB Games лаунчер.`, "system");
+        localStorage.setItem("sbg_welcomed", "1");
+      }
+    }, 1500);
+
+    // ТЕСТ — уведомление сразу (убрать потом)
+    const testTimer = setTimeout(() => {
+      pushNotification("Тест уведомления", "Это кастомное уведомление в Steam-стиле", "friend");
+    }, 800);
+
+    return () => { clearTimeout(timer); clearTimeout(testTimer); };
   }, [user]);
 
   // Трей-навигация: Rust шлёт window.__navigateTo('play' | 'support')
@@ -114,6 +132,7 @@ export default function MainLayout({ user, onLogout }) {
   }, [user, balance, onLogout]);
 
   // Синхронизируем уведомления в трей
+  const { inbox } = useNotifications() || { inbox: [] };
   useEffect(() => {
     invoke("tray_update_state", { user: null, notifs: inbox, playing: false });
   }, [inbox]);
@@ -121,7 +140,7 @@ export default function MainLayout({ user, onLogout }) {
   const renderPage = (id) => {
     switch (id) {
       case "play":        return <PlayPage user={user} onOpenCommunity={() => setShowCommunity(true)} />;
-      case "profile":     return <ProfilePage user={user} />;
+      case "profile":     return <ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} />;
       case "leaderboard": return <LeaderboardPage />;
       case "news":        return <NewsPage />;
       case "shop":        return <ShopPage />;
@@ -146,6 +165,7 @@ export default function MainLayout({ user, onLogout }) {
           background: "rgba(8,8,10,0.98)",
           borderBottom: "1px solid rgba(255,255,255,0.05)",
           backdropFilter: "blur(20px)",
+          zIndex: 50,
         }}
       >
         {/* Nav items — absolutely centered */}
@@ -156,13 +176,13 @@ export default function MainLayout({ user, onLogout }) {
               <button
                 key={id}
                 onClick={() => setPage(id)}
-                className="flex items-center gap-1.5 px-3 h-[28px] text-[10px] font-semibold tracking-widest whitespace-nowrap transition-all duration-150 select-none"
+                className="flex items-center gap-1.5 px-3 h-[28px] text-[10px] font-semibold tracking-widest whitespace-nowrap transition-all duration-300 ease-out select-none active:scale-95"
                 style={active
                   ? {
-                      background: "rgba(37,99,235,0.85)",
+                      background: "rgba(37,99,235,0.9)",
                       color: "#fff",
                       borderRadius: "20px",
-                      boxShadow: "0 0 10px rgba(37,99,235,0.35)",
+                      boxShadow: "0 0 16px rgba(37,99,235,0.4), 0 2px 8px rgba(37,99,235,0.25)",
                     }
                   : {
                       background: "transparent",
@@ -250,7 +270,9 @@ export default function MainLayout({ user, onLogout }) {
               transition={{ type: "spring", damping: 32, stiffness: 320 }}
               className="absolute top-0 right-0 bottom-0 z-30"
             >
-              <CommunityPage onClose={() => setShowCommunity(false)} user={user} onBadgeChange={setFriendBadge} />
+              <CommunityPage onClose={() => setShowCommunity(false)} user={user} onBadgeChange={setFriendBadge}
+                onViewProfile={(id) => { setShowCommunity(false); setViewUserId(id); setPage("profile"); }}
+              />
             </motion.div>
           )}
         </AnimatePresence>
