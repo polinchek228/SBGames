@@ -265,9 +265,73 @@ function ProfileTab({ user, equip }) {
                 #{user?.id?.toString().slice(-6) || "000000"}
               </span>
               {user?.telegram && (
-                <span className="flex items-center gap-1 text-[11px]" style={{ color: "#60a5fa" }}>
+                <span className="flex items-center gap-1 text-[11px]" style={{ color: "#2563eb" }}>
                   <TelegramLogo size={10} weight="fill" />@{user.telegram}
                 </span>
+              )}
+            </div>
+
+            {/* Bio — right below role */}
+            <div className="mt-2.5">
+              {editingBio ? (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    value={bio}
+                    onChange={e => setBio(e.target.value)}
+                    maxLength={200}
+                    rows={2}
+                    placeholder="Расскажи о себе..."
+                    className="rounded-xl px-3 py-2 text-[11px] outline-none resize-none transition-all duration-200"
+                    style={{
+                      background: "rgba(255,255,255,0.06)",
+                      color: "rgba(255,255,255,0.8)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                    }}
+                    onFocus={e => e.currentTarget.style.borderColor = "rgba(37,99,235,0.4)"}
+                    onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>{bio.length}/200</span>
+                    <div className="flex-1" />
+                    <button onClick={() => { setEditingBio(false); setBio(user?.bio || ""); }}
+                      className="text-[10px] px-3 py-1 rounded-lg transition-all duration-200"
+                      style={{ color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.05)" }}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setBioSaving(true);
+                    try {
+                      await authedFetch("/api/user/bio", { method: "PUT", body: JSON.stringify({ bio: bio.trim() }) });
+                      user.bio = bio.trim();
+                      setEditingBio(false);
+                    } catch {}
+                        setBioSaving(false);
+                      }}
+                      disabled={bioSaving}
+                      className="text-[10px] px-3 py-1 rounded-lg font-bold disabled:opacity-40 transition-all duration-200"
+                      style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}
+                    >
+                      {bioSaving ? "..." : "Сохранить"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="text-[11px] leading-relaxed flex-1" style={{ color: bio ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.15)" }}>
+                    {bio || "Нет описания"}
+                  </p>
+                  <button onClick={() => setEditingBio(true)}
+                    className="w-5 h-5 rounded flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                    style={{ color: "rgba(255,255,255,0.2)" }}
+                    onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.5)"}
+                    onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.2)"}
+                  >
+                    <Pencil size={10} />
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -321,94 +385,6 @@ function ProfileTab({ user, equip }) {
             </div>
           </motion.div>
         )}
-
-        {/* Bio section */}
-        <motion.div variants={itemVariants}
-          className="rounded-2xl p-4 flex flex-col gap-2"
-          style={{
-            background: "linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))",
-            border: "1px solid rgba(255,255,255,0.05)",
-          }}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
-              style={{ color: "rgba(255,255,255,0.18)" }}>
-              Описание
-            </p>
-            {!editingBio && user?.bio && (
-              <button onClick={() => setEditingBio(true)}
-                className="w-5 h-5 rounded flex items-center justify-center transition-all duration-200"
-                style={{ color: "rgba(255,255,255,0.25)" }}
-                onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}
-                onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.25)"}
-              >
-                <Pencil size={10} />
-              </button>
-            )}
-            {!editingBio && !user?.bio && (
-              <button onClick={() => setEditingBio(true)}
-                className="text-[9px] px-2 py-0.5 rounded-md transition-all duration-200"
-                style={{ color: "rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.04)" }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "rgba(255,255,255,0.5)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(255,255,255,0.25)"; }}
-              >
-                + Добавить
-              </button>
-            )}
-          </div>
-          {editingBio ? (
-            <div className="flex flex-col gap-2">
-              <textarea
-                value={bio}
-                onChange={e => setBio(e.target.value)}
-                maxLength={200}
-                rows={3}
-                placeholder="Расскажи о себе..."
-                className="rounded-xl px-3.5 py-2.5 text-[11px] outline-none resize-none transition-all duration-200"
-                style={{
-                  background: "rgba(255,255,255,0.06)",
-                  color: "rgba(255,255,255,0.8)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
-                onFocus={e => e.currentTarget.style.borderColor = "rgba(37,99,235,0.4)"}
-                onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
-              />
-              <div className="flex items-center gap-2">
-                <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>{bio.length}/200</span>
-                <div className="flex-1" />
-                <button onClick={() => { setEditingBio(false); setBio(user?.bio || ""); }}
-                  className="text-[10px] px-3 py-1 rounded-lg transition-all duration-200"
-                  style={{ color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.05)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                >
-                  Отмена
-                </button>
-                <button
-                  onClick={async () => {
-                    setBioSaving(true);
-                    try {
-                      await authedFetch("/api/user/bio", { method: "PUT", body: JSON.stringify({ bio: bio.trim() }) });
-                      setEditingBio(false);
-                    } catch {}
-                    setBioSaving(false);
-                  }}
-                  disabled={bioSaving}
-                  className="text-[10px] px-3 py-1 rounded-lg font-bold disabled:opacity-40 transition-all duration-200"
-                  style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.35)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.2)"}
-                >
-                  {bioSaving ? "..." : "Сохранить"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-[12px] leading-relaxed" style={{ color: bio ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)" }}>
-              {bio || "Нет описания"}
-            </p>
-          )}
-        </motion.div>
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-3">
