@@ -167,6 +167,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const controls = useAnimation();
   const prevUnread = useRef(unread);
+  const bellRef = useRef(null);
   const panelRef = useRef(null);
 
   // Анимация звонка при новом уведомлении
@@ -180,31 +181,29 @@ export function NotificationBell() {
     prevUnread.current = unread;
   }, [unread, controls]);
 
-  // Закрываем при клике вне (только если панель открыта)
+  // Закрываем при клике вне
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) {
-        setOpen(false);
-      }
+      const inBell = bellRef.current?.contains(e.target);
+      const inPanel = panelRef.current?.contains(e.target);
+      if (!inBell && !inPanel) setOpen(false);
     };
-    // Используем click вместо mousedown — не конфликтует с onClick колокольчика
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [open]);
 
-  const toggle = (e) => {
-    e?.stopPropagation();
-    if (!open) markAllRead();
+  const toggle = () => {
     setOpen(v => !v);
+    if (!open) markAllRead();
   };
 
   return (
-    <div className="relative" ref={panelRef} style={{ zIndex: 100 }}>
+    <div className="relative" style={{ zIndex: 100 }}>
       {/* Bell button */}
+      <div ref={bellRef}>
       <motion.button
         onClick={toggle}
-        onMouseDown={(e) => e.stopPropagation()}
         animate={controls}
         whileTap={{ scale: 0.88 }}
         className="relative w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
@@ -241,18 +240,20 @@ export function NotificationBell() {
           />
         )}
       </motion.button>
+      </div>
 
       {/* Panel */}
       <AnimatePresence>
         {open && (
           <motion.div
+            ref={panelRef}
             initial={{ opacity: 0, scale: 0.92, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: -8 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
             className="absolute top-9 right-0 w-[300px] rounded-2xl overflow-hidden"
-            style={{ zIndex: 10001, background: "rgba(9,9,12,0.98)", boxShadow: "0 8px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07)" }}
             style={{
+              zIndex: 10001,
               background: "rgba(9,9,12,0.98)",
               boxShadow: "0 8px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07)",
             }}
