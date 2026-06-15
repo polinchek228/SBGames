@@ -1,4 +1,4 @@
-const fetch        = require("node-fetch");
+﻿const fetch        = require("node-fetch");
 const express      = require("express");
 const cors         = require("cors");
 const crypto       = require("crypto");
@@ -29,8 +29,19 @@ redis.connect().catch(() => console.warn("[redis] not available, using memory"))
 
 // Хелперы Redis с fallback на Map
 const redisAccounts = { _map: new Map(),
-  async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
-  async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
+  async get(k)    {
+    try {
+      const v = await redis.get(`acc:${k}`);
+      if (v) {
+        const parsed = JSON.parse(v);
+        this._map.set(k, parsed);
+        try { accounts.set(k, parsed); } catch {}
+        return parsed;
+      }
+      return this._map.get(k);
+    } catch { return this._map.get(k); }
+  },
+  async set(k, v) { this._map.set(k, v); try { accounts.set(k, v); } catch {} try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
   values()        { return this._map.values(); },
 };
 
@@ -314,6 +325,14 @@ function optionalAuth(req, _res, next) {
 function requireAuth(req, res, next) {
   optionalAuth(req, res, () => {
     if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
+    next();
+  });
+}
+async function requireAdmin(req, res, next) {
+  optionalAuth(req, res, async () => {
+    if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
+    const acc = await redisAccounts.get(req.userId);
+    if (!acc || acc.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     next();
   });
 }
@@ -722,8 +741,10 @@ app.get("/online", (_, res) => {
 });
 
 // Список всех тикетов (для админа)
-app.get("/support/tickets", (req, res) => {
-  const list = [...tickets.values()].map(t => ({
+app.get("/support/tickets", requireAuth, async (req, res) => {
+  const acc = await redisAccounts.get(req.userId);
+  const isAdminUser = acc?.role === "admin";
+  const list = [...tickets.values()].filter(t => isAdminUser || t.userId === req.userId).map(t => ({
     id: t.id, category: t.category, username: t.username,
     status: t.status, createdAt: t.createdAt, preview: t.preview,
     unread: t.unread || 0,
@@ -732,18 +753,22 @@ app.get("/support/tickets", (req, res) => {
 });
 
 // Полный тикет с сообщениями
-app.get("/support/ticket/:id", (req, res) => {
+app.get("/support/ticket/:id", requireAuth, async (req, res) => {
   const t = tickets.get(Number(req.params.id));
   if (!t) return res.status(404).json({ message: "Тикет не найден" });
+  if (t.userId !== req.userId) {
+    const acc = await redisAccounts.get(req.userId);
+    if (!acc || acc.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+  }
   res.json(t);
 });
 
 // Создать тикет (REST — с первым сообщением)
-app.post("/support/ticket", (req, res) => {
+app.post("/support/ticket", requireAuth, (req, res) => {
   const rawCategory = sanitize(req.body.category || "", 80);
   const rawMessage  = sanitize(req.body.message  || "", 2000);
   const rawUsername = sanitize(req.body.username || "Player", 32);
-  const userId      = sanitize(req.body.userId || "anon", 64);
+  const userId      = req.userId;
   if (!rawCategory || !rawMessage || rawMessage.length < 5)
     return res.status(400).json({ message: "Заполните все поля (минимум 5 символов)" });
   const ticketId = ++ticketCounter;
@@ -778,13 +803,29 @@ app.post("/support/ticket", (req, res) => {
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 wss.on("connection", (ws) => {
   const clientId = uuidv4();
-  wsClients.set(clientId, { ws, userId: null, role: "user" });
+  wsClients.set(clientId, { ws, userId: null, role: "user", msgCount: 0, msgWindowStart: Date.now() });
 
-  ws.on("message", (raw) => {
+  ws.on("message", async (raw) => {
+    if (raw.length > 8192) { ws.close(1009, "Message too large"); return; }
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
     const client = wsClients.get(clientId);
+    if (!client) return;
+    const now = Date.now();
+    if (now - client.msgWindowStart > 10_000) {
+      client.msgWindowStart = now;
+      client.msgCount = 0;
+    }
+    if (++client.msgCount > 60) {
+      send(ws, { type: "error", text: "Too many messages" });
+      return;
+    }
+    if (!client.userId && msg.type !== "auth") {
+      send(ws, { type: "auth_error", message: "Unauthorized" });
+      ws.close(1008, "Unauthorized");
+      return;
+    }
 
     switch (msg.type) {
       // Клиент идентифицируется при подключении — требуем JWT
@@ -796,9 +837,15 @@ wss.on("connection", (ws) => {
           ws.close();
           return;
         }
+        const acc = await redisAccounts.get(userId);
+        if (!acc) {
+          send(ws, { type: "auth_error", message: "Account not found" });
+          ws.close();
+          return;
+        }
         client.userId = userId;
-        client.username = sanitize(msg.username || "", 32);
-        client.role = isAdmin(msg.username) ? "admin" : "user";
+        client.username = sanitize(acc.username || msg.username || "", 32);
+        client.role = acc.role === "admin" ? "admin" : "user";
         wsClients.set(clientId, client);
 
         // Отправить список онлайн-пользователей всем
@@ -823,7 +870,7 @@ wss.on("connection", (ws) => {
 
       // Отправить заявку в друзья по нику
       case "friend_request_send": {
-        const searchNick = (msg.toUsername || "").trim().toLowerCase();
+        const searchNick = sanitize(msg.toUsername || "", 32).toLowerCase();
         const target = [...accounts.values()].find(
           a => (a.username || "").toLowerCase() === searchNick
         );
@@ -855,8 +902,15 @@ wss.on("connection", (ws) => {
 
       // Принять или отклонить заявку
       case "friend_request_respond": {
-        const { fromId, accept } = msg;
-        const reqs = getPendingRequests(client.userId).filter(r => r.fromId !== fromId);
+        const fromId = sanitize(msg.fromId || "", 64);
+        const accept = !!msg.accept;
+        const pending = getPendingRequests(client.userId);
+        const request = pending.find(r => r.fromId === fromId);
+        if (!request) {
+          send(ws, { type: "friend_requests", requests: pending });
+          break;
+        }
+        const reqs = pending.filter(r => r.fromId !== fromId);
         friendRequests.set(client.userId, reqs);
         if (accept) {
           if (!friendships.has(client.userId)) friendships.set(client.userId, new Set());
@@ -877,8 +931,12 @@ wss.on("connection", (ws) => {
 
       // Отправить личное сообщение другу
       case "dm_send": {
-        const { toId } = msg;
-        const text = sanitize(msg.text || "", 2000);
+        const toId = sanitize(msg.toId || "", 64);
+        if (!toId || toId === client.userId || !areFriends(client.userId, toId)) {
+          send(ws, { type: "friend_error", message: "DM доступен только друзьям" });
+          break;
+        }
+        const text = sanitize(msg.text || "", 1000);
         if (!text) break;
         const key  = dmKey(client.userId, toId);
         const msgs = dms.get(key) || [];
@@ -892,9 +950,14 @@ wss.on("connection", (ws) => {
 
       // Запросить историю DM с другом
       case "dm_history": {
-        const key  = dmKey(client.userId, msg.withId);
+        const withId = sanitize(msg.withId || "", 64);
+        if (!withId || !areFriends(client.userId, withId)) {
+          send(ws, { type: "dm_history", with: withId, messages: [] });
+          break;
+        }
+        const key  = dmKey(client.userId, withId);
         const msgs = dms.get(key) || [];
-        send(ws, { type: "dm_history", with: msg.withId, messages: msgs });
+        send(ws, { type: "dm_history", with: withId, messages: msgs.slice(-100) });
         break;
       }
 
@@ -902,6 +965,7 @@ wss.on("connection", (ws) => {
       case "message": {
         const ticket = tickets.get(Number(msg.ticketId));
         if (!ticket) return;
+        if (client.role !== "admin" && ticket.userId !== client.userId) return;
         const cleanText = sanitize(msg.text || "", 2000);
         if (!cleanText) return;
         const message = {
@@ -953,16 +1017,18 @@ wss.on("connection", (ws) => {
 
       // Юзер подписывается на обновления своего тикета
       case "subscribe_ticket": {
-        client.ticketId = Number(msg.ticketId);
-        wsClients.set(clientId, client);
         const ticket = tickets.get(Number(msg.ticketId));
-        if (ticket) send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
+        if (!ticket) break;
+        if (client.role !== "admin" && ticket.userId !== client.userId) break;
+        client.ticketId = ticket.id;
+        wsClients.set(clientId, client);
+        send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
         break;
       }
 
       // Групповой чат
       case "group_send": {
-        const gid = String(msg.groupId || "");
+        const gid = sanitize(msg.groupId || "", 32);
         const g = groups.get(gid);
         if (!g || !g.members.has(client.userId)) return;
         const text = sanitize(msg.text || "", 1000);

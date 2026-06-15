@@ -5,8 +5,9 @@ import {
   WifiHigh, WifiSlash, PaperPlaneTilt, Check, Checks,
   CaretLeft, Users, UserPlus, SignOut,
 } from "@phosphor-icons/react";
-import { Eye } from "lucide-react";
-import { WS_URL, getToken, authFetch } from "../lib/api.js";
+import { Eye, Plus } from "lucide-react";
+import { authFetch } from "../lib/api.js";
+import { sendWS, onWSMessage, isWSConnected } from "../lib/ws.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
 
 function highlight(text, query) {
@@ -24,70 +25,8 @@ function highlight(text, query) {
 
 const STATUS_DOT = { online: "#4ade80", offline: "rgba(255,255,255,0.12)" };
 
-// ─── Shared WS hook ────────────────────────────────────────────────────────
-export function useCommunityWS(user, onEvent) {
-  const wsRef    = useRef(null);
-  const timerRef = useRef(null);
-  const userRef  = useRef(user);
-  const onRef    = useRef(onEvent);
-  const [connected, setConnected] = useState(false);
-  const retryDelayRef = useRef(1000);
-  const MAX_DELAY = 30_000;
-
-  useEffect(() => { userRef.current = user; }, [user]);
-  useEffect(() => { onRef.current = onEvent; }, [onEvent]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    let dead = false;
-    let connectTimer;
-
-    function open() {
-      if (dead) return;
-      let socket;
-      try { socket = new WebSocket(WS_URL); } catch { scheduleReconnect(); return; }
-      wsRef.current = socket;
-
-      socket.onopen = () => {
-        if (dead) { try { socket.close(); } catch {} return; }
-        retryDelayRef.current = 1000;
-        setConnected(true);
-        const u = userRef.current;
-        const token = getToken();
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "auth", userId: u.id, username: u.username || u.telegram, token }));
-        }
-      };
-      socket.onmessage = (e) => { try { onRef.current?.(JSON.parse(e.data)); } catch {} };
-      socket.onclose = () => { setConnected(false); wsRef.current = null; if (!dead) scheduleReconnect(); };
-      socket.onerror = () => { if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(); };
-    }
-
-    function scheduleReconnect() {
-      if (dead) return;
-      clearTimeout(timerRef.current);
-      const delay = retryDelayRef.current;
-      timerRef.current = setTimeout(open, delay);
-      retryDelayRef.current = Math.min(delay * 2, MAX_DELAY);
-    }
-
-    connectTimer = setTimeout(open, 100);
-    return () => {
-      dead = true; clearTimeout(connectTimer); clearTimeout(timerRef.current);
-      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) wsRef.current.close();
-      wsRef.current = null;
-    };
-  }, [user?.id]);
-
-  const send = useCallback((data) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(data));
-  }, []);
-
-  return { connected, send };
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
+export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini }) {
   const [tab,         setTab]         = useState("friends");
   const [friends,     setFriends]     = useState([]);
   const [requests,    setRequests]    = useState([]);
@@ -188,7 +127,17 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
     }
   }, [chatWith, onBadgeChange, pushNotif, activeGroup]);
 
-  const { connected, send } = useCommunityWS(user, handleEvent);
+  // ─── Subscribe to shared WS messages ──────────────────────────────────
+  const [connected, setConnected] = useState(isWSConnected());
+
+  useEffect(() => {
+    setConnected(isWSConnected());
+    const unsub = onWSMessage((msg) => {
+      if (msg.type === "_ws_status") { setConnected(msg.connected); return; }
+      handleEvent(msg);
+    });
+    return unsub;
+  }, [handleEvent]);
 
   useEffect(() => {
     if (!connected) return;
@@ -201,11 +150,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
   const sendFriendRequest = () => {
     if (!addNick.trim()) return;
     setAddStatus(null);
-    send({ type: "friend_request_send", toUsername: addNick.trim() });
+    sendWS({ type: "friend_request_send", toUsername: addNick.trim() });
   };
 
   const respondRequest = (fromId, accept) => {
-    send({ type: "friend_request_respond", fromId, accept });
+    sendWS({ type: "friend_request_respond", fromId, accept });
     setRequests(prev => { const next = prev.filter(r => r.fromId !== fromId); onBadgeChange?.(next.length); return next; });
     if (accept) {
       const req = requests.find(r => r.fromId === fromId);
@@ -216,14 +165,14 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
   const openChat = (friend) => {
     setChatWith(friend);
     setMessages([]);
-    setTab("messenger");
+    setTab("friends");
     setUnread(prev => { const n = { ...prev }; delete n[friend.id]; return n; });
-    send({ type: "dm_history", withId: friend.id });
+    sendWS({ type: "dm_history", withId: friend.id });
   };
 
   const sendDM = (text) => {
     if (!text.trim() || !chatWith) return;
-    send({ type: "dm_send", toId: chatWith.id, text });
+    sendWS({ type: "dm_send", toId: chatWith.id, text });
     setLastMessages(prev => ({ ...prev, [chatWith.id]: { text, time: Date.now(), from: user?.id } }));
   };
 
@@ -245,9 +194,10 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
     });
 
   return (
-    <div className="w-full h-full flex" style={{ background: "transparent" }}>
+    <div className={"h-full flex " + (mini ? "flex-col" : "w-full")} style={{ background: mini ? "rgba(8,8,10,0.97)" : "transparent" }}>
 
-      {/* ─── Left sidebar ─── */}
+      {/* ─── Left sidebar (hidden in mini mode) ─── */}
+      {!mini && (
       <div className="w-72 h-full flex flex-col flex-shrink-0"
         style={{ background: "rgba(8,8,10,0.92)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
 
@@ -352,10 +302,40 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
           </div>
         )}
       </div>
+      )}
 
       {/* ─── Right content area ─── */}
       <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden"
         style={{ background: "rgba(8,8,10,0.82)" }}>
+
+        {/* Mini-mode horizontal tabs (when sidebar hidden) */}
+        {mini && !(tab === "friends" && chatWith) && (
+          <div className="flex gap-1 px-2 py-2 flex-shrink-0"
+            style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            {[
+              { id: "friends",   label: "Друзья",     icon: UsersThree, badge: 0 },
+              { id: "add",       label: "Добавить",   icon: UserCirclePlus, badge: 0 },
+              { id: "requests",  label: "Заявки",     icon: ChatCircle, badge: totalBadge },
+              { id: "groups",    label: "Группы",      icon: Users, badge: groupInvites.length },
+            ].map(({ id, label, icon: Icon, badge }) => (
+              <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); }}
+                className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+                style={tab === id
+                  ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
+                  : { color: "rgba(255,255,255,0.5)" }
+                }>
+                <Icon size={12} weight={tab === id ? "fill" : "regular"} />
+                {label}
+                {badge > 0 && (
+                  <span className="ml-0.5 min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center">
+                    {badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
 
           {/* ═══ FRIENDS (with chat) ═══ */}
@@ -390,6 +370,27 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
           {tab === "friends" && chatWith && (
             <motion.div key={`dm-${chatWith.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 flex flex-col overflow-hidden">
+              {/* Compact header in mini mode */}
+              {mini && (
+                <div className="flex items-center gap-2.5 px-3 py-2.5 flex-shrink-0"
+                  style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                  <button onClick={() => setChatWith(null)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ color: "rgba(255,255,255,0.4)" }}>
+                    <CaretLeft size={14} weight="bold" />
+                  </button>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                    style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.5)" }}>
+                    {chatWith.username?.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-white truncate">{chatWith.username}</p>
+                    <p className="text-[10px]" style={{ color: onlineIds.has(chatWith.id) ? "rgba(74,222,128,0.7)" : "rgba(255,255,255,0.35)" }}>
+                      {onlineIds.has(chatWith.id) ? "в сети" : "не в сети"}
+                    </p>
+                  </div>
+                </div>
+              )}
               <DMChat
                 chatWith={chatWith}
                 messages={messages}
@@ -443,7 +444,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
                     {searchResults.map((u, i) => {
                       const isFriend = friends.some(f => f.id === u.id);
                       const isMe = u.id === user?.id;
-                      const online = onlineIds.has(u.id);
+                      const online = onlineIds.has(u.id) || u.online;
                       return (
                         <motion.div key={u.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.03 }}
@@ -582,7 +583,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile }) {
             <motion.div key={`grp-${activeGroup.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 flex flex-col overflow-hidden">
               <GroupChat
-                group={activeGroup} user={user} messages={groupMessages} send={send}
+                group={activeGroup} user={user} messages={groupMessages} send={sendWS}
                 onLeave={async () => {
                   try { await authFetch(`/api/groups/${activeGroup.id}/leave`, { method: "POST" }); } catch {}
                   setGroups(prev => prev.filter(x => x.id !== activeGroup.id));
@@ -905,7 +906,7 @@ function GroupChat({ group, user, messages, send, onLeave, onKick }) {
     e?.preventDefault();
     const t = input.trim();
     if (!t) return;
-    send({ type: "group_send", groupId: group.id, text: t });
+    sendWS({ type: "group_send", groupId: group.id, text: t });
     setInput("");
   };
 

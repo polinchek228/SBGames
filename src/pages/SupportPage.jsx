@@ -103,7 +103,9 @@ function UserPanel({ user }) {
 
   useEffect(() => {
     if (!user?.id) return;
-    fetch(`${API_URL}/support/tickets?userId=${encodeURIComponent(user.id)}`)
+    fetch(`${API_URL}/support/tickets`, {
+      headers: { Authorization: `Bearer ${getToken() || ""}` },
+    })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => {
         const ticketList = d.tickets || [];
@@ -258,7 +260,9 @@ function AdminPanel({ user }) {
 
   const handleWS = useCallback((msg) => {
     if (msg.type === "admin_ready") {
-      fetch(`${API_URL}/support/tickets`)
+      fetch(`${API_URL}/support/tickets`, {
+        headers: { Authorization: `Bearer ${getToken() || ""}` },
+      })
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => setTickets(d.tickets || []))
         .catch(() => {});
@@ -699,7 +703,7 @@ function NewTicketForm({ user, onBack, onCreated }) {
     try {
       const r = await fetch(`${API_URL}/support/ticket`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() || ""}` },
         body: JSON.stringify({ userId: user?.id, username: user?.username, category, message: text.trim() }),
       });
       const d = await r.json();

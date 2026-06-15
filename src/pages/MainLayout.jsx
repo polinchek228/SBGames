@@ -14,7 +14,7 @@ import CommunityPage from "./CommunityPage.jsx";
 import DownloadProgress from "../components/DownloadProgress.jsx";
 import { NotificationBell, useNotifications, pushNotification } from "../components/NotificationSystem.jsx";
 import { notifyDesktop, setDiscordPresence, invoke } from "../lib/tauri.js";
-import { WS_URL, getToken } from "../lib/api.js";
+import { initWS, onWSMessage } from "../lib/ws.js";
 import { CATALOG_BY_ID } from "./catalog.js";
 
 const NAV_ITEMS = [
@@ -73,86 +73,40 @@ export default function MainLayout({ user, onLogout }) {
   const [viewUserId, setViewUserId] = useState(null);
   const [friendBadge, setFriendBadge] = useState(0);
   const [balance, setBalance] = useState(user?.balance ?? 0);
+  const [communityOpen, setCommunityOpen] = useState(false);
+
   const balanceRef = useRef(balance);
   balanceRef.current = balance;
   const userRef = useRef(user);
   userRef.current = user;
 
-  // ─── WS-уведомления (баланс, друзья, тикеты) ──────────────────────────
+  // ─── Shared WS — single connection for MainLayout + CommunityPage ────
   useEffect(() => {
-    let dead = false;
-    let ws;
-    let reconnectTimer;
-    let reconnectDelay = 1000; // start at 1s
-    const MAX_DELAY = 30000;   // cap at 30s
+    if (!user?.id) return;
+    initWS(user.id, user.username);
 
-    const connect = () => {
-      if (dead) return;
-      try {
-        ws = new WebSocket(WS_URL);
-      } catch {
-        scheduleReconnect();
-        return;
+    const unsub = onWSMessage(async (msg) => {
+      if (msg.type === "balance_update") {
+        const diff = msg.balance - balanceRef.current;
+        setBalance(msg.balance);
+        pushNotification("Баланс пополнен", `+${diff} SBT · Новый баланс: ${msg.balance} SBT`, "balance");
+        await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} SBT`);
       }
+      if (msg.type === "friend_accepted") {
+        pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
+        await notifyDesktop("SB Games", `${msg.byUsername} принял заявку в друзья`);
+      }
+      if (msg.type === "friend_request_received") {
+        pushNotification("Заявка в друзья", `${msg.request.fromUsername} хочет добавить вас`, "friend");
+        await notifyDesktop("SB Games", `${msg.request.fromUsername} хочет добавить вас в друзья`);
+      }
+      if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
+        pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
+        await notifyDesktop("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
+      }
+    });
 
-      ws.onopen = () => {
-        if (dead) { ws.close(); return; }
-        reconnectDelay = 1000; // reset backoff on success
-        const u = userRef.current;
-        ws.send(JSON.stringify({
-          type: "auth",
-          userId: u?.id,
-          username: u?.username,
-          token: getToken(),
-        }));
-      };
-
-      ws.onmessage = async (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === "balance_update") {
-            const diff = msg.balance - balanceRef.current;
-            setBalance(msg.balance);
-            pushNotification("Баланс пополнен", `+${diff} SBT · Новый баланс: ${msg.balance} SBT`, "balance");
-            await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} SBT`);
-          }
-          if (msg.type === "friend_accepted") {
-            pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
-            await notifyDesktop("SB Games", `${msg.byUsername} принял заявку в друзья`);
-          }
-          if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
-            pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
-            await notifyDesktop("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
-          }
-        } catch {}
-      };
-
-      ws.onclose = () => {
-        scheduleReconnect();
-      };
-
-      ws.onerror = () => {
-        // onclose will fire after onerror, reconnect handled there
-        if (ws.readyState !== WebSocket.CLOSED) ws.close();
-      };
-    };
-
-    function scheduleReconnect() {
-      if (dead) return;
-      clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(connect, reconnectDelay);
-      reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_DELAY); // exponential backoff
-    }
-
-    // Delay to avoid React StrictMode double-invocation closing the socket before it connects
-    const timer = setTimeout(connect, 100);
-
-    return () => {
-      dead = true;
-      clearTimeout(timer);
-      clearTimeout(reconnectTimer);
-      ws?.close();
-    };
+    return unsub;
   }, [user?.id]);
 
   // Discord — в лаунчере
@@ -281,7 +235,7 @@ export default function MainLayout({ user, onLogout }) {
           })}
         </div>
 
-        {/* Right group: balance + notifications + logout */}
+        {/* Right group: balance + community toggle + notifications + logout */}
         <div className="flex items-center gap-2.5 justify-self-end">
           {/* Balance pill with coin icon */}
           <div
@@ -293,6 +247,20 @@ export default function MainLayout({ user, onLogout }) {
             <img src="/money.png" alt="coin" className="w-4 h-4 object-contain" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
             <span className="text-[13px] font-bold text-white tabular-nums">{balance}</span>
           </div>
+
+          {/* Community mini toggle */}
+          <button
+            onClick={() => setCommunityOpen(v => !v)}
+            className="w-[34px] h-[34px] rounded-xl flex items-center justify-center transition-all duration-150"
+            style={communityOpen
+              ? { background: "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", color: "#fff", boxShadow: "0 0 12px rgba(37,99,235,0.4)" }
+              : { background: "transparent", color: "rgba(255,255,255,0.35)" }
+            }
+            onMouseEnter={e => { if (!communityOpen) { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; } }}
+            onMouseLeave={e => { if (!communityOpen) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.35)"; } }}
+          >
+            <UsersThree size={15} weight="bold" />
+          </button>
 
           {/* Notification bell */}
           <NotificationBell />
@@ -324,6 +292,31 @@ export default function MainLayout({ user, onLogout }) {
             {renderPage(id)}
           </motion.div>
         ))}
+
+        {/* ── Community mini sidebar ── */}
+        <AnimatePresence>
+          {communityOpen && (
+            <motion.div
+              key="community-sidebar"
+              initial={{ x: 420, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 420, opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 350 }}
+              className="absolute top-0 right-0 bottom-0 z-30"
+              style={{ width: "min(360px, 76vw)" }}
+            >
+              <div className="w-full h-full rounded-l-2xl overflow-hidden"
+                style={{ background: "rgba(8,8,10,0.97)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
+                <CommunityPage
+                  user={user}
+                  mini
+                  onBadgeChange={setFriendBadge}
+                  onViewProfile={(id) => { setViewUserId(id); setPage("profile"); setCommunityOpen(false); }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
 
