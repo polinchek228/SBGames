@@ -35,10 +35,9 @@ export default function ProfileComments({ targetId, viewer, onOpenProfile }) {
     if (!t || posting || isOwn) return;
     setPosting(true); setError(null);
     try {
-      const r = await authedFetch(`/api/user/${encodeURIComponent(targetId)}/comments`, {
+      const d = await authedFetch(`/api/user/${encodeURIComponent(targetId)}/comments`, {
         method: "POST", body: JSON.stringify({ text: t }),
       });
-      const d = await r.json();
       setComments(prev => [d.comment, ...prev]);
       setText("");
       setCooldown(10);

@@ -5,11 +5,11 @@ import {
   Send, Check, ChevronRight, Moon, Bell, Shield, Trash2,
   RefreshCw, Monitor, Zap, Download, Loader2,
   SlidersHorizontal, CheckCircle2, Images, X,
-  LayoutGrid, Pencil, Save, Trophy,
+  LayoutGrid, Pencil, Save, Trophy, FlaskConical, Video,
 } from "lucide-react";
 import LibraryTab from "./LibraryTab.jsx";
 import InventoryTab from "./InventoryTab.jsx";
-import { CATALOG_BY_ID } from "./catalog.js";
+import { CATALOG_BY_ID, RARITIES } from "./catalog.js";
 
 const TYPE_META = {
   frame:            { label: "Рамка",     color: "#3b82f6" },
@@ -69,9 +69,24 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
 
   const bgItem = CATALOG_BY_ID[equip?.background];
 
+  // When globalBg is enabled, skip local video — GlobalBackground in MainLayout handles it
+  const [globalBgActive, setGlobalBgActive] = useState(() => {
+    try { return !!JSON.parse(localStorage.getItem("sbgames_settings"))?.globalBg; } catch { return false; }
+  });
+  useEffect(() => {
+    const check = () => {
+      try { setGlobalBgActive(!!JSON.parse(localStorage.getItem("sbgames_settings"))?.globalBg); } catch {}
+    };
+    window.addEventListener("storage", check);
+    const iv = setInterval(check, 1000);
+    return () => { window.removeEventListener("storage", check); clearInterval(iv); };
+  }, []);
+
+  const showLocalVideo = bgItem?.video && !globalBgActive;
+
   return (
     <div className="flex h-full overflow-hidden bg-transparent w-full relative">
-      {bgItem?.video && (
+      {showLocalVideo && (
         <video
           src={bgItem.video}
           className="absolute inset-0 w-full h-full object-cover"
@@ -89,7 +104,7 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
 
       {/* Left tab nav */}
       <div className="w-[180px] flex-shrink-0 flex flex-col pt-4 px-3 gap-0.5 relative z-10"
-        style={{ background: "rgba(10,10,15,0.45)", borderRight: "1px solid rgba(255,255,255,0.05)" }}
+        style={{ background: "rgba(10,10,15,0.45)", borderRight: "1px solid rgba(255,255,255,0.12)" }}
       >
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = tab === id;
@@ -98,14 +113,14 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
               key={id}
               onClick={() => setTab(id)}
               className="relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-colors duration-150 text-left"
-              style={{ color: active ? "#fff" : "rgba(255,255,255,0.32)" }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.32)"; }}
+              style={{ color: active ? "#fff" : "rgba(255,255,255,0.55)" }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.8)"; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.color = "rgba(255,255,255,0.55)"; }}
             >
               {active && (
                 <motion.div layoutId="tab-bg"
                   className="absolute inset-0 rounded-xl"
-                  style={{ background: "rgba(255,255,255,0.06)" }}
+                  style={{ background: "rgba(255,255,255,0.1)" }}
                   transition={{ type: "spring", stiffness: 400, damping: 35 }}
                 />
               )}
@@ -119,18 +134,38 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
         })}
       </div>
 
-      {/* Content — все табы всегда смонтированы, переключаем opacity */}
+      {/* Content — ленивый монтаж: рендерим таб только при первом посещении */}
       <div className="flex-1 min-h-0 relative overflow-hidden z-10">
-        {TABS.map(({ id }) => (
-          <motion.div
+        <LazyTabs tab={tab} user={user} equip={equip} setEquip={setEquip} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lazy Tab Renderer — монтирует компонент таба только при первом посещении
+// ─────────────────────────────────────────────────────────────────────────────
+function LazyTabs({ tab, user, equip, setEquip }) {
+  const [visited, setVisited] = React.useState(() => new Set([tab]));
+  React.useEffect(() => {
+    setVisited(prev => { if (prev.has(tab)) return prev; const n = new Set(prev); n.add(tab); return n; });
+  }, [tab]);
+
+  return (
+    <>
+      {TABS.map(({ id }) => {
+        if (!visited.has(id)) return null;
+        const active = tab === id;
+        return (
+          <div
             key={id}
             className="absolute inset-0 overflow-y-auto"
-            animate={{
-              opacity:       tab === id ? 1 : 0,
-              pointerEvents: tab === id ? "auto" : "none",
+            style={{
+              opacity: active ? 1 : 0,
+              pointerEvents: active ? "auto" : "none",
+              transition: "opacity 0.15s",
+              zIndex: active ? 1 : 0,
             }}
-            transition={{ duration: 0.15 }}
-            style={{ zIndex: tab === id ? 1 : 0 }}
           >
             {id === "profile"     && <ProfileTab user={user} equip={equip} />}
             {id === "achievements" && <div className="p-5"><AchievementSystem user={user} /></div>}
@@ -138,10 +173,10 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
             {id === "library"     && <LibraryTab user={user} equip={equip} setEquip={setEquip} />}
             {id === "personalize" && <PersonalizeTab user={user} />}
             {id === "settings"    && <SettingsTab />}
-          </motion.div>
-        ))}
-      </div>
-    </div>
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -150,11 +185,11 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const containerVariants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
+  show: { transition: { staggerChildren: 0.04, delayChildren: 0.02 } },
 };
 const itemVariants = {
-  hidden: { opacity: 0, y: 20, scale: 0.97 },
-  show:   { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 350, damping: 26, mass: 0.8 } },
+  hidden: { opacity: 0, y: 12 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
 };
 
 function ProfileTab({ user, equip }) {
@@ -228,19 +263,26 @@ function ProfileTab({ user, equip }) {
                     style={{ background: "#ef4444" }}>ADMIN</span>
                 )}
                 {badgeItem && (
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded tracking-wider"
-                    style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}35` }}>
-                    {badgeItem.name}
-                  </span>
+                  badgeItem.icon ? (
+                    <img src={badgeItem.icon} alt={badgeItem.name}
+                      className="h-5 w-5 object-contain drop-shadow-lg"
+                      title={badgeItem.name}
+                      onError={e => { e.currentTarget.style.display = "none"; }} />
+                  ) : (
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded tracking-wider"
+                      style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}35` }}>
+                      {badgeItem.name}
+                    </span>
+                  )
                 )}
               </div>
 
               {/* Sub-row */}
               <div className="flex items-center gap-3 mt-1.5">
-                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>
                   {isAdmin ? "Администратор" : "Игрок"}
                 </span>
-                <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.15)" }}>
+                <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>
                   #{user?.id?.toString().slice(-6) || "000000"}
                 </span>
                 {user?.telegram && (
@@ -259,13 +301,13 @@ function ProfileTab({ user, equip }) {
                   <span className="text-[14px] font-black text-white tabular-nums leading-none">
                     {(user?.balance ?? 0).toLocaleString("ru-RU")}
                   </span>
-                  <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.28)" }}>СБТ</span>
+                  <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>СБТ</span>
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
                   style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.15)" }}>
                   <Zap size={11} style={{ color: "#60a5fa" }} />
                   <span className="text-[13px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
-                  <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.28)" }}>LVL</span>
+                  <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>LVL</span>
                 </div>
               </div>
             </div>
@@ -283,11 +325,11 @@ function ProfileTab({ user, equip }) {
                   onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
                   autoFocus />
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>{bio.length}/200</span>
+                  <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.5)" }}>{bio.length}/200</span>
                   <div className="flex-1" />
                   <button onClick={() => { setEditingBio(false); setBio(savedBio); }}
                     className="text-[10px] px-3 py-1 rounded-lg transition-all"
-                    style={{ color: "rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.05)" }}>Отмена</button>
+                    style={{ color: "rgba(255,255,255,0.55)", background: "rgba(255,255,255,0.08)" }}>Отмена</button>
                   <button onClick={async () => { setBioSaving(true); try { await authedFetch("/api/user/bio", { method: "PUT", body: JSON.stringify({ bio: bio.trim() }) }); setSavedBio(bio.trim()); setEditingBio(false); } catch {} setBioSaving(false); }}
                     disabled={bioSaving} className="text-[10px] px-3 py-1 rounded-lg font-bold disabled:opacity-40 transition-all"
                     style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}>
@@ -298,13 +340,13 @@ function ProfileTab({ user, equip }) {
             ) : (
               <div className="flex items-center gap-2">
                 <p className="text-[11px] leading-relaxed flex-1"
-                  style={{ color: savedBio ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.12)" }}>
+                  style={{ color: savedBio ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.3)" }}>
                   {savedBio || "Нет описания"}
                 </p>
                 <button onClick={() => setEditingBio(true)} className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
-                  style={{ color: "rgba(255,255,255,0.18)" }}
-                  onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.45)"}
-                  onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.18)"}>
+                  style={{ color: "rgba(255,255,255,0.4)" }}
+                  onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
+                  onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
                   <Pencil size={10} />
                 </button>
               </div>
@@ -314,7 +356,13 @@ function ProfileTab({ user, equip }) {
 
       {/* ═══ CONTENT ═══ */}
       <div className="flex-1 flex flex-col gap-4 px-6 py-5 min-h-0"
-        style={{ background: "rgba(10,10,12,0.6)", borderRadius: "20px 20px 0 0", marginTop: -8, paddingTop: 28 }}>
+        style={{
+          background: "transparent",
+          borderRadius: "20px 20px 0 0",
+          marginTop: -8,
+          paddingTop: 28,
+          borderTop: "1px solid rgba(255,255,255,0.06)",
+        }}>
 
         {/* ── Achievement showcase ── */}
         <motion.div variants={itemVariants}>
@@ -411,7 +459,7 @@ function PersonalizeTab({ user }) {
         {/* Drop zone */}
         <motion.div variants={itemVariants}>
           <p className="text-[10px] uppercase tracking-[0.14em] font-semibold mb-2"
-            style={{ color: "rgba(255,255,255,0.18)" }}>Скин Minecraft</p>
+            style={{ color: "rgba(255,255,255,0.55)" }}>Скин Minecraft</p>
 
           <div
             onDragOver={e => { e.preventDefault(); setDragging(true); }}
@@ -452,7 +500,7 @@ function PersonalizeTab({ user }) {
               <p className="text-[13px] font-semibold text-white">
                 {skinFile ? skinFile.name : "Загрузить скин"}
               </p>
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>
                 {dragging ? "Отпусти сюда" : "PNG · 64×64 или 64×32 · перетащи или нажми"}
               </p>
               {skinFile && (
@@ -505,7 +553,7 @@ function PersonalizeTab({ user }) {
         {/* Cape */}
         <motion.div variants={itemVariants}>
           <p className="text-[10px] uppercase tracking-[0.14em] font-semibold mb-2"
-            style={{ color: "rgba(255,255,255,0.18)" }}>Плащ</p>
+            style={{ color: "rgba(255,255,255,0.55)" }}>Плащ</p>
           <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: "rgba(255,255,255,0.03)" }}>
             <div className="grid grid-cols-4 gap-2">
               {CAPE_PRESETS.map(({ id, label, color }) => (
@@ -525,7 +573,7 @@ function PersonalizeTab({ user }) {
                     }}
                   />
                   <span className="text-[9px] font-medium"
-                    style={{ color: cape === id ? "#93c5fd" : "rgba(255,255,255,0.3)" }}
+                    style={{ color: cape === id ? "#93c5fd" : "rgba(255,255,255,0.55)" }}
                   >{label}</span>
                   {cape === id && (
                     <motion.div layoutId="cape-dot"
@@ -551,7 +599,7 @@ function PersonalizeTab({ user }) {
           </div>
           <div>
             <p className="text-[12px] font-semibold text-white">Цветной ник</p>
-            <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+            <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>
               Доступен с уровня 10 — откройте в магазине
             </p>
           </div>
@@ -606,9 +654,17 @@ function SettingsTab() {
   const [autoLogin,  setAutoLogin]  = useState(saved.autoLogin  ?? false);
   const [settingTab, setSettingTab] = useState("game");
   const [savedOk,    setSavedOk]    = useState(false);
+  const [globalBg,   setGlobalBg]   = useState(saved.globalBg ?? false);
+
+  // Auto-save globalBg toggle immediately (no Save button needed)
+  useEffect(() => {
+    if (saved.globalBg !== globalBg) {
+      saveSettings({ ...loadSettings(), globalBg });
+    }
+  }, [globalBg]);
 
   const handleSaveGame = () => {
-    saveSettings({ ...loadSettings(), resolution, notifs, autoLogin });
+    saveSettings({ ...loadSettings(), resolution, notifs, autoLogin, globalBg });
     setSavedOk(true);
     setTimeout(() => setSavedOk(false), 2000);
   };
@@ -618,18 +674,19 @@ function SettingsTab() {
       {/* Sub-tabs */}
       <div className="flex items-center gap-1 px-5 pt-5 pb-0 flex-shrink-0 sticky top-0 z-10" style={{ background: "transparent" }}>
         {[
-          { id: "game",    label: "Игра",    icon: SlidersHorizontal },
-          { id: "mods",    label: "Моды",    icon: Package },
-          { id: "shaders", label: "Шейдеры", icon: Zap },
+          { id: "game",         label: "Игра",              icon: SlidersHorizontal },
+          { id: "mods",         label: "Моды",              icon: Package },
+          { id: "shaders",      label: "Шейдеры",           icon: Zap },
+          { id: "experimental", label: "Экспериментальное", icon: FlaskConical },
         ].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setSettingTab(id)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all duration-150"
             style={settingTab === id
-              ? { background: "rgba(255,255,255,0.07)", color: "#fff" }
-              : { color: "rgba(255,255,255,0.3)" }
+              ? { background: "rgba(255,255,255,0.1)", color: "#fff" }
+              : { color: "rgba(255,255,255,0.55)" }
             }
-            onMouseEnter={e => { if (settingTab !== id) e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
-            onMouseLeave={e => { if (settingTab !== id) e.currentTarget.style.color = "rgba(255,255,255,0.3)"; }}
+            onMouseEnter={e => { if (settingTab !== id) e.currentTarget.style.color = "rgba(255,255,255,0.75)"; }}
+            onMouseLeave={e => { if (settingTab !== id) e.currentTarget.style.color = "rgba(255,255,255,0.55)"; }}
           >
             <Icon size={12} />{label}
           </button>
@@ -652,10 +709,10 @@ function SettingsTab() {
                         className="text-[11px] px-3 py-1.5 rounded-lg transition-all duration-150"
                         style={resolution === r
                           ? { background: "rgba(37,99,235,0.22)", color: "#93c5fd" }
-                          : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.28)" }
+                          : { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }
                         }
-                        onMouseEnter={e => { if (resolution !== r) e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
-                        onMouseLeave={e => { if (resolution !== r) e.currentTarget.style.color = "rgba(255,255,255,0.28)"; }}
+                        onMouseEnter={e => { if (resolution !== r) e.currentTarget.style.color = "rgba(255,255,255,0.75)"; }}
+                        onMouseLeave={e => { if (resolution !== r) e.currentTarget.style.color = "rgba(255,255,255,0.5)"; }}
                       >{r}</button>
                     ))}
                   </div>
@@ -688,6 +745,28 @@ function SettingsTab() {
           {settingTab === "shaders" && (
             <motion.div key="shaders" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <ModrinthPanel type="shader" allowedSlugs={ALLOWED_PROJECTS.shaders} />
+            </motion.div>
+          )}
+
+          {settingTab === "experimental" && (
+            <motion.div key="experimental" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="flex flex-col gap-5 max-w-[520px]"
+            >
+              <Section title="Глобальный фон">
+                <Toggle label="Распространить фон из библиотеки на все страницы" icon={Video} value={globalBg} onChange={setGlobalBg} />
+                <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  Установленный видео-фон из библиотеки будет отображаться на страницах Восхождение, Магазин, Новости и Помощь.
+                </p>
+              </Section>
+
+              <button onClick={handleSaveGame}
+                className="self-start flex items-center gap-2 rounded-xl px-5 py-2.5 text-[12px] font-semibold transition-all duration-200 text-white"
+                style={{ background: savedOk ? "rgba(34,197,94,0.2)" : "rgba(37,99,235,0.22)", color: savedOk ? "rgba(74,222,128,0.95)" : "#fff" }}
+                onMouseEnter={e => { if (!savedOk) e.currentTarget.style.background = "rgba(37,99,235,0.38)"; }}
+                onMouseLeave={e => { if (!savedOk) e.currentTarget.style.background = "rgba(37,99,235,0.22)"; }}
+              >
+                {savedOk ? <><CheckCircle2 size={13} />Сохранено</> : "Сохранить"}
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -775,7 +854,7 @@ function ModrinthPanel({ type, allowedSlugs }) {
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] font-semibold text-white truncate leading-tight">{proj.title}</p>
                 {!selected && (
-                  <p className="text-[10px] truncate mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{proj.description}</p>
+                  <p className="text-[10px] truncate mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>{proj.description}</p>
                 )}
               </div>
               {isInstalled && <CheckCircle2 size={13} style={{ color: "rgba(74,222,128,0.7)", flexShrink: 0 }} />}
@@ -806,7 +885,7 @@ function ModrinthPanel({ type, allowedSlugs }) {
               <div className="flex-1 min-w-0">
                 <p className="text-[15px] font-bold text-white leading-tight">{selected.title}</p>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>
                     ⬇ {(selected.downloads || 0).toLocaleString("ru-RU")}
                   </span>
                   {selected.game_versions?.includes("1.19.2") && (
@@ -838,7 +917,7 @@ function ModrinthPanel({ type, allowedSlugs }) {
             {selected.categories?.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {selected.categories.slice(0, 4).map(cat => (
-                  <span key={cat} className="text-[10px] px-2 py-0.5 rounded-lg capitalize" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>
+                  <span key={cat} className="text-[10px] px-2 py-0.5 rounded-lg capitalize" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
                     {cat}
                   </span>
                 ))}
@@ -856,7 +935,7 @@ function ModrinthPanel({ type, allowedSlugs }) {
                   className="flex items-center justify-center gap-2 rounded-2xl py-2.5 text-[12px] font-semibold transition-all duration-200"
                   style={
                     isInstalled  ? { background: "rgba(34,197,94,0.12)", color: "rgba(74,222,128,0.9)" } :
-                    isInstalling ? { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)", cursor: "wait" } :
+                    isInstalling ? { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", cursor: "wait" } :
                                    { background: "rgba(37,99,235,0.22)", color: "#93c5fd" }
                   }
                   onMouseEnter={e => { if (!isInstalled && !isInstalling) e.currentTarget.style.background = "rgba(37,99,235,0.38)"; }}
@@ -906,6 +985,8 @@ function PublicProfileView({ viewer, targetId, onBack }) {
     .map(id => CATALOG_BY_ID[id])
     .filter(Boolean);
 
+  const globalBgOn = (() => { try { return !!loadSettings().globalBg; } catch { return false; } })();
+
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center">
@@ -915,14 +996,14 @@ function PublicProfileView({ viewer, targetId, onBack }) {
 
   if (!profile) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3">
-      <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.3)" }}>Профиль не найден</p>
+      <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>Профиль не найден или отсутствует подключение к сети</p>
       <button onClick={onBack} className="text-[11px] text-blue-400/60 hover:text-blue-400 transition-colors">← Назад</button>
     </div>
   );
 
   return (
     <div className="relative flex-1 flex h-full overflow-hidden">
-      {bgItem?.video && (
+      {bgItem?.video && !globalBgOn && (
         <video
           src={bgItem.video}
           className="absolute inset-0 w-full h-full object-cover"
@@ -954,10 +1035,9 @@ function PublicProfileView({ viewer, targetId, onBack }) {
             {/* Left Column (User Card) - spans 4 cols on lg */}
             <div className="lg:col-span-4 flex flex-col gap-5 rounded-3xl p-6"
               style={{
-                background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-                border: "1px solid rgba(255,255,255,0.06)",
-                backdropFilter: "blur(16px)",
-                boxShadow: "0 12px 40px 0 rgba(0, 0, 0, 0.25)"
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.07)",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.3)"
               }}
             >
               {/* Avatar and Info */}
@@ -1005,17 +1085,24 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                       >ADMIN</span>
                     )}
                     {badgeItem && (
-                      <span className="text-[8px] font-black px-2.5 py-0.5 rounded-full tracking-wider"
-                        style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
-                        {badgeItem.name}
-                      </span>
+                      badgeItem.icon ? (
+                        <img src={badgeItem.icon} alt={badgeItem.name}
+                          className="h-5 w-5 object-contain drop-shadow-lg"
+                          title={badgeItem.name}
+                          onError={e => { e.currentTarget.style.display = "none"; }} />
+                      ) : (
+                        <span className="text-[8px] font-black px-2.5 py-0.5 rounded-full tracking-wider"
+                          style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}30` }}>
+                          {badgeItem.name}
+                        </span>
+                      )
                     )}
                   </div>
                 </div>
 
                 {/* Online status text */}
                 <div className="flex items-center gap-2 text-[11px] font-semibold"
-                  style={{ color: profile.online ? "#22c55e" : "rgba(255,255,255,0.35)" }}>
+                  style={{ color: profile.online ? "#22c55e" : "rgba(255,255,255,0.55)" }}>
                   <div className="w-1.5 h-1.5 rounded-full"
                     style={{ background: profile.online ? "#22c55e" : "#6b7280" }} />
                   {profile.online ? "В сети" : "Не в сети"}
@@ -1031,19 +1118,19 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                   <div key={label} className="rounded-2xl p-3 flex flex-col gap-1 align-center text-center"
                     style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
                     <p className="text-[18px] font-black leading-none tabular-nums" style={{ color }}>{value}</p>
-                    <p className="text-[8px] uppercase tracking-widest font-bold mt-1" style={{ color: "rgba(255,255,255,0.25)" }}>{label}</p>
+                    <p className="text-[8px] uppercase tracking-widest font-bold mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>{label}</p>
                   </div>
                 ))}
               </div>
 
               {/* Meta */}
               <div className="flex flex-col gap-2 pt-3 border-t border-white/[0.04]">
-                <div className="flex justify-between text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                <div className="flex justify-between text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>
                   <span>ID:</span>
                   <span className="font-mono text-white/70">#{profile.id?.toString().slice(-6) || "000000"}</span>
                 </div>
                 {profile.createdAt && (
-                  <div className="flex justify-between text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  <div className="flex justify-between text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>
                     <span>Регистрация:</span>
                     <span className="text-white/70">{new Date(profile.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}</span>
                   </div>
@@ -1054,7 +1141,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
               {equippedItems.length > 0 && (
                 <div className="flex flex-col gap-2 pt-3 border-t border-white/[0.04]">
                   <p className="text-[9px] uppercase tracking-widest font-black mb-1"
-                    style={{ color: "rgba(255,255,255,0.35)" }}>
+                    style={{ color: "rgba(255,255,255,0.55)" }}>
                     Экипировано
                   </p>
                   <div className="flex flex-col gap-1.5">
@@ -1070,7 +1157,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                           style={{ background: item.color, boxShadow: `0 0 6px ${item.color}60` }} />
                         <div className="flex flex-col min-w-0">
                           <span className="text-[10px] font-bold truncate" style={{ color: item.color }}>{item.name}</span>
-                          <span className="text-[8px] truncate" style={{ color: "rgba(255,255,255,0.25)" }}>
+                          <span className="text-[8px] truncate" style={{ color: "rgba(255,255,255,0.5)" }}>
                             {TYPE_META[item.type]?.label || item.type}
                           </span>
                         </div>
@@ -1087,17 +1174,16 @@ function PublicProfileView({ viewer, targetId, onBack }) {
               {/* Bio Card */}
               <div className="rounded-3xl p-6"
                 style={{
-                  background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  backdropFilter: "blur(16px)"
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.12)"
                 }}
               >
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-1 h-4 rounded-full" style={{ background: "rgba(255,255,255,0.3)" }} />
-                  <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.35)" }}>О себе</p>
+                  <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.55)" }}>О себе</p>
                 </div>
                 <p className="text-[12px] leading-relaxed whitespace-pre-wrap font-medium"
-                  style={{ color: profile.bio ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.25)" }}>
+                  style={{ color: profile.bio ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.4)" }}>
                   {profile.bio || "Пользователь пока не добавил описание"}
                 </p>
               </div>
@@ -1109,14 +1195,13 @@ function PublicProfileView({ viewer, targetId, onBack }) {
               {ownedItems.length > 0 && (
                 <div className="rounded-3xl p-6"
                   style={{
-                    background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    backdropFilter: "blur(16px)"
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.12)"
                   }}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-1 h-4 rounded-full" style={{ background: "#a855f7" }} />
-                    <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.55)" }}>
                       Инвентарь предметов
                     </p>
                     <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-bold"
@@ -1125,16 +1210,13 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                     </span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {ownedItems.map((item, i) => {
+                    {ownedItems.map((item) => {
                       const isEquipped = Object.values(equip).includes(item.id);
-                      const rarity = RARITIES[item.rarity] || RARITIES.common;
+                      const rarity = RARITIES?.[item.rarity] || { color: item.color || "#6b7280", label: item.rarity || "common" };
                       return (
-                        <motion.div
+                        <div
                           key={item.id}
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.03 }}
-                          className="group rounded-2xl p-3.5 flex flex-col gap-2 relative overflow-hidden transition-all duration-200"
+                          className="group rounded-2xl p-3.5 flex flex-col gap-2 relative overflow-hidden"
                           style={{
                             background: isEquipped ? `${rarity.color}12` : "rgba(255,255,255,0.03)",
                             border: isEquipped ? `1.5px solid ${rarity.color}40` : "1.5px solid rgba(255,255,255,0.05)",
@@ -1147,7 +1229,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full flex-shrink-0"
                               style={{ background: item.color, boxShadow: `0 0 6px ${item.color}50` }} />
-                            <span className="text-[11px] font-black truncate text-white/90 group-hover:text-white transition-colors">{item.name}</span>
+                            <span className="text-[11px] font-black truncate text-white/90">{item.name}</span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wide"
@@ -1158,7 +1240,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                               {TYPE_META[item.type]?.label || item.type}
                             </span>
                           </div>
-                        </motion.div>
+                        </div>
                       );
                     })}
                   </div>
@@ -1171,14 +1253,13 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                 {/* Skin Viewer */}
                 <div className="md:col-span-4 rounded-3xl p-6 flex flex-col"
                   style={{
-                    background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    backdropFilter: "blur(16px)"
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.12)"
                   }}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-1 h-4 rounded-full" style={{ background: "#22c55e" }} />
-                    <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.35)" }}>Скин игрока</p>
+                    <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.55)" }}>Скин игрока</p>
                   </div>
                   <div className="flex-1 flex items-center justify-center min-h-[220px]">
                     <SkinViewer username={profile.username} />
@@ -1188,14 +1269,13 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                 {/* Profile Comments */}
                 <div className="md:col-span-8 rounded-3xl p-6"
                   style={{
-                    background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    backdropFilter: "blur(16px)"
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.12)"
                   }}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-1 h-4 rounded-full" style={{ background: "#f59e0b" }} />
-                    <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.35)" }}>Стена комментариев</p>
+                    <p className="text-[10px] uppercase tracking-[0.16em] font-black" style={{ color: "rgba(255,255,255,0.55)" }}>Стена комментариев</p>
                   </div>
                   <ProfileComments targetId={targetId} viewer={viewer} />
                 </div>
@@ -1215,7 +1295,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
 function Section({ title, children }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[10px] uppercase tracking-[0.14em] font-semibold" style={{ color: "rgba(255,255,255,0.18)" }}>{title}</p>
+      <p className="text-[10px] uppercase tracking-[0.14em] font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>{title}</p>
       <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: "rgba(255,255,255,0.03)" }}>
         {children}
       </div>
@@ -1226,7 +1306,7 @@ function Section({ title, children }) {
 function Toggle({ label, icon: Icon, value, onChange }) {
   return (
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2.5 text-[12px] text-white/55">
+      <div className="flex items-center gap-2.5 text-[12px] text-white/70">
         <Icon size={13} className="text-white/30" />
         {label}
       </div>

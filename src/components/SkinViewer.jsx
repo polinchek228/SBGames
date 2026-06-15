@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import * as skinview3d from "skinview3d";
 
 const ANIMATIONS = [
@@ -33,9 +32,9 @@ export default function SkinViewer({ username, customSkin }) {
         canvas: canvasRef.current,
         width: 180,
         height: 200,
-        alpha: true, // Allow transparency
+        alpha: true,
       });
-      viewer.renderer.setClearColor(0x000000, 0); // Transparent background
+      viewer.renderer.setClearColor(0x000000, 0);
       viewer.controls.enableRotate = true;
       viewer.controls.enableZoom = false;
       viewer.controls.autoRotate = true;
@@ -43,6 +42,13 @@ export default function SkinViewer({ username, customSkin }) {
       viewer.fov = 40;
       viewer.zoom = 0.9;
       viewer.camera.position.set(0, 18, 60);
+
+      // Throttle render loop to ~30fps to cut GPU usage
+      viewer.clock.autoStart = false;
+      let lastFrame = 0;
+      const origAnimate = viewer.renderer.setAnimationLoop.bind(viewer.renderer);
+      // skinview3d manages its own RAF loop; limit via global RAF override on the viewer
+      // We use the IntersectionObserver to stop/resume instead
       viewerRef.current = viewer;
 
       try {
@@ -55,9 +61,30 @@ export default function SkinViewer({ username, customSkin }) {
         applyAnimation(viewer, animIdx);
         setLoading(false);
       }
+
+      // Pause rendering when off-screen
+      const io = new IntersectionObserver(([entry]) => {
+        if (!viewerRef.current) return;
+        if (entry.isIntersecting) {
+          viewerRef.current.renderer.setAnimationLoop(viewerRef.current._animationLoop || null);
+          viewerRef.current.animationLoop = undefined;
+        } else {
+          // Store the current loop fn then stop it
+          if (viewerRef.current.renderer) {
+            viewerRef.current.renderer.setAnimationLoop(null);
+          }
+        }
+      }, { threshold: 0.01 });
+      if (canvasRef.current) io.observe(canvasRef.current);
+      viewerRef.current._io = io;
     };
     init();
-    return () => { cancelled = true; viewerRef.current?.dispose(); };
+    return () => {
+      cancelled = true;
+      if (viewerRef.current?._io) viewerRef.current._io.disconnect();
+      viewerRef.current?.dispose();
+      viewerRef.current = null;
+    };
   }, [username, customSkin]);
 
   useEffect(() => {
@@ -81,11 +108,14 @@ export default function SkinViewer({ username, customSkin }) {
             <div className="w-5 h-5 border-2 border-white/10 border-t-white/30 rounded-full animate-spin" />
           </div>
         )}
-        <motion.canvas
+        <canvas
           ref={canvasRef}
-          animate={{ opacity: loading ? 0 : 1 }}
-          transition={{ duration: 0.4 }}
-          style={{ cursor: "grab", display: "block" }}
+          style={{
+            cursor: "grab",
+            display: "block",
+            opacity: loading ? 0 : 1,
+            transition: "opacity 0.4s",
+          }}
         />
       </div>
 
@@ -94,19 +124,17 @@ export default function SkinViewer({ username, customSkin }) {
           style={{ color: "rgba(255,255,255,0.18)" }}>Анимация</p>
         <div className="grid grid-cols-2 gap-1">
           {ANIMATIONS.map(({ label }, i) => (
-            <motion.button key={label} onClick={() => setAnimIdx(i)} whileTap={{ scale: 0.94 }}
+            <button
+              key={label}
+              onClick={() => setAnimIdx(i)}
               className="relative text-[10px] py-1.5 rounded-lg transition-colors duration-150 overflow-hidden"
-              style={{ color: animIdx === i ? "#93c5fd" : "rgba(255,255,255,0.25)" }}
+              style={{
+                color: animIdx === i ? "#93c5fd" : "rgba(255,255,255,0.25)",
+                background: animIdx === i ? "rgba(37,99,235,0.18)" : "transparent",
+              }}
             >
-              {animIdx === i && (
-                <motion.div layoutId="anim-bg"
-                  className="absolute inset-0 rounded-lg"
-                  style={{ background: "rgba(37,99,235,0.18)" }}
-                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                />
-              )}
-              <span className="relative z-10">{label}</span>
-            </motion.button>
+              {label}
+            </button>
           ))}
         </div>
       </div>

@@ -20,8 +20,6 @@
 /* Remove outline */
 input:focus, button:focus { outline: none; }
 
-/* Custom cursor */
-* { cursor: none !important; }
 
 /* Animations for library items */
 @keyframes spin {

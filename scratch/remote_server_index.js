@@ -82,24 +82,6 @@ const app = express();
 // ─── Trust proxy (nginx) ──────────────────────────────────────────────────────
 app.set("trust proxy", 1);
 
-// ─── Static: backgrounds (video files) ────────────────────────────────────────
-app.use("/backgrounds", express.static(
-  require("path").join(__dirname, "backgrounds"),
-  { maxAge: "7d", etag: true, lastModified: true }
-));
-
-// ─── Static: frames (PNG images) ──────────────────────────────────────────────
-app.use("/frames", express.static(
-  require("path").join(__dirname, "frames"),
-  { maxAge: "7d", etag: true, lastModified: true }
-));
-
-// ─── Static: icons (PNG images) ───────────────────────────────────────────────
-app.use("/icons", express.static(
-  require("path").join(__dirname, "icons"),
-  { maxAge: "7d", etag: true, lastModified: true }
-));
-
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
@@ -133,8 +115,6 @@ const ALLOWED_ORIGINS = new Set([
   "http://sbgames.hyperionsearch.xyz",
   "http://localhost:1420",
   "http://localhost:5173",
-  "tauri://localhost",
-  "https://tauri.localhost",
 ]);
 app.use(cors({
   origin: (origin, cb) => {
@@ -170,7 +150,6 @@ function getIP(req) {
 }
 
 function isBlocked(ip) {
-  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost" || ip === "0.0.0.0") return false;
   const until = blockedIPs.get(ip);
   if (!until) return false;
   if (Date.now() > until) { blockedIPs.delete(ip); return false; }
@@ -178,7 +157,6 @@ function isBlocked(ip) {
 }
 
 function recordFailure(ip) {
-  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost" || ip === "0.0.0.0") return false;
   const now = Date.now();
   const entry = failedAttempts.get(ip) || { count: 0, firstAt: now };
   if (now - entry.firstAt > ATTEMPT_WINDOW) { entry.count = 0; entry.firstAt = now; }
@@ -209,14 +187,9 @@ const makeLimit = (windowMs, max, msg) => rateLimit({
   skip:           req => isAdmin(req.body?.username) || isAdminId(String(req.body?.tgUser?.id || "")),
 });
 
-const authLimiter      = makeLimit(60_000, 30,  "Слишком много попыток входа");
 const apiLimiter       = makeLimit(60_000, 100, "Слишком много запросов");
-const strictLimiter    = makeLimit(60_000, 3,   "Превышен лимит запросов");
 
-app.use("/auth/tg-login",    blockMiddleware, authLimiter);
-app.use("/auth/widget-login", blockMiddleware, authLimiter);
 // create-code и check-code — без лимитов, это безобидные операции
-app.use("/payments",         blockMiddleware, strictLimiter);
 app.use("/admin",            blockMiddleware);
 app.use("/api",              apiLimiter);
 app.use("/support/ticket",   apiLimiter);
@@ -551,21 +524,16 @@ function requireAuth(req, res, next) {
 
 // ─── Shop Catalog ─────────────────────────────────────────────────────────────
 const SHOP_CATALOG = [
-  { id: "frame_basic_gray",  type: "frame",    name: "Torn",                  price: 0,    preview: "#6b7280" },
-  { id: "badge_heart",       type: "badge",    name: "Сердце",                price: 0,    preview: "#f43f5e" },
-  { id: "frame_basic_blue",  type: "frame",    name: "Sketched Memory",      price: 200,  preview: "#3b82f6" },
-  { id: "frame_neon",        type: "frame",    name: "Bewitching Frame",     price: 500,  preview: "#a855f7" },
-  { id: "frame_gold",        type: "frame",    name: "oil",                  price: 1500, preview: "#facc15" },
-  { id: "frame_galaxy",      type: "frame",    name: "Элли у окна",          price: 3000, preview: "linear-gradient(135deg,#6366f1,#a855f7,#ec4899)" },
-  { id: "frame_fire",        type: "frame",    name: "Husk Frame",           price: 2000, preview: "linear-gradient(135deg,#dc2626,#f97316,#facc15)" },
-  { id: "frame_ice",         type: "frame",    name: "Ледяная",              price: 2000, preview: "linear-gradient(135deg,#0ea5e9,#38bdf8,#e0f2fe)" },
-  { id: "bg_fon1",           type: "background", name: "Lilywhite & Lilyblack", price: 0,  preview: "#3b82f6" },
-  { id: "bg_fon2",           type: "background", name: "Miss Neko 2",        price: 500,  preview: "#8b5cf6" },
-  { id: "bg_fon3",           type: "background", name: "Muse Dash",          price: 800,  preview: "#ec4899" },
-  { id: "bg_fon4",           type: "background", name: "GetsuClanEstate",    price: 1200, preview: "#f97316" },
-  { id: "bg_fon5",           type: "background", name: "Circle of Hell",     price: 1500, preview: "#eab308" },
-  { id: "bg_fon6",           type: "background", name: "Black Hole",         price: 2000, preview: "#22c55e" },
-  { id: "bg_fon7",           type: "background", name: "noir-anime2",        price: 2500, preview: "#06b6d4" },
+  { id: "frame_basic_blue",  type: "frame",    name: "Синяя рамка",         price: 200,  preview: "#3b82f6" },
+  { id: "frame_neon",        type: "frame",    name: "Неоновая рамка",      price: 500,  preview: "#a855f7" },
+  { id: "frame_gold",        type: "frame",    name: "Золотая рамка",       price: 1500, preview: "#facc15" },
+  { id: "frame_galaxy",      type: "frame",    name: "Галактика",           price: 3000, preview: "linear-gradient(135deg,#6366f1,#a855f7,#ec4899)" },
+  { id: "frame_fire",        type: "frame",    name: "Огненная",            price: 2000, preview: "linear-gradient(135deg,#dc2626,#f97316,#facc15)" },
+  { id: "frame_ice",         type: "frame",    name: "Ледяная",             price: 2000, preview: "linear-gradient(135deg,#0ea5e9,#38bdf8,#e0f2fe)" },
+  { id: "bg_aurora",         type: "background", name: "Аврора",            price: 400,  preview: "linear-gradient(135deg,#0ea5e9,#6366f1,#a855f7)" },
+  { id: "bg_ember",          type: "background", name: "Уголёк",            price: 400,  preview: "linear-gradient(135deg,#7f1d1d,#dc2626,#f59e0b)" },
+  { id: "bg_void",           type: "background", name: "Пустота",           price: 800,  preview: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)" },
+  { id: "bg_cosmic",         type: "background", name: "Космос",            price: 1200, preview: "linear-gradient(135deg,#0f0524,#1a0a3e,#7c3aed)" },
   { id: "anim_pulse",        type: "avatar_animated", name: "Импульс",     price: 1200, preview: "#60a5fa" },
   { id: "anim_flame",        type: "avatar_animated", name: "Пламя",       price: 1200, preview: "#f97316" },
   { id: "anim_neon",         type: "avatar_animated", name: "Неон",        price: 1500, preview: "#a855f7" },
@@ -591,32 +559,7 @@ app.get("/api/user/:id", async (req, res) => {
   const id = sanitize(req.params.id, 64);
   const acc = await redisAccounts.get(id);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
-  const online = [...wsClients.values()].some(c => c.userId === id);
-  const friendCount = getFriends(id).size;
-  res.json({
-    id: acc.id,
-    username: acc.username,
-    role: acc.role,
-    bio: acc.bio || "",
-    equip: acc.equip || {},
-    inventory: Array.isArray(acc.inventory) ? acc.inventory : [],
-    createdAt: acc.createdAt,
-    online,
-    friendCount,
-  });
-});
-
-app.get("/api/user/:id/activity", requireAuth, (req, res) => {
-  const targetId = sanitize(req.params.id, 64);
-  const list = activityStore.get(targetId) || [];
-  const byServer = {};
-  let totalSec = 0, lastSession = null;
-  for (const s of list) {
-    byServer[s.serverId] = (byServer[s.serverId] || 0) + s.durationSec;
-    totalSec += s.durationSec;
-    if (!lastSession || s.endedAt > lastSession) lastSession = s.endedAt;
-  }
-  res.json({ totalSec, byServer, lastSessionAt: lastSession || null, recent: list.slice(-10).reverse() });
+  res.json({ id: acc.id, username: acc.username, role: acc.role, bio: acc.bio || "", equip: acc.equip || {}, createdAt: acc.createdAt });
 });
 
 // ─── Profile comments ─────────────────────────────────────────────────────────
@@ -918,15 +861,18 @@ app.get("/online", (_, res) => {
 });
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
-const WS_MAX_PER_IP    = 5;    // макс соединений с одного IP
-const WS_AUTH_TIMEOUT  = 10_000; // 10с на авторизацию
+const WS_MAX_PER_IP    = 20;  // raised from 5 — dev hot-reloads open many connections    // макс соединений с одного IP
+const WS_AUTH_TIMEOUT  = 20_000; // raised from 10s — slow proxy adds latency // 10с на авторизацию
 const WS_MSG_LIMIT     = 30;   // сообщений в минуту
 const WS_MSG_WINDOW    = 60_000;
 const wsIPCount        = new Map(); // ip → count
 
 wss.on("connection", (ws, req) => {
   const clientId = uuidv4();
-  const ip = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
+  // Use proxy-aware IP (behind Nginx, remoteAddress is always 127.0.0.1)
+  const forwarded = req.headers && req.headers["x-forwarded-for"];
+  const realIp    = req.headers && req.headers["x-real-ip"];
+  const ip = (forwarded ? forwarded.split(",")[0].trim() : (realIp || req.socket.remoteAddress || "0.0.0.0")).replace(/^::ffff:/, "");
 
   // Лимит соединений per IP
   const ipCount = (wsIPCount.get(ip) || 0) + 1;
@@ -947,207 +893,172 @@ wss.on("connection", (ws, req) => {
   }, WS_AUTH_TIMEOUT);
 
   ws.on("message", async (raw) => {
-    try {
-      if (raw.length > 8192) { ws.close(1009, "Message too large"); return; }
-      let msg; try { msg = JSON.parse(raw); } catch { return; }
-      const client = wsClients.get(clientId);
-      if (!client) return;
+    if (raw.length > 8192) { ws.close(1009, "Message too large"); return; }
+    let msg; try { msg = JSON.parse(raw); } catch { return; }
+    const client = wsClients.get(clientId);
+    if (!client) return;
 
-      // Rate limit сообщений
-      const now = Date.now();
-      if (now - client.msgWindowStart > WS_MSG_WINDOW) { client.msgCount = 0; client.msgWindowStart = now; }
-      client.msgCount++;
-      if (client.msgCount > WS_MSG_LIMIT) {
-        send(ws, { type: "error", text: "Слишком много сообщений" });
-        return;
+    // Rate limit сообщений
+    const now = Date.now();
+    if (now - client.msgWindowStart > WS_MSG_WINDOW) { client.msgCount = 0; client.msgWindowStart = now; }
+    client.msgCount++;
+    if (client.msgCount > WS_MSG_LIMIT) {
+      send(ws, { type: "error", text: "Слишком много сообщений" });
+      return;
+    }
+
+    switch (msg.type) {
+      case "auth": {
+        const userId = msg.token ? wsAuthenticate(msg.token) : null;
+        if (!userId) { recordFailure(ip); send(ws, { type: "auth_error", message: "Необходима авторизация" }); ws.close(); return; }
+        clearTimeout(authTimeout);
+        client.userId = userId; client.username = sanitize(msg.username || "", 32); client.role = isAdminId(userId) ? "admin" : "user";
+        wsClients.set(clientId, client); broadcastOnlineUsers();
+        const myFriends = [...getFriends(client.userId)].map(fid => { const fa = [...redisAccounts._map.values()].find(a => a.id === fid); return fa ? { id: fa.id, username: fa.username } : null; }).filter(Boolean);
+        send(ws, { type: "friends_list", friends: myFriends });
+        send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+        if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
+        break;
       }
-
-      switch (msg.type) {
-        case "auth": {
-          let userId = null;
-          try {
-            userId = msg.token ? wsAuthenticate(msg.token) : null;
-          } catch (e) {
-            console.error("[WS Auth Error] wsAuthenticate threw error:", e);
-          }
-          if (!userId) {
-            recordFailure(ip);
-            send(ws, { type: "auth_error", message: "Необходима авторизация" });
-            setTimeout(() => {
-              try { ws.close(1008, "Unauthorized"); } catch {}
-            }, 100);
-            return;
-          }
-          clearTimeout(authTimeout);
-          client.userId = userId; client.username = sanitize(msg.username || "", 32); client.role = isAdminId(userId) ? "admin" : "user";
-          wsClients.set(clientId, client); broadcastOnlineUsers();
-          let myFriends = [];
-          try {
-            myFriends = [...getFriends(client.userId)].map(fid => {
-              const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
-              return fa ? { id: fa.id, username: fa.username } : null;
-            }).filter(Boolean);
-          } catch (e) {
-            console.error("[WS Auth Error] Failed to retrieve friends:", e);
-          }
-          send(ws, { type: "friends_list", friends: myFriends });
-          send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
-          if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
-          break;
+      case "friend_request_send": {
+        const target = [...redisAccounts._map.values()].find(a => (a.username || "").toLowerCase() === (msg.toUsername || "").trim().toLowerCase());
+        if (!target)                              { send(ws, { type: "friend_error", message: "Пользователь не найден" }); break; }
+        if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "Нельзя добавить себя" }); break; }
+        if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "Уже в друзьях" }); break; }
+        const existing = getPendingRequests(target.id);
+        if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "Заявка уже отправлена" }); break; }
+        const reqData = { fromId: client.userId, fromUsername: client.username, time: Date.now() };
+        friendRequests.set(target.id, [...existing, reqData]);
+        sendToUser(target.id, { type: "friend_request_received", request: reqData });
+        send(ws, { type: "friend_request_sent", toUsername: target.username });
+        break;
+      }
+      case "friend_request_respond": {
+        const { fromId, accept } = msg;
+        friendRequests.set(client.userId, getPendingRequests(client.userId).filter(r => r.fromId !== fromId));
+        if (accept) {
+          if (!friendships.has(client.userId)) friendships.set(client.userId, new Set());
+          if (!friendships.has(fromId))         friendships.set(fromId,         new Set());
+          friendships.get(client.userId).add(fromId); friendships.get(fromId).add(client.userId);
+          const meFriends = [...getFriends(client.userId)].map(fid => { const fa = [...redisAccounts._map.values()].find(a => a.id === fid); return fa ? { id: fa.id, username: fa.username } : null; }).filter(Boolean);
+          send(ws, { type: "friends_list", friends: meFriends });
+          sendToUser(fromId, { type: "friend_accepted", byId: client.userId, byUsername: client.username });
         }
-        case "friend_request_send": {
-          const target = [...redisAccounts._map.values()].find(a => a && (a.username || "").toLowerCase() === (msg.toUsername || "").trim().toLowerCase());
-          if (!target)                              { send(ws, { type: "friend_error", message: "Пользователь не найден" }); break; }
-          if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "Нельзя добавить себя" }); break; }
-          if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "Уже в друзьях" }); break; }
-          const existing = getPendingRequests(target.id);
-          if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "Заявка уже отправлена" }); break; }
-          const reqData = { fromId: client.userId, fromUsername: client.username, time: Date.now() };
-          friendRequests.set(target.id, [...existing, reqData]);
-          sendToUser(target.id, { type: "friend_request_received", request: reqData });
-          send(ws, { type: "friend_request_sent", toUsername: target.username });
-          break;
-        }
-        case "friend_request_respond": {
-          const { fromId, accept } = msg;
-          friendRequests.set(client.userId, getPendingRequests(client.userId).filter(r => r.fromId !== fromId));
-          if (accept) {
-            if (!friendships.has(client.userId)) friendships.set(client.userId, new Set());
-            if (!friendships.has(fromId))         friendships.set(fromId,         new Set());
-            friendships.get(client.userId).add(fromId); friendships.get(fromId).add(client.userId);
-            let meFriends = [];
-            try {
-              meFriends = [...getFriends(client.userId)].map(fid => {
-                const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
-                return fa ? { id: fa.id, username: fa.username } : null;
-              }).filter(Boolean);
-            } catch (e) {
-              console.error("[WS Friend Respond Error] Failed to get friends list:", e);
-            }
-            send(ws, { type: "friends_list", friends: meFriends });
-            sendToUser(fromId, { type: "friend_accepted", byId: client.userId, byUsername: client.username });
-          }
-          send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
-          break;
-        }
-        case "dm_send": {
-          const text = sanitize(msg.text || "", 2000); if (!text) break;
-          const key = dmKey(client.userId, msg.toId); const msgs = dms.get(key) || [];
-          const dm = { id: uuidv4(), from: client.userId, fromUsername: client.username, text: text.trim(), time: Date.now() };
-          msgs.push(dm); dms.set(key, msgs.slice(-200));
-          send(ws, { type: "dm_message", with: msg.toId, message: dm });
-          sendToUser(msg.toId, { type: "dm_message", with: client.userId, message: dm });
-          break;
-        }
-        case "dm_history": {
-          const msgs = dms.get(dmKey(client.userId, msg.withId)) || [];
-          send(ws, { type: "dm_history", with: msg.withId, messages: msgs });
-          break;
-        }
-        case "message": {
-          const ticket = tickets.get(Number(msg.ticketId)); if (!ticket) return;
-          const cleanText = sanitize(msg.text || "", 2000); if (!cleanText) return;
-          const message = { id: uuidv4(), from: client.userId || "anon", username: client.username || "Player", role: client.role, text: cleanText, time: Date.now() };
-          ticket.messages.push(message);
-          if (client.role === "user") {
-            ticket.unread = (ticket.unread || 0) + 1; ticket.status = "open";
-            broadcastToAdmins({ type: "message", ticketId: ticket.id, message });
-            broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
-          } else {
-            ticket.unread = 0; ticket.status = "answered";
-            broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
-            broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
-            // Форвард в TG если пользователь из бота
-            if (ticket.tgChatId) {
-              try {
-                await bot.sendMessage(ticket.tgChatId,
-                  `💬 *Ответ по тикету #${ticket.id}*\n\n${cleanText}`,
-                  { parse_mode: "Markdown", reply_markup: USER_KB }
-                );
-              } catch (e) { console.error("[ws message tg forward]", e.message); }
-            }
-          }
-          break;
-        }
-        case "read_ticket": {
-          const ticket = tickets.get(Number(msg.ticketId));
-          if (ticket && client.role === "admin") { ticket.unread = 0; send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages }); }
-          break;
-        }
-        case "close_ticket": {
-          const ticket = tickets.get(Number(msg.ticketId));
-          if (ticket && client.role === "admin") { ticket.status = "closed"; broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
-          break;
-        }
-        // Админ отправляет реквизиты через лаунчер → форвардим в TG
-        case "send_requisites": {
-          if (client.role !== "admin") break;
-          const ticket = tickets.get(Number(msg.ticketId));
-          if (!ticket) break;
-          const cleanText = sanitize(msg.text || "", 1000);
-          if (!cleanText) break;
-          const message = { id: uuidv4(), from: client.userId, username: client.username, role: "admin", text: cleanText, time: Date.now() };
-          ticket.messages.push(message);
-          ticket.status = "answered"; ticket.unread = 0;
-          // Показываем в лаунчере
+        send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+        break;
+      }
+      case "dm_send": {
+        const text = sanitize(msg.text || "", 2000); if (!text) break;
+        const key = dmKey(client.userId, msg.toId); const msgs = dms.get(key) || [];
+        const dm = { id: uuidv4(), from: client.userId, fromUsername: client.username, text: text.trim(), time: Date.now() };
+        msgs.push(dm); dms.set(key, msgs.slice(-200));
+        send(ws, { type: "dm_message", with: msg.toId, message: dm });
+        sendToUser(msg.toId, { type: "dm_message", with: client.userId, message: dm });
+        break;
+      }
+      case "dm_history": {
+        const msgs = dms.get(dmKey(client.userId, msg.withId)) || [];
+        send(ws, { type: "dm_history", with: msg.withId, messages: msgs });
+        break;
+      }
+      case "message": {
+        const ticket = tickets.get(Number(msg.ticketId)); if (!ticket) return;
+        const cleanText = sanitize(msg.text || "", 2000); if (!cleanText) return;
+        const message = { id: uuidv4(), from: client.userId || "anon", username: client.username || "Player", role: client.role, text: cleanText, time: Date.now() };
+        ticket.messages.push(message);
+        if (client.role === "user") {
+          ticket.unread = (ticket.unread || 0) + 1; ticket.status = "open";
           broadcastToAdmins({ type: "message", ticketId: ticket.id, message });
           broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+        } else {
+          ticket.unread = 0; ticket.status = "answered";
           broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
-          // Отправляем в TG если tgChatId известен
-          if (ticket.tgChatId) {
-            try {
-              await bot.sendMessage(ticket.tgChatId,
-                `💳 *Реквизиты для оплаты*\n\n${cleanText}\n\nПосле оплаты нажми кнопку и прикрепи чек.`,
-                { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "✅ Отправить чек", callback_data: `send_receipt_${ticket.id}` }]] } }
-              );
-            } catch (e) { console.error("[ws send_requisites tg]", e.message); }
-          }
-          send(ws, { type: "requisites_sent", ticketId: ticket.id });
-          break;
-        }
-        // Админ подтверждает оплату через лаунчер → выдаём баланс + закрываем
-        case "confirm_payment": {
-          if (client.role !== "admin") break;
-          const ticket = tickets.get(Number(msg.ticketId));
-          if (!ticket) break;
-          const amount = parseInt(msg.amount, 10);
-          if (!amount || amount <= 0) break;
-          const acc = await redisAccounts.get(ticket.userId);
-          if (!acc) { send(ws, { type: "error", text: "Аккаунт игрока не найден" }); break; }
-          acc.balance = (acc.balance || 0) + amount;
-          await redisAccounts.set(ticket.userId, acc);
-          const sysMsg = { id: uuidv4(), from: "system", text: `Оплата подтверждена. +${amount} СБТ зачислено.`, time: Date.now() };
-          ticket.messages.push(sysMsg);
-          ticket.status = "closed";
-          broadcastToAdmins({ type: "message", ticketId: ticket.id, message: sysMsg });
           broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
-          broadcastToTicket(ticket.id, null, { type: "message", ticketId: ticket.id, message: sysMsg });
-          broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id });
-          sendToUser(ticket.userId, { type: "balance_update", balance: acc.balance });
-          send(ws, { type: "payment_confirmed", ticketId: ticket.id, newBalance: acc.balance });
-          // Уведомление в TG
+          // Форвард в TG если пользователь из бота
           if (ticket.tgChatId) {
             try {
               await bot.sendMessage(ticket.tgChatId,
-                `✅ *Оплата подтверждена!*\n\n+*${amount} СБТ* зачислено на ваш аккаунт.\nТекущий баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`,
+                `💬 *Ответ по тикету #${ticket.id}*\n\n${cleanText}`,
                 { parse_mode: "Markdown", reply_markup: USER_KB }
               );
-            } catch (e) { console.error("[ws confirm_payment tg]", e.message); }
+            } catch (e) { console.error("[ws message tg forward]", e.message); }
           }
-          break;
         }
-        case "subscribe_ticket": {
-          client.ticketId = Number(msg.ticketId); wsClients.set(clientId, client);
-          const ticket = tickets.get(Number(msg.ticketId));
-          if (ticket) send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
-          break;
-        }
+        break;
       }
-    } catch (err) {
-      console.error("[WS Message Error]:", err);
-      try {
-        send(ws, { type: "error", text: "Внутренняя ошибка сервера" });
-      } catch (wsErr) {}
+      case "read_ticket": {
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (ticket && client.role === "admin") { ticket.unread = 0; send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages }); }
+        break;
+      }
+      case "close_ticket": {
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (ticket && client.role === "admin") { ticket.status = "closed"; broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+        break;
+      }
+      // Админ отправляет реквизиты через лаунчер → форвардим в TG
+      case "send_requisites": {
+        if (client.role !== "admin") break;
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (!ticket) break;
+        const cleanText = sanitize(msg.text || "", 1000);
+        if (!cleanText) break;
+        const message = { id: uuidv4(), from: client.userId, username: client.username, role: "admin", text: cleanText, time: Date.now() };
+        ticket.messages.push(message);
+        ticket.status = "answered"; ticket.unread = 0;
+        // Показываем в лаунчере
+        broadcastToAdmins({ type: "message", ticketId: ticket.id, message });
+        broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+        broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
+        // Отправляем в TG если tgChatId известен
+        if (ticket.tgChatId) {
+          try {
+            await bot.sendMessage(ticket.tgChatId,
+              `💳 *Реквизиты для оплаты*\n\n${cleanText}\n\nПосле оплаты нажми кнопку и прикрепи чек.`,
+              { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "✅ Отправить чек", callback_data: `send_receipt_${ticket.id}` }]] } }
+            );
+          } catch (e) { console.error("[ws send_requisites tg]", e.message); }
+        }
+        send(ws, { type: "requisites_sent", ticketId: ticket.id });
+        break;
+      }
+      // Админ подтверждает оплату через лаунчер → выдаём баланс + закрываем
+      case "confirm_payment": {
+        if (client.role !== "admin") break;
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (!ticket) break;
+        const amount = parseInt(msg.amount, 10);
+        if (!amount || amount <= 0) break;
+        const acc = await redisAccounts.get(ticket.userId);
+        if (!acc) { send(ws, { type: "error", text: "Аккаунт игрока не найден" }); break; }
+        acc.balance = (acc.balance || 0) + amount;
+        await redisAccounts.set(ticket.userId, acc);
+        const sysMsg = { id: uuidv4(), from: "system", text: `Оплата подтверждена. +${amount} СБТ зачислено.`, time: Date.now() };
+        ticket.messages.push(sysMsg);
+        ticket.status = "closed";
+        broadcastToAdmins({ type: "message", ticketId: ticket.id, message: sysMsg });
+        broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
+        broadcastToTicket(ticket.id, null, { type: "message", ticketId: ticket.id, message: sysMsg });
+        broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id });
+        sendToUser(ticket.userId, { type: "balance_update", balance: acc.balance });
+        send(ws, { type: "payment_confirmed", ticketId: ticket.id, newBalance: acc.balance });
+        // Уведомление в TG
+        if (ticket.tgChatId) {
+          try {
+            await bot.sendMessage(ticket.tgChatId,
+              `✅ *Оплата подтверждена!*\n\n+*${amount} СБТ* зачислено на ваш аккаунт.\nТекущий баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`,
+              { parse_mode: "Markdown", reply_markup: USER_KB }
+            );
+          } catch (e) { console.error("[ws confirm_payment tg]", e.message); }
+        }
+        break;
+      }
+      case "subscribe_ticket": {
+        client.ticketId = Number(msg.ticketId); wsClients.set(clientId, client);
+        const ticket = tickets.get(Number(msg.ticketId));
+        if (ticket) send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
+        break;
+      }
     }
   });
 

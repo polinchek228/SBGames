@@ -19,39 +19,52 @@ const CATEGORIES = [
 const STATUS_META = {
   open:     { label: "Открыт",   color: "#fbbf24", bg: "rgba(251,191,36,0.1)"  },
   answered: { label: "Ответили", color: "#34d399", bg: "rgba(52,211,153,0.1)"  },
-  closed:   { label: "Закрыт",   color: "rgba(255,255,255,0.2)", bg: "rgba(255,255,255,0.05)" },
+  closed:   { label: "Закрыт",   color: "rgba(255,255,255,0.45)", bg: "rgba(255,255,255,0.05)" },
 };
 
 function useWS(url, user, onMessage) {
   const ws = useRef(null);
   const [connected, setConnected] = useState(false);
   const deadRef = useRef(false);
-
-  const connect = useCallback(() => {
-    if (deadRef.current) return;
-    if (ws.current?.readyState === WebSocket.OPEN || ws.current?.readyState === WebSocket.CONNECTING) return;
-    const socket = new WebSocket(url);
-    ws.current = socket;
-    socket.onopen = () => {
-      if (deadRef.current) { socket.close(); return; }
-      setConnected(true);
-      socket.send(JSON.stringify({
-        type: "auth",
-        userId: user?.id,
-        username: user?.username || user?.telegram,
-        token: getToken(),
-      }));
-    };
-    socket.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch {} };
-    socket.onclose   = () => { if (!deadRef.current) { setConnected(false); setTimeout(connect, 3000); } };
-    socket.onerror   = () => socket.close();
-  }, [url, user]);
+  const onMessageRef = useRef(onMessage);
+  const connectTimer = useRef(null);
+  const userRef = useRef(user);
+  userRef.current = user;
+  useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
 
   useEffect(() => {
     deadRef.current = false;
-    connect();
-    return () => { deadRef.current = true; ws.current?.close(); };
-  }, [connect]);
+
+    const connect = () => {
+      if (deadRef.current) return;
+      if (ws.current?.readyState === WebSocket.OPEN || ws.current?.readyState === WebSocket.CONNECTING) return;
+      const socket = new WebSocket(url);
+      ws.current = socket;
+      socket.onopen = () => {
+        if (deadRef.current) { socket.close(); return; }
+        setConnected(true);
+        const u = userRef.current;
+        socket.send(JSON.stringify({
+          type: "auth",
+          userId: u?.id,
+          username: u?.username || u?.telegram,
+          token: getToken(),
+        }));
+      };
+      socket.onmessage = (e) => { try { onMessageRef.current?.(JSON.parse(e.data)); } catch {} };
+      socket.onclose   = () => { if (!deadRef.current) { setConnected(false); connectTimer.current = setTimeout(connect, 3000); } };
+      socket.onerror   = () => { if (socket.readyState !== WebSocket.CLOSED) socket.close(); };
+    };
+
+    // Delay to avoid React StrictMode double-invocation closing the socket before it connects
+    connectTimer.current = setTimeout(connect, 100);
+
+    return () => {
+      deadRef.current = true;
+      clearTimeout(connectTimer.current);
+      ws.current?.close();
+    };
+  }, [url, user?.id]);
 
   const send = useCallback((data) => {
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(data));
@@ -88,6 +101,25 @@ function UserPanel({ user }) {
 
   const { connected, send } = useWS(WS_URL, user, handleWS);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`${API_URL}/support/tickets?userId=${encodeURIComponent(user.id)}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => {
+        const ticketList = d.tickets || [];
+        setTickets(ticketList);
+        localStorage.setItem(`sbg_tickets_${user.id}`, JSON.stringify(ticketList));
+      })
+      .catch(() => {
+        try {
+          const cached = localStorage.getItem(`sbg_tickets_${user.id}`);
+          if (cached) {
+            setTickets(JSON.parse(cached) || []);
+          }
+        } catch {}
+      });
+  }, [user?.id]);
+
   const openTicket = (t) => {
     setActive(t); setMessages([]); setView("chat");
     send({ type: "subscribe_ticket", ticketId: t.id });
@@ -101,7 +133,7 @@ function UserPanel({ user }) {
   };
 
   return (
-    <div className="flex h-full" style={{ background: "#050505" }}>
+    <div className="flex h-full" style={{ background: "rgba(5,5,5,0.55)", backdropFilter: "blur(2px)" }}>
       {/* Sidebar */}
       <div className="w-[240px] flex-shrink-0 flex flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.04)" }}>
         {/* Header */}
@@ -134,7 +166,7 @@ function UserPanel({ user }) {
           {tickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center flex-1 gap-3 py-20">
               <MessageCircle size={28} style={{ color: "rgba(255,255,255,0.07)" }} />
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.2)" }}>Нет обращений</p>
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>Нет обращений</p>
             </div>
           ) : tickets.map(t => {
             const st = STATUS_META[t.status] || STATUS_META.open;
@@ -154,7 +186,7 @@ function UserPanel({ user }) {
                     {st.label}
                   </span>
                 </div>
-                <p className="text-[10px] truncate" style={{ color: "rgba(255,255,255,0.28)" }}>{t.preview}</p>
+                <p className="text-[10px] truncate" style={{ color: "rgba(255,255,255,0.5)" }}>{t.preview}</p>
               </motion.button>
             );
           })}
@@ -174,7 +206,7 @@ function UserPanel({ user }) {
               </div>
               <div className="text-center">
                 <p className="text-[15px] font-semibold text-white">Служба поддержки</p>
-                <p className="text-[12px] mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>
+                <p className="text-[12px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>
                   Создайте обращение — ответим в течение часа
                 </p>
               </div>
@@ -226,7 +258,10 @@ function AdminPanel({ user }) {
 
   const handleWS = useCallback((msg) => {
     if (msg.type === "admin_ready") {
-      fetch(`${API_URL}/support/tickets`).then(r => r.json()).then(d => setTickets(d.tickets || []));
+      fetch(`${API_URL}/support/tickets`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => setTickets(d.tickets || []))
+        .catch(() => {});
     }
     if (msg.type === "new_ticket")    setTickets(prev => [msg.ticket, ...prev]);
     if (msg.type === "ticket_update") setTickets(prev => prev.map(t => t.id === msg.ticket.id ? { ...t, ...msg.ticket } : t));
@@ -272,7 +307,7 @@ function AdminPanel({ user }) {
   const filtered = tickets.filter(t => filter === "all" ? true : t.status === filter);
 
   return (
-    <div className="flex h-full" style={{ background: "#050505" }}>
+    <div className="flex h-full" style={{ background: "rgba(5,5,5,0.55)", backdropFilter: "blur(2px)" }}>
       {/* Sidebar */}
       <div className="w-[250px] flex-shrink-0 flex flex-col" style={{ borderRight: "1px solid rgba(255,255,255,0.04)" }}>
         <div className="px-4 py-4 flex-shrink-0">
@@ -293,7 +328,7 @@ function AdminPanel({ user }) {
                 className="flex-1 text-[10px] py-1.5 rounded-lg transition-all duration-150 font-medium"
                 style={filter === val
                   ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
-                  : { color: "rgba(255,255,255,0.3)" }}
+                  : { color: "rgba(255,255,255,0.55)" }}
               >{label}</button>
             ))}
           </div>
@@ -301,7 +336,7 @@ function AdminPanel({ user }) {
 
         <div className="flex-1 overflow-y-auto px-2 pb-3 flex flex-col gap-0.5">
           {filtered.length === 0 ? (
-            <p className="text-[11px] text-center mt-10" style={{ color: "rgba(255,255,255,0.18)" }}>Нет тикетов</p>
+            <p className="text-[11px] text-center mt-10" style={{ color: "rgba(255,255,255,0.65)" }}>Нет тикетов</p>
           ) : filtered.map(t => {
             const st = STATUS_META[t.status] || STATUS_META.open;
             return (
@@ -321,7 +356,7 @@ function AdminPanel({ user }) {
                     style={{ background: st.bg, color: st.color }}>{st.label}</span>
                 </div>
                 <p className="text-[11px] font-semibold text-white truncate">{t.category}</p>
-                <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.3)" }}>
+                <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.55)" }}>
                   @{t.username} · #{t.id}
                 </p>
               </motion.button>
@@ -347,7 +382,7 @@ function AdminPanel({ user }) {
               className="flex flex-col items-center justify-center h-full gap-3"
             >
               <Shield size={28} style={{ color: "rgba(255,255,255,0.07)" }} />
-              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.2)" }}>Выберите тикет</p>
+              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.45)" }}>Выберите тикет</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -404,16 +439,16 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
       >
         <motion.button onClick={onBack} whileTap={{ scale: 0.9 }}
           className="w-7 h-7 rounded-xl flex items-center justify-center transition-all duration-150 flex-shrink-0"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}
+          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)" }}
           onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.color = "#fff"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
         >
           <ChevronLeft size={14} />
         </motion.button>
 
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-semibold text-white truncate">{ticket.category}</p>
-          <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.28)" }}>
+          <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.5)" }}>
             #{ticket.id} · {isAdmin ? `@${ticket.username}` : "Поддержка"}
             {ticket.tgChatId && isAdmin && <span style={{ color: "rgba(96,165,250,0.6)" }}> · TG</span>}
           </p>
@@ -492,13 +527,13 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
               <div className="flex gap-2">
                 <motion.button onClick={handleSendRequisites} whileTap={{ scale: 0.96 }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-semibold transition-all duration-150"
-                  style={{ background: reqText.trim() ? "rgba(37,99,235,0.3)" : "rgba(255,255,255,0.05)", color: reqText.trim() ? "#93c5fd" : "rgba(255,255,255,0.2)" }}
+                  style={{ background: reqText.trim() ? "rgba(37,99,235,0.3)" : "rgba(255,255,255,0.05)", color: reqText.trim() ? "#93c5fd" : "rgba(255,255,255,0.45)" }}
                 >
                   <Send size={11} />Отправить в TG
                 </motion.button>
                 <button onClick={() => setShowReq(false)}
                   className="px-3 py-2 rounded-xl text-[11px] transition-colors duration-150"
-                  style={{ color: "rgba(255,255,255,0.25)" }}
+                  style={{ color: "rgba(255,255,255,0.5)" }}
                 >Отмена</button>
               </div>
             </div>
@@ -524,16 +559,16 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
                 className="w-28 rounded-xl text-[12px] px-3 py-1.5 outline-none"
                 style={{ background: "rgba(255,255,255,0.06)", color: "#fff", caretColor: "#34d399" }}
               />
-              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>СБТ</span>
+              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>СБТ</span>
               <motion.button onClick={handleConfirmPayment} whileTap={{ scale: 0.95 }}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-150 ml-auto"
-                style={{ background: payAmount ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.05)", color: payAmount ? "#34d399" : "rgba(255,255,255,0.2)" }}
+                style={{ background: payAmount ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.05)", color: payAmount ? "#34d399" : "rgba(255,255,255,0.45)" }}
               >
                 <Coins size={12} />Выдать и закрыть
               </motion.button>
               <button onClick={() => setShowPay(false)}
                 className="px-2 py-1.5 rounded-xl text-[11px] transition-colors"
-                style={{ color: "rgba(255,255,255,0.25)" }}
+                style={{ color: "rgba(255,255,255,0.5)" }}
               >✕</button>
             </div>
           </motion.div>
@@ -556,14 +591,14 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
               }`}
             >
               {!isMe && !isSystem && (
-                <span className="text-[9px] px-1 mb-0.5" style={{ color: "rgba(255,255,255,0.22)" }}>
+                <span className="text-[9px] px-1 mb-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
                   {msg.role === "admin" ? "Администратор" : `@${msg.username}`}
                 </span>
               )}
 
               {isSystem ? (
                 <div className="px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <p className="text-[10px] whitespace-pre-line" style={{ color: "rgba(255,255,255,0.28)" }}>{msg.text}</p>
+                  <p className="text-[10px] whitespace-pre-line" style={{ color: "rgba(255,255,255,0.5)" }}>{msg.text}</p>
                 </div>
               ) : isReq ? (
                 <div className="px-4 py-3 rounded-2xl" style={{ background: "rgba(37,99,235,0.15)", borderBottomRightRadius: isMe ? 4 : undefined }}>
@@ -585,7 +620,7 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
 
               {!isSystem && (
                 <div className="flex items-center gap-1 px-1">
-                  <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.15)" }}>
+                  <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.4)" }}>
                     {new Date(msg.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                   {isMe && <CheckCheck size={10} style={{ color: "rgba(96,165,250,0.45)" }} />}
@@ -614,14 +649,14 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
           />
           <motion.button type="submit" disabled={!input.trim()} whileTap={{ scale: 0.88 }}
             className="w-9 h-9 flex-shrink-0 rounded-2xl flex items-center justify-center transition-all duration-150"
-            style={{ background: input.trim() ? "rgba(37,99,235,0.7)" : "rgba(255,255,255,0.05)", color: input.trim() ? "#fff" : "rgba(255,255,255,0.2)" }}
+            style={{ background: input.trim() ? "rgba(37,99,235,0.7)" : "rgba(255,255,255,0.05)", color: input.trim() ? "#fff" : "rgba(255,255,255,0.45)" }}
           >
             <Send size={13} />
           </motion.button>
         </form>
       ) : (
         <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-          <p className="text-[11px] text-center" style={{ color: "rgba(255,255,255,0.2)" }}>Тикет закрыт</p>
+          <p className="text-[11px] text-center" style={{ color: "rgba(255,255,255,0.45)" }}>Тикет закрыт</p>
         </div>
       )}
     </>
@@ -696,15 +731,15 @@ function NewTicketForm({ user, onBack, onCreated }) {
       <div className="flex items-center gap-3">
         <motion.button onClick={onBack} whileTap={{ scale: 0.9 }}
           className="w-7 h-7 rounded-xl flex items-center justify-center transition-all duration-150"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}
+          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)" }}
           onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.color = "#fff"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
         >
           <ChevronLeft size={14} />
         </motion.button>
         <div>
           <p className="text-[15px] font-bold text-white">Новое обращение</p>
-          <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.28)" }}>Опишите проблему — ответим быстро</p>
+          <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>Опишите проблему — ответим быстро</p>
         </div>
       </div>
 
@@ -712,19 +747,19 @@ function NewTicketForm({ user, onBack, onCreated }) {
         {/* Category */}
         <div>
           <p className="text-[10px] uppercase tracking-widest font-semibold mb-2"
-            style={{ color: "rgba(255,255,255,0.18)" }}>Тема</p>
+            style={{ color: "rgba(255,255,255,0.65)" }}>Тема</p>
           <div className="relative" ref={dropRef}>
             <button type="button" onClick={() => setCatOpen(v => !v)}
               className="w-full flex items-center justify-between rounded-2xl px-4 py-3 text-[13px] transition-all duration-150"
               style={{
                 background: "rgba(255,255,255,0.04)",
-                color: category ? "#fff" : "rgba(255,255,255,0.25)",
+                color: category ? "#fff" : "rgba(255,255,255,0.5)",
                 outline: catOpen ? "1px solid rgba(37,99,235,0.4)" : "1px solid transparent",
               }}
             >
               {category || "Выберите тему..."}
               <motion.span animate={{ rotate: catOpen ? 180 : 0 }} transition={{ duration: 0.15 }}
-                style={{ color: "rgba(255,255,255,0.3)", display: "flex" }}
+                style={{ color: "rgba(255,255,255,0.55)", display: "flex" }}
               >
                 <ChevronLeft size={14} style={{ transform: "rotate(-90deg)" }} />
               </motion.span>
@@ -756,7 +791,7 @@ function NewTicketForm({ user, onBack, onCreated }) {
         {/* Description */}
         <div>
           <p className="text-[10px] uppercase tracking-widest font-semibold mb-2"
-            style={{ color: "rgba(255,255,255,0.18)" }}>Описание</p>
+            style={{ color: "rgba(255,255,255,0.65)" }}>Описание</p>
           <textarea value={text} onChange={e => setText(e.target.value)}
             placeholder="Подробно опишите проблему..."
             rows={6}
@@ -768,7 +803,7 @@ function NewTicketForm({ user, onBack, onCreated }) {
             }}
           />
           <p className="text-[10px] mt-1 text-right"
-            style={{ color: text.length >= 10 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)" }}>
+            style={{ color: text.length >= 10 ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.3)" }}>
             {text.length} симв.
           </p>
         </div>
@@ -777,7 +812,7 @@ function NewTicketForm({ user, onBack, onCreated }) {
           className="flex items-center justify-center gap-2 rounded-2xl py-3 text-[13px] font-semibold transition-all duration-200"
           style={{
             background: canSubmit ? "rgba(37,99,235,0.22)" : "rgba(255,255,255,0.04)",
-            color: canSubmit ? "#93c5fd" : "rgba(255,255,255,0.18)",
+            color: canSubmit ? "#93c5fd" : "rgba(255,255,255,0.4)",
           }}
           onMouseEnter={e => { if (canSubmit) e.currentTarget.style.background = "rgba(37,99,235,0.38)"; }}
           onMouseLeave={e => { if (canSubmit) e.currentTarget.style.background = "rgba(37,99,235,0.22)"; }}

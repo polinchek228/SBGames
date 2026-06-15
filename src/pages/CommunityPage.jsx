@@ -28,46 +28,98 @@ const STATUS_DOT = {
   offline: "rgba(255,255,255,0.12)",
 };
 
-// ─── Shared WS hook ───────────────────────────────────────────────────────────
+// ─── Shared WS hook (ФИКС БЕСКОНЕЧНОГО ПОДКЛЮЧЕНИЯ) ───────────────────────────
 export function useCommunityWS(user, onEvent) {
   const wsRef    = useRef(null);
   const timerRef = useRef(null);
   const userRef  = useRef(user);
   const onRef    = useRef(onEvent);
   const [connected, setConnected] = useState(false);
+  
   useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { onRef.current = onEvent; }, [onEvent]);
 
   useEffect(() => {
     if (!user?.id) return;
     let dead = false;
+    let connectTimer;
 
     function open() {
       if (dead) return;
+      
       const socket = new WebSocket(WS_URL);
       wsRef.current = socket;
+
       socket.onopen = () => {
-        if (dead) { socket.close(); return; }
+        if (dead) {
+          if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+            socket.close();
+          }
+          return;
+        }
         setConnected(true);
+        
         const u = userRef.current;
-        socket.send(JSON.stringify({ type: "auth", userId: u.id, username: u.username || u.telegram, token: getToken() }));
+        const token = getToken();
+        
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ 
+            type: "auth", 
+            userId: u.id, 
+            username: u.username || u.telegram, 
+            token: token 
+          }));
+        }
       };
+
       socket.onmessage = (e) => {
-        try { onRef.current?.(JSON.parse(e.data)); } catch {}
+        try { 
+          onRef.current?.(JSON.parse(e.data)); 
+        } catch {}
       };
-      socket.onclose = () => { setConnected(false); if (!dead) timerRef.current = setTimeout(open, 4000); };
-      socket.onerror = () => socket.close();
+
+      socket.onclose = (event) => {
+        setConnected(false);
+        wsRef.current = null;
+        
+        if (!dead) {
+          clearTimeout(timerRef.current);
+          timerRef.current = setTimeout(open, 4000); 
+        }
+      };
+
+      socket.onerror = () => {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+      };
     }
-    open();
-    return () => { dead = true; clearTimeout(timerRef.current); wsRef.current?.close(); };
+
+    // Delay to avoid React StrictMode double-invocation closing the socket before it connects
+    connectTimer = setTimeout(open, 100);
+
+    return () => { 
+      dead = true; 
+      clearTimeout(connectTimer);
+      clearTimeout(timerRef.current); 
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        wsRef.current.close(); 
+      }
+      wsRef.current = null;
+    };
   }, [user?.id]);
 
   const send = useCallback((data) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(data));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(data));
+    } else {
+      console.warn("[WS] Cannot send data, socket not open:", data);
+    }
   }, []);
 
   return { connected, send };
 }
+
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function CommunityPage({ onClose, user, onBadgeChange, onViewProfile }) {

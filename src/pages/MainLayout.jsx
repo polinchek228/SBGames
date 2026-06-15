@@ -16,6 +16,7 @@ import DownloadProgress from "../components/DownloadProgress.jsx";
 import { NotificationBell, useNotifications, pushNotification } from "../components/NotificationSystem.jsx";
 import { notifyDesktop, setDiscordPresence, invoke } from "../lib/tauri.js";
 import { WS_URL, getToken } from "../lib/api.js";
+import { CATALOG_BY_ID } from "./catalog.js";
 
 const NAV_ITEMS = [
   { id: "play",        label: "ИГРАТЬ",      icon: GameController },
@@ -26,6 +27,48 @@ const NAV_ITEMS = [
   { id: "support",     label: "ПОМОЩЬ",      icon: Headset },
 ];
 
+/* ── Global background video (experimental setting) ─────────────────────── */
+function GlobalBackground() {
+  const [videoSrc, setVideoSrc] = useState(null);
+
+  useEffect(() => {
+    const update = () => {
+      try {
+        const settings = JSON.parse(localStorage.getItem("sbgames_settings")) || {};
+        if (!settings.globalBg) { setVideoSrc(null); return; }
+        const userData = JSON.parse(localStorage.getItem("sbgames_user")) || {};
+        const bgId = userData?.equip?.background;
+        if (!bgId) { setVideoSrc(null); return; }
+        const item = CATALOG_BY_ID[bgId];
+        if (item?.video) setVideoSrc(item.video);
+        else setVideoSrc(null);
+      } catch { setVideoSrc(null); }
+    };
+    update();
+    // Re-check when settings or user data change
+    const onStorage = (e) => {
+      if (e.key === "sbgames_settings" || e.key === "sbgames_user") update();
+    };
+    window.addEventListener("storage", onStorage);
+    // Also poll briefly to catch same-tab changes
+    const iv = setInterval(update, 1500);
+    return () => { window.removeEventListener("storage", onStorage); clearInterval(iv); };
+  }, []);
+
+  if (!videoSrc) return null;
+  return (
+    <video
+      key={videoSrc}
+      autoPlay loop muted playsInline
+      src={videoSrc}
+      style={{
+        position: "absolute", inset: 0, width: "100%", height: "100%",
+        objectFit: "cover", zIndex: 0, pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 export default function MainLayout({ user, onLogout }) {
   const [page, setPage] = useState("play");
   const [showCommunity, setShowCommunity] = useState(false);
@@ -34,42 +77,69 @@ export default function MainLayout({ user, onLogout }) {
   const [balance, setBalance] = useState(user?.balance ?? 0);
   const balanceRef = useRef(balance);
   balanceRef.current = balance;
+  const userRef = useRef(user);
+  userRef.current = user;
 
   // ─── WS-уведомления (баланс, друзья, тикеты) ──────────────────────────
   useEffect(() => {
     let dead = false;
-    const ws = new WebSocket(WS_URL);
-    ws.onopen = () => {
-      if (dead) { ws.close(); return; }
-      ws.send(JSON.stringify({
-        type: "auth",
-        userId: user?.id,
-        username: user?.username,
-        token: getToken(),
-      }));
+    let ws;
+    let reconnectTimer;
+
+    const connect = () => {
+      if (dead) return;
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        if (dead) { ws.close(); return; }
+        const u = userRef.current;
+        ws.send(JSON.stringify({
+          type: "auth",
+          userId: u?.id,
+          username: u?.username,
+          token: getToken(),
+        }));
+      };
+
+      ws.onmessage = async (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "balance_update") {
+            const diff = msg.balance - balanceRef.current;
+            setBalance(msg.balance);
+            pushNotification("Баланс пополнен", `+${diff} СБТ · Новый баланс: ${msg.balance} СБТ`, "balance");
+            await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} СБТ`);
+          }
+          if (msg.type === "friend_accepted") {
+            pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
+            await notifyDesktop("SB Games", `${msg.byUsername} принял заявку в друзья`);
+          }
+          if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
+            pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
+            await notifyDesktop("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        if (!dead) reconnectTimer = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => {
+        if (ws.readyState !== WebSocket.CLOSED) ws.close();
+      };
     };
-    ws.onmessage = async (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === "balance_update") {
-          const diff = msg.balance - balanceRef.current;
-          setBalance(msg.balance);
-          pushNotification("Баланс пополнен", `+${diff} СБТ · Новый баланс: ${msg.balance} СБТ`, "balance");
-          await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} СБТ`);
-        }
-        if (msg.type === "friend_accepted") {
-          pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
-          await notifyDesktop("SB Games", `${msg.byUsername} принял заявку в друзья`);
-        }
-        if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
-          pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
-          await notifyDesktop("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
-        }
-      } catch {}
+
+    // Delay to avoid React StrictMode double-invocation closing the socket before it connects
+    const timer = setTimeout(connect, 100);
+
+    return () => {
+      dead = true;
+      clearTimeout(timer);
+      clearTimeout(reconnectTimer);
+      ws?.close();
     };
-    ws.onerror = () => {};
-    return () => { dead = true; ws.close(); };
-  }, [user]);
+  }, [user?.id]);
 
   // Discord — в лаунчере
   useEffect(() => {
@@ -137,7 +207,7 @@ export default function MainLayout({ user, onLogout }) {
       case "profile":     return <ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} />;
       case "leaderboard": return <LeaderboardPage />;
       case "news":        return <NewsPage />;
-      case "shop":        return <ShopPage />;
+      case "shop":        return <ShopPage user={user} onBalanceChange={setBalance} />;
       case "support":     return <SupportPage user={user} />;
       default:            return null;
     }
@@ -183,14 +253,12 @@ export default function MainLayout({ user, onLogout }) {
                       boxShadow: "0 0 20px rgba(37,99,235,0.4), 0 2px 10px rgba(37,99,235,0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
                     }
                   : {
-                      background: "rgba(255,255,255,0.04)",
-                      color: "rgba(255,255,255,0.4)",
-                      borderRadius: "10px",
-                      border: "1px solid rgba(255,255,255,0.04)",
+                      background: "transparent",
+                      color: "rgba(255,255,255,0.35)",
                     }
                 }
-                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "rgba(255,255,255,0.75)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; } }}
-                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.04)"; } }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; } }}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.35)"; } }}
               >
                 <Icon size={14} weight={active ? "fill" : "bold"} />
                 {label}
@@ -205,8 +273,7 @@ export default function MainLayout({ user, onLogout }) {
           <div
             className="flex items-center gap-2 px-3 h-[34px] rounded-xl select-none"
             style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "transparent",
             }}
           >
             <img src="/money.png" alt="coin" className="w-4 h-4 object-contain" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
@@ -222,10 +289,10 @@ export default function MainLayout({ user, onLogout }) {
             className="relative w-[34px] h-[34px] rounded-xl flex items-center justify-center transition-all duration-150"
             style={showCommunity
               ? { background: "linear-gradient(135deg, rgba(37,99,235,0.9), rgba(59,130,246,0.85))", color: "#fff", boxShadow: "0 0 12px rgba(37,99,235,0.3)" }
-              : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.04)" }
+              : { background: "transparent", color: "rgba(255,255,255,0.35)" }
             }
-            onMouseEnter={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.75)"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; } }}
-            onMouseLeave={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; } }}
+            onMouseEnter={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.7)"; e.currentTarget.style.background = "rgba(255,255,255,0.06)"; } }}
+            onMouseLeave={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background = "transparent"; } }}
           >
             <UsersThree size={15} weight={showCommunity ? "fill" : "bold"} />
             {friendBadge > 0 && (
@@ -240,9 +307,9 @@ export default function MainLayout({ user, onLogout }) {
           <button
             onClick={onLogout}
             className="w-[34px] h-[34px] rounded-xl flex items-center justify-center transition-all duration-150"
-            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}
+            style={{ background: "transparent", color: "rgba(255,255,255,0.35)" }}
             onMouseEnter={e => { e.currentTarget.style.color = "rgba(239,68,68,0.9)"; e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background = "transparent"; }}
           >
             <SignOut size={15} weight="bold" />
           </button>
@@ -251,6 +318,7 @@ export default function MainLayout({ user, onLogout }) {
 
       {/* ── Content ── */}
       <div className="flex-1 relative overflow-hidden">
+        <GlobalBackground />
         {NAV_ITEMS.map(({ id }) => (
           <motion.div
             key={id}

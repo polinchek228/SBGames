@@ -86,26 +86,29 @@ export default function RecentActivityCard({ userId }) {
   const serverEntries = Object.entries(data.byServer).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-4 transition-all duration-300 hover:scale-[1.005]"
+    <div className="rounded-2xl p-5 flex flex-col gap-4 transition-colors duration-300"
       style={{
         background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-        border: "1px solid rgba(255,255,255,0.06)",
+        border: "1px solid rgba(255,255,255,0.1)",
         backdropFilter: "blur(16px)",
         boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.2)"
       }}
     >
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-black"
-          style={{ color: "rgba(255,255,255,0.35)" }}>Активность в игре</p>
+        <div className="flex items-center gap-2.5">
+          <div className="w-1 h-4 rounded-full" style={{ background: "#2563eb" }} />
+          <p className="text-[10px] uppercase tracking-[0.16em] font-black"
+            style={{ color: "rgba(255,255,255,0.55)" }}>Активность в игре</p>
+        </div>
         {data.lastSessionAt && (
-          <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.3)" }}>
+          <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>
             Последняя игра: {new Date(data.lastSessionAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
       </div>
 
       {serverEntries.length === 0 ? (
-        <p className="text-[12px] font-medium py-2" style={{ color: "rgba(255,255,255,0.25)" }}>
+        <p className="text-[12px] font-medium py-2" style={{ color: "rgba(255,255,255,0.4)" }}>
           {loading ? "Загружаем…" : "Этот игрок ещё не играл в игры."}
         </p>
       ) : (
@@ -115,7 +118,7 @@ export default function RecentActivityCard({ userId }) {
               <Clock size={14} weight="bold" style={{ color: "#818cf8" }} />
             </div>
             <span className="text-[16px] font-black text-white tabular-nums">{formatHours(data.totalSec)}</span>
-            <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "rgba(255,255,255,0.25)" }}>суммарное время</span>
+            <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>суммарное время</span>
           </div>
           <div className="flex flex-col gap-2.5">
             {serverEntries.map(([srv, sec]) => {
@@ -125,19 +128,19 @@ export default function RecentActivityCard({ userId }) {
                   <span className="text-[12px] font-bold text-white/95 w-24 truncate group-hover:text-white transition-colors">
                     {SERVER_LABEL[srv] || srv.toUpperCase()}
                   </span>
-                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.02)" }}>
+                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.04)" }}>
                     <motion.div
                       initial={{ width: 0 }} animate={{ width: `${pct}%` }}
                       transition={{ duration: 0.6, ease: "easeOut" }}
                       className="h-full rounded-full"
                       style={{
-                        background: "linear-gradient(90deg, #6366f1, #a855f7)",
-                        boxShadow: "0 0 8px rgba(99, 102, 241, 0.4)"
+                        background: "linear-gradient(90deg, #2563eb, #818cf8)",
+                        boxShadow: "0 0 10px rgba(37,99,235,0.5)"
                       }}
                     />
                   </div>
                   <span className="text-[11px] font-mono font-bold tabular-nums w-20 text-right"
-                    style={{ color: "rgba(255,255,255,0.5)" }}>
+                    style={{ color: "rgba(255,255,255,0.6)" }}>
                     {formatHours(sec)} · {pct}%
                   </span>
                 </div>

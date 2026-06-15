@@ -16,6 +16,7 @@ export async function authFetch(path, options = {}) {
   return r;
 }
 
+
 export async function authedFetch(path, opts = {}) {
   const token = getToken() || "";
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
@@ -23,7 +24,26 @@ export async function authedFetch(path, opts = {}) {
   const r = await fetch(`${API_URL}${path}`, { ...opts, headers });
   if (!r.ok) {
     const t = await r.text().catch(() => r.statusText);
-    throw new Error(`${r.status}: ${t}`);
+    // If server returned HTML (nginx error page, etc.), extract useful info
+    if (t.startsWith("<!DOCTYPE") || t.startsWith("<html")) {
+      throw new Error(`Сервер вернул HTML (${r.status}). Сервер недоступен или endpoint не найден.`);
+    }
+    // Try to parse JSON error message
+    try {
+      const j = JSON.parse(t);
+      throw new Error(j.message || `${r.status}: ${t}`);
+    } catch (e) {
+      if (e.message && !e.message.includes("JSON")) throw e;
+      throw new Error(`${r.status}: ${t.slice(0, 200)}`);
+    }
   }
-  return r.json();
+  const text = await r.text();
+  if (!text || text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
+    throw new Error("Сервер вернул HTML вместо JSON. Проверь, что сервер запущен.");
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Некорректный ответ от сервера (не JSON).");
+  }
 }

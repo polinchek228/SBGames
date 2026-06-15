@@ -4,24 +4,16 @@ export default function CustomCursor() {
   const dotRef   = useRef(null);
   const ringRef  = useRef(null);
   const saberRef = useRef(null);
-  const flashRef = useRef(null); // вспышка при клике
+  const flashRef = useRef(null);
+  const wrapRef  = useRef(null);
 
   useEffect(() => {
-    async function hideCursor() {
-      try {
-        if (window.__TAURI_INTERNALS__) {
-          const { getCurrentWindow } = await import("@tauri-apps/api/window");
-          await getCurrentWindow().setCursorVisible(false);
-        }
-      } catch {}
-    }
-    hideCursor();
-
     const dot   = dotRef.current;
     const ring  = ringRef.current;
     const saber = saberRef.current;
     const flash = flashRef.current;
-    if (!dot || !ring || !saber || !flash) return;
+    const wrap  = wrapRef.current;
+    if (!dot || !ring || !saber || !flash || !wrap) return;
 
     let mx = -300, my = -300;
     let rx = -300, ry = -300;
@@ -30,6 +22,24 @@ export default function CustomCursor() {
     let serverId  = null;
     let flashAnim = null;
     let raf;
+
+    // Inject style element for toggling cursor:none globally
+    const styleEl = document.createElement("style");
+    styleEl.id = "custom-cursor-style";
+    document.head.appendChild(styleEl);
+
+    function applyCursorState() {
+      const active = !!serverId;
+      wrap.style.display = active ? "" : "none";
+      styleEl.textContent = active ? "* { cursor: none !important; }" : "";
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+            getCurrentWindow().setCursorVisible(!active).catch(() => {});
+          });
+        }
+      } catch {}
+    }
 
     // Острие в SVG: (5, 5)
     const TIP_X = 5;
@@ -85,7 +95,7 @@ export default function CustomCursor() {
     const onUp   = () => { clicking = false; };
     const onOver = (e) => { if (e.target.closest("button,a,input,textarea,select,[role=button],label")) hovering = true; };
     const onOut  = (e) => { if (e.target.closest("button,a,input,textarea,select,[role=button],label")) hovering = false; };
-    const onSrv  = (e) => { serverId = e.detail?.id || null; };
+    const onSrv  = (e) => { serverId = e.detail?.id || null; applyCursorState(); };
 
     window.addEventListener("mousemove",    onMove, { passive: true });
     window.addEventListener("mousedown",    onDown);
@@ -94,9 +104,13 @@ export default function CustomCursor() {
     document.addEventListener("mouseout",   onOut);
     window.addEventListener("serverChange", onSrv);
 
+    // Initial state
+    applyCursorState();
+
     return () => {
       cancelAnimationFrame(raf);
       if (flashAnim) clearTimeout(flashAnim);
+      styleEl.remove();
       window.removeEventListener("mousemove",    onMove);
       window.removeEventListener("mousedown",    onDown);
       window.removeEventListener("mouseup",      onUp);
@@ -114,7 +128,7 @@ export default function CustomCursor() {
   }, []);
 
   return (
-    <>
+    <div ref={wrapRef} style={{ display: "none" }}>
       {/* Default ring */}
       <div ref={ringRef} style={{
         position:"fixed", top:0, left:0, zIndex:9998,
@@ -260,6 +274,6 @@ export default function CustomCursor() {
           <ellipse cx="5" cy="55" rx="2.2" ry="1.1" fill="#3d4f6b"/>
         </svg>
       </div>
-    </>
+    </div>
   );
 }

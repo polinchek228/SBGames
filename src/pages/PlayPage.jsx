@@ -268,7 +268,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     className="relative rounded-xl overflow-hidden"
                     style={{
                       boxShadow: active
-                        ? `0 0 0 1.5px #2563eb, 0 0 12px rgba(37,99,235,0.4), 0 4px 20px ${srv.accent}20`
+                        ? `0 0 12px rgba(37,99,235,0.4), 0 4px 20px ${srv.accent}20`
                         : "none",
                     }}
                   >
@@ -319,11 +319,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
           >
             КОМПЛЕКС<br />СЕРВЕРОВ
           </div>
-          <p className="text-[15px] font-bold max-w-[460px] text-center mt-4"
-            style={{ color: "rgba(255,255,255,0.5)" }}
-          >
-            Один аккаунт, быстрый старт и разные режимы.
-          </p>
         </div>
       ) : (
         /* Server content (when server selected) */

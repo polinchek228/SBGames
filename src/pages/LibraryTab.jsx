@@ -120,10 +120,10 @@ function BackgroundPreview({ color, item, large }) {
 // Badge Icon Helper with actual SVG shapes
 function BadgeIcon({ name, color, size }) {
   const normName = name?.toLowerCase() || "";
-  if (normName.includes("сердце") || normName.includes("heart")) {
+  if (normName.includes("сердце") || normName.includes("heart") || normName.includes("cross")) {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+        <path d="M12 2v6h-6v4h6v6h4v-6h6v-4h-6v-6z" />
       </svg>
     );
   }
@@ -197,7 +197,7 @@ function AnimatedPreview({ color, large }) {
   );
 }
 
-function BadgePreview({ color, name, large }) {
+function BadgePreview({ color, name, large, icon }) {
   const sz = large ? 48 : 34;
   const br = large ? 16 : 12;
 
@@ -219,7 +219,13 @@ function BadgePreview({ color, name, large }) {
           style={{ background: `radial-gradient(circle, ${color}33 0%, transparent 75%)`, filter: "blur(6px)" }} 
         />
         <div className="relative z-10 flex flex-col items-center gap-1.5">
-          <BadgeIcon name={name} color={color} size={sz} />
+          {icon ? (
+            <img src={icon} alt={name} className="object-contain drop-shadow-lg"
+              style={{ width: sz, height: sz }}
+              onError={e => { e.currentTarget.style.display = "none"; }} />
+          ) : (
+            <BadgeIcon name={name} color={color} size={sz} />
+          )}
           {large && (
             <span className="text-[10px] font-black uppercase tracking-wider" style={{ color, textShadow: `0 0 8px ${color}40` }}>
               {name}
@@ -236,8 +242,8 @@ function ItemVisual({ type, color, name, item, large = false }) {
     case "frame":           return <FramePreview color={color} item={item} large={large} />;
     case "background":      return <BackgroundPreview color={color} item={item} large={large} />;
     case "avatar_animated": return <AnimatedPreview color={color} large={large} />;
-    case "badge":           return <BadgePreview color={color} name={name} large={large} />;
-    default:                return <Package size={32} style={{ color: "rgba(255,255,255,0.15)" }} />;
+    case "badge":           return <BadgePreview color={color} name={name} large={large} icon={item?.icon} />;
+    default:                return <Package size={32} style={{ color: "rgba(255,255,255,0.4)" }} />;
   }
 }
 
@@ -268,11 +274,11 @@ function EquipSlot({ type, meta, equippedItem, onDrop, onClear }) {
       onDrop={handleDrop}
       className="relative flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-150 cursor-pointer group"
       style={{
-        background: over ? `${meta.color}18` : equippedItem ? `${equippedItem.color}0a` : "rgba(255,255,255,0.025)",
-        border: over ? `1.5px dashed ${meta.color}50` : equippedItem ? `1px solid ${equippedItem.color}20` : "1px solid rgba(255,255,255,0.04)",
+        background: over ? `${meta.color}18` : equippedItem ? `${equippedItem.color}0a` : "rgba(255,255,255,0.06)",
+        border: over ? `1.5px dashed ${meta.color}50` : equippedItem ? `1px solid ${equippedItem.color}20` : "1px solid rgba(255,255,255,0.12)",
       }}
     >
-      <meta.icon size={13} style={{ color: over ? meta.color : equippedItem ? equippedItem.color : "rgba(255,255,255,0.15)" }} />
+      <meta.icon size={13} style={{ color: over ? meta.color : equippedItem ? equippedItem.color : "rgba(255,255,255,0.4)" }} />
       {equippedItem ? (
         <>
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: equippedItem.color, boxShadow: `0 0 6px ${equippedItem.color}60` }} />
@@ -280,13 +286,13 @@ function EquipSlot({ type, meta, equippedItem, onDrop, onClear }) {
           <button
             onClick={() => onClear(type)}
             className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded"
-            style={{ color: "rgba(255,255,255,0.3)" }}
+            style={{ color: "rgba(255,255,255,0.5)" }}
           >
             <X size={10} />
           </button>
         </>
       ) : (
-        <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.15)" }}>
+        <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
           {over ? "Отпусти сюда" : `Перетащи ${meta.label.toLowerCase()}`}
         </span>
       )}
@@ -337,9 +343,9 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
         <button
           onClick={onClose}
           className="absolute top-3 right-3 z-30 w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-          style={{ background: "rgba(0,0,0,0.4)", color: "rgba(255,255,255,0.4)", backdropFilter: "blur(8px)" }}
-          onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,255,255,0.8)"; }}
-          onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+          style={{ background: "rgba(0,0,0,0.4)", color: "rgba(255,255,255,0.6)", backdropFilter: "blur(8px)" }}
+          onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,255,255,0.9)"; }}
+          onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
         >
           <X size={13} />
         </button>
@@ -386,7 +392,7 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
             {isOwned ? (
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span className="text-[12px] font-bold" style={{ color: "rgba(255,255,255,0.5)" }}>Уже в коллекции</span>
+                <span className="text-[12px] font-bold" style={{ color: "rgba(255,255,255,0.65)" }}>Уже в коллекции</span>
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -396,7 +402,7 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
                   style={{ color: canAfford ? "rgba(255,255,255,0.9)" : "#f87171" }}>
                   {item.price.toLocaleString("en-US")}
                 </span>
-                <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.2)" }}>SBT</span>
+                <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>SBT</span>
               </div>
             )}
           </div>
@@ -410,8 +416,8 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
                 className="w-full py-3 rounded-xl text-[13px] font-black tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-40"
                 style={{
                   background: "rgba(255,255,255,0.04)",
-                  color: "rgba(255,255,255,0.35)",
-                  border: "1px solid rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.6)",
+                  border: "1px solid rgba(255,255,255,0.12)",
                 }}
               >
                 {busy ? "…" : "Снять"}
@@ -441,7 +447,7 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
                   ? `linear-gradient(135deg, ${item.color} 0%, ${item.color}cc 100%)`
                   : "rgba(255,255,255,0.05)",
                 boxShadow: canAfford ? `0 4px 24px ${item.color}50` : "none",
-                color: canAfford ? "white" : "rgba(255,255,255,0.3)",
+                color: canAfford ? "white" : "rgba(255,255,255,0.5)",
               }}
               onMouseEnter={e => { if (canAfford && !busy) e.currentTarget.style.boxShadow = `0 6px 32px ${item.color}70`; }}
               onMouseLeave={e => { if (canAfford && !busy) e.currentTarget.style.boxShadow = `0 4px 24px ${item.color}50`; }}
@@ -481,17 +487,17 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
       style={{
         background: "rgba(13,13,18,0.7)",
         backdropFilter: "blur(12px)",
-        border: isEquipped ? `1.5px solid ${item.color}80` : "1.5px solid rgba(255,255,255,0.05)",
+        border: isEquipped ? `1.5px solid ${item.color}80` : "1.5px solid rgba(255,255,255,0.12)",
         boxShadow: isEquipped 
           ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
           : "0 4px 20px rgba(0,0,0,0.4)",
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.borderColor = isEquipped ? `${item.color}` : "rgba(255,255,255,0.12)";
+        e.currentTarget.style.borderColor = isEquipped ? `${item.color}` : "rgba(255,255,255,0.25)";
         e.currentTarget.style.boxShadow = `0 12px 30px -8px ${item.color}45, 0 0 0 1px ${item.color}20`;
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderColor = isEquipped ? `${item.color}80` : "rgba(255,255,255,0.05)";
+        e.currentTarget.style.borderColor = isEquipped ? `${item.color}80` : "rgba(255,255,255,0.12)";
         e.currentTarget.style.boxShadow = isEquipped 
           ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
           : "0 4px 20px rgba(0,0,0,0.4)";
@@ -512,7 +518,7 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
         style={{ 
           height: item.type === "background" ? 150 : 130,
           background: item.type === "background" ? "#000" : `linear-gradient(160deg, #0c0c14 0%, ${item.color}10 60%, #08080f 100%)`,
-          borderBottom: "1px solid rgba(255,255,255,0.03)"
+          borderBottom: "1px solid rgba(255,255,255,0.08)"
         }}
       >
         <ItemVisual type={item.type} color={item.color} name={item.name} item={item} />
@@ -533,7 +539,7 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
             <p className="text-[12px] font-black text-white leading-tight truncate">{item.name}</p>
             {item.desc && (
               <p className="text-[10px] mt-1 leading-relaxed line-clamp-1"
-                style={{ color: "rgba(255,255,255,0.28)" }}>
+                style={{ color: "rgba(255,255,255,0.5)" }}>
                 {item.desc}
               </p>
             )}
@@ -549,7 +555,7 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
               <img src="/money.png" alt="" className="w-3 h-3 object-contain"
                 onError={(e) => { e.currentTarget.style.display = "none"; }} />
               <span className="text-[10px] font-black tabular-nums"
-                style={{ color: canAfford ? "rgba(255,255,255,0.75)" : "#f87171" }}>
+                style={{ color: canAfford ? "rgba(255,255,255,0.85)" : "#f87171" }}>
                 {item.price.toLocaleString("en-US")}
               </span>
             </div>
@@ -565,9 +571,9 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
 function EquippedStrip({ equip, onDrop, onClear }) {
   return (
     <div className="flex items-center gap-2 px-5 py-2 flex-shrink-0 overflow-x-auto"
-      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+      style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
       <span className="text-[9px] uppercase tracking-widest font-semibold mr-1 flex-shrink-0"
-        style={{ color: "rgba(255,255,255,0.18)" }}>
+        style={{ color: "rgba(255,255,255,0.55)" }}>
         Слоты
       </span>
       {Object.entries(TYPE_META).filter(([k]) => k !== "all").map(([type, meta]) => {
@@ -598,18 +604,18 @@ function PriceRange({ min, max, onChange }) {
         value={min}
         onChange={(e) => onChange(Number(e.target.value), max)}
         placeholder="от"
-        className="w-16 h-7 px-2 rounded-lg text-[10px] text-white/60 placeholder:text-white/20 outline-none"
-        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+        className="w-16 h-7 px-2 rounded-lg text-[10px] text-white/60 placeholder:text-white/40 outline-none"
+        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
         min={0}
       />
-      <span className="text-[10px] text-white/20">—</span>
+      <span className="text-[10px] text-white/50">—</span>
       <input
         type="number"
         value={max}
         onChange={(e) => onChange(min, Number(e.target.value))}
         placeholder="до"
-        className="w-16 h-7 px-2 rounded-lg text-[10px] text-white/60 placeholder:text-white/20 outline-none"
-        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+        className="w-16 h-7 px-2 rounded-lg text-[10px] text-white/60 placeholder:text-white/40 outline-none"
+        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
         min={0}
       />
     </div>
@@ -626,6 +632,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
   const [loading, setLoading]   = useState(true);
   const [busy, setBusy]         = useState(null);
   const [error, setError]       = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
   const [modalItem, setModalItem] = useState(null);
   const [rarityFilter, setRarityFilter] = useState("all");
   const [priceMin, setPriceMin] = useState("");
@@ -637,12 +644,29 @@ export default function LibraryTab({ user, equip, setEquip }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
+    setIsOffline(false);
     try {
       const data = await authedFetch("/api/inventory");
-      setOwned(data.owned || []);
-      setEquip((prev) => ({ ...prev, ...(data.equip || {}) }));
+      const ownedVal = data.owned || [];
+      const equipVal = data.equip || {};
+      setOwned(ownedVal);
+      setEquip((prev) => ({ ...prev, ...equipVal }));
+      localStorage.setItem("sbg_pers_inventory", JSON.stringify({ owned: ownedVal, equip: equipVal }));
     } catch {
-      setError("Не удалось загрузить инвентарь");
+      try {
+        const cached = localStorage.getItem("sbg_pers_inventory");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setOwned(parsed.owned || []);
+          setEquip((prev) => ({ ...prev, ...(parsed.equip || {}) }));
+          setIsOffline(true);
+        } else {
+          setError("Не удалось загрузить инвентарь");
+        }
+      } catch {
+        setError("Не удалось загрузить инвентарь");
+      }
     } finally {
       setLoading(false);
     }
@@ -759,16 +783,16 @@ export default function LibraryTab({ user, equip, setEquip }) {
     <div className="flex flex-col h-full">
       {/* ── Top bar ── */}
       <div className="flex items-center gap-3 px-5 pt-4 pb-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
         {/* Search */}
         <div className="relative flex-1 max-w-[240px]">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/20" />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Найти предмет…"
-            className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] text-white/80 placeholder:text-white/20 outline-none"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+            className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] text-white/80 placeholder:text-white/40 outline-none"
+            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
           />
         </div>
 
@@ -777,9 +801,9 @@ export default function LibraryTab({ user, equip, setEquip }) {
           onClick={() => setShowFilters(!showFilters)}
           className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[11px] transition-all"
           style={{
-            color: showFilters ? "#60a5fa" : "rgba(255,255,255,0.3)",
-            background: showFilters ? "rgba(96,165,250,0.1)" : "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.06)",
+            color: showFilters ? "#60a5fa" : "rgba(255,255,255,0.6)",
+            background: showFilters ? "rgba(96,165,250,0.1)" : "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.12)",
           }}
         >
           <Filter size={12} />
@@ -793,14 +817,14 @@ export default function LibraryTab({ user, equip, setEquip }) {
             className="h-8 pl-2.5 pr-7 rounded-lg text-[11px] cursor-pointer outline-none text-left"
             style={{
               background: showSort ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${showSort ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)"}`,
-              color: "rgba(255,255,255,0.7)",
+              border: `1px solid ${showSort ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.12)"}`,
+              color: "rgba(255,255,255,0.85)",
             }}
           >
             {SORT_OPTIONS.find(o => o.id === sort)?.label}
           </button>
           <ArrowUpDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ color: showSort ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.2)" }} />
+            style={{ color: showSort ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)" }} />
 
           <AnimatePresence>
             {showSort && (
@@ -839,6 +863,11 @@ export default function LibraryTab({ user, equip, setEquip }) {
 
         {/* Balance */}
         <div className="flex items-center gap-2 ml-auto">
+          {isOffline && (
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 mr-1 tracking-wider">
+              АВТОНОМНЫЙ РЕЖИМ
+            </span>
+          )}
           {isAdmin && (
             <span className="text-[9px] font-bold px-2 py-0.5 rounded"
               style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.2)" }}>
@@ -849,7 +878,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
             <img src="/money.png" alt="" className="w-3.5 h-3.5"
               onError={(e) => { e.currentTarget.style.display = "none"; }} />
             <span className="text-[13px] font-black text-white tabular-nums">{balance.toLocaleString("en-US")}</span>
-            <span className="text-[9px] text-white/20">SBT</span>
+            <span className="text-[9px] text-white/50">SBT</span>
           </div>
         </div>
       </div>
@@ -864,11 +893,11 @@ export default function LibraryTab({ user, equip, setEquip }) {
             className="overflow-hidden flex-shrink-0"
           >
             <div className="flex items-center gap-3 px-5 py-2.5 flex-wrap"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
               {/* Shop filter */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] uppercase tracking-widest font-semibold mr-0.5"
-                  style={{ color: "rgba(255,255,255,0.18)" }}>Магазин</span>
+                  style={{ color: "rgba(255,255,255,0.55)" }}>Магазин</span>
                 {[
                   { id: "all",  label: "Все" },
                   { id: "free", label: "Бесплатные" },
@@ -879,9 +908,9 @@ export default function LibraryTab({ user, equip, setEquip }) {
                     onClick={() => setShopFilter(o.id)}
                     className="px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all"
                     style={{
-                      color: shopFilter === o.id ? "#60a5fa" : "rgba(255,255,255,0.2)",
+                      color: shopFilter === o.id ? "#60a5fa" : "rgba(255,255,255,0.5)",
                       background: shopFilter === o.id ? "rgba(96,165,250,0.1)" : "transparent",
-                      border: `1px solid ${shopFilter === o.id ? "rgba(96,165,250,0.3)" : "rgba(255,255,255,0.04)"}`,
+                      border: `1px solid ${shopFilter === o.id ? "rgba(96,165,250,0.3)" : "rgba(255,255,255,0.1)"}`,
                     }}
                   >
                     {o.label}
@@ -889,20 +918,20 @@ export default function LibraryTab({ user, equip, setEquip }) {
                 ))}
               </div>
 
-              <div className="w-px h-5 mx-1" style={{ background: "rgba(255,255,255,0.06)" }} />
+              <div className="w-px h-5 mx-1" style={{ background: "rgba(255,255,255,0.12)" }} />
 
               {/* Rarity chips */}
               <div className="flex items-center gap-1.5">
-                <Tag size={11} className="text-white/20" />
+                <Tag size={11} className="text-white/50" />
                 {Object.entries(RARITIES).map(([key, r]) => (
                   <button
                     key={key}
                     onClick={() => setRarityFilter(rarityFilter === key ? "all" : key)}
                     className="px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all"
                     style={{
-                      color: rarityFilter === key ? r.color : "rgba(255,255,255,0.2)",
+                      color: rarityFilter === key ? r.color : "rgba(255,255,255,0.5)",
                       background: rarityFilter === key ? `${r.color}15` : "transparent",
-                      border: `1px solid ${rarityFilter === key ? `${r.color}30` : "rgba(255,255,255,0.04)"}`,
+                      border: `1px solid ${rarityFilter === key ? `${r.color}30` : "rgba(255,255,255,0.1)"}`,
                     }}
                   >
                     {r.label}
@@ -931,14 +960,14 @@ export default function LibraryTab({ user, equip, setEquip }) {
               onClick={() => setActiveType(type)}
               className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap"
               style={{
-                color: active ? meta.color : "rgba(255,255,255,0.3)",
+                color: active ? meta.color : "rgba(255,255,255,0.6)",
                 background: active ? `${meta.color}15` : "transparent",
               }}
             >
               <Icon size={12} />
               {meta.label}
               <span className="text-[9px] tabular-nums"
-                style={{ color: active ? `${meta.color}99` : "rgba(255,255,255,0.15)" }}>
+                style={{ color: active ? `${meta.color}99` : "rgba(255,255,255,0.4)" }}>
                 {counts[type]}
               </span>
             </button>
@@ -962,8 +991,8 @@ export default function LibraryTab({ user, equip, setEquip }) {
           </div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Package size={36} style={{ color: "rgba(255,255,255,0.08)" }} />
-            <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+            <Package size={36} style={{ color: "rgba(255,255,255,0.2)" }} />
+            <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
               {search ? "Ничего не найдено" : "Каталог пуст"}
             </p>
           </div>

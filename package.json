@@ -23,7 +23,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.30.4",
-    "skinview3d": "^3.4.2"
+    "skinview3d": "^3.4.2",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "@tauri-apps/api": "^2.0.0",

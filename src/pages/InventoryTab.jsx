@@ -40,8 +40,8 @@ function ItemCard({ item, equipped, onEquip, onUnequip, busy }) {
       exit={{ opacity: 0, scale: 0.95 }}
       className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-200"
       style={{
-        background: isEquipped ? `${rarity.glow}` : "rgba(255,255,255,0.03)",
-        border: isEquipped ? `1.5px solid ${rarity.color}40` : "1.5px solid rgba(255,255,255,0.05)",
+        background: isEquipped ? `${rarity.glow}` : "rgba(255,255,255,0.06)",
+        border: isEquipped ? `1.5px solid ${rarity.color}40` : "1.5px solid rgba(255,255,255,0.12)",
       }}
     >
       {/* Rarity glow */}
@@ -133,7 +133,7 @@ function ItemCard({ item, equipped, onEquip, onUnequip, busy }) {
         </div>
         {item.desc && (
           <p className="text-[10px] mt-1.5 leading-relaxed line-clamp-2"
-            style={{ color: "rgba(255,255,255,0.35)" }}>
+            style={{ color: "rgba(255,255,255,0.55)" }}>
             {item.desc}
           </p>
         )}
@@ -175,9 +175,9 @@ function ItemDetail({ item, equipped, onEquip, onUnequip, busy, onClose }) {
         </div>
         <button onClick={onClose}
           className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}
-          onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
-          onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.3)"; e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+          style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}
+          onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+          onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.5)"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
         >
           <X size={14} />
         </button>
@@ -185,10 +185,10 @@ function ItemDetail({ item, equipped, onEquip, onUnequip, busy, onClose }) {
 
       {/* Description */}
       <div className="rounded-2xl p-4"
-        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
+        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
         <p className="text-[10px] uppercase tracking-widest font-semibold mb-2"
-          style={{ color: "rgba(255,255,255,0.2)" }}>Описание</p>
-        <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.7)" }}>
+          style={{ color: "rgba(255,255,255,0.4)" }}>Описание</p>
+        <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.75)" }}>
           {item.desc || "Нет описания."}
         </p>
       </div>
@@ -196,14 +196,14 @@ function ItemDetail({ item, equipped, onEquip, onUnequip, busy, onClose }) {
       {/* Meta */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-          <p className="text-[9px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.2)" }}>Сервер</p>
+          <p className="text-[9px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.4)" }}>Сервер</p>
           <p className="text-[12px] font-bold text-white mt-1">
             {item.server === "starwars" ? "StarWars" : "Все серверы"}
           </p>
         </div>
         <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-          <p className="text-[9px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.2)" }}>Статус</p>
-          <p className="text-[12px] font-bold mt-1" style={{ color: isEquipped ? "#4ade80" : "rgba(255,255,255,0.5)" }}>
+          <p className="text-[9px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.4)" }}>Статус</p>
+          <p className="text-[12px] font-bold mt-1" style={{ color: isEquipped ? "#4ade80" : "rgba(255,255,255,0.65)" }}>
             {isEquipped ? "Экипирован" : "В инвентаре"}
           </p>
         </div>
@@ -238,6 +238,7 @@ export default function InventoryTab({ user }) {
   const [equipped, setEquipped] = useState({});
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
   const [busy, setBusy]         = useState(null);
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeServer, setActiveServer]     = useState("all");
@@ -246,12 +247,29 @@ export default function InventoryTab({ user }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
+    setIsOffline(false);
     try {
       const data = await authedFetch("/api/inventory");
-      setItems(data.gameItems || data.items || []);
-      setEquipped(data.equipped || data.equip || {});
+      const itemsVal = data.gameItems || [];
+      const equippedVal = data.equipped || {};
+      setItems(itemsVal);
+      setEquipped(equippedVal);
+      localStorage.setItem("sbg_game_inventory", JSON.stringify({ gameItems: itemsVal, equipped: equippedVal }));
     } catch (e) {
-      setError("Не удалось загрузить инвентарь");
+      try {
+        const cached = localStorage.getItem("sbg_game_inventory");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setItems(parsed.gameItems || []);
+          setEquipped(parsed.equipped || {});
+          setIsOffline(true);
+        } else {
+          setError("Не удалось загрузить инвентарь");
+        }
+      } catch {
+        setError("Не удалось загрузить инвентарь");
+      }
     } finally {
       setLoading(false);
     }
@@ -323,17 +341,17 @@ export default function InventoryTab({ user }) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <div className="flex items-center gap-3 px-5 pt-4 pb-3 flex-shrink-0"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}
         >
           {/* Search */}
           <div className="relative flex-1 max-w-[220px]">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/20" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Найти предмет…"
-              className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] text-white/80 placeholder:text-white/20 outline-none"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+              className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] text-white/80 placeholder:text-white/40 outline-none"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
             />
           </div>
 
@@ -344,7 +362,7 @@ export default function InventoryTab({ user }) {
                 className="px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all"
                 style={{
                   background: activeServer === s.id ? "rgba(255,255,255,0.08)" : "transparent",
-                  color: activeServer === s.id ? "#fff" : "rgba(255,255,255,0.3)",
+                  color: activeServer === s.id ? "#fff" : "rgba(255,255,255,0.55)",
                 }}
               >
                 {s.label}
@@ -354,8 +372,13 @@ export default function InventoryTab({ user }) {
 
           {/* Stats */}
           <div className="ml-auto flex items-center gap-2">
+            {isOffline && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 mr-1 tracking-wider">
+                АВТОНОМНЫЙ РЕЖИМ
+              </span>
+            )}
             <span className="text-[11px] font-bold text-white tabular-nums">{items.length}</span>
-            <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>предметов</span>
+            <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>предметов</span>
           </div>
         </div>
 
@@ -369,14 +392,14 @@ export default function InventoryTab({ user }) {
               <button key={id} onClick={() => setActiveCategory(id)}
                 className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap"
                 style={{
-                  color: active ? meta.color : "rgba(255,255,255,0.3)",
+                  color: active ? meta.color : "rgba(255,255,255,0.55)",
                   background: active ? `${meta.color}15` : "transparent",
                 }}
               >
                 <Icon size={12} />
                 {meta.label}
                 <span className="text-[9px] tabular-nums"
-                  style={{ color: active ? `${meta.color}99` : "rgba(255,255,255,0.15)" }}>
+                  style={{ color: active ? `${meta.color}99` : "rgba(255,255,255,0.4)" }}>
                   {count}
                 </span>
               </button>
@@ -399,8 +422,8 @@ export default function InventoryTab({ user }) {
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Package size={32} style={{ color: "rgba(255,255,255,0.1)" }} />
-              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+              <Package size={32} style={{ color: "rgba(255,255,255,0.2)" }} />
+              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
                 {items.length === 0 ? "Инвентарь пуст" : "Ничего не найдено"}
               </p>
             </div>
@@ -427,7 +450,7 @@ export default function InventoryTab({ user }) {
       <AnimatePresence>
         {selected && (
           <div className="w-[280px] flex-shrink-0 p-4"
-            style={{ borderLeft: "1px solid rgba(255,255,255,0.04)" }}>
+            style={{ borderLeft: "1px solid rgba(255,255,255,0.1)" }}>
             <ItemDetail
               item={selected}
               equipped={equipped[selected.category] === selected.id}
