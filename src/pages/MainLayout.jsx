@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  GameController, User, Trophy, ShoppingBag,
+  GameController, User, ShoppingBag,
   Newspaper, Headset, UsersThree, SignOut,
 } from "@phosphor-icons/react";
 import Titlebar from "../components/Titlebar.jsx";
@@ -11,7 +11,6 @@ import NewsPage from "./NewsPage.jsx";
 import ShopPage from "./ShopPage.jsx";
 import SupportPage from "./SupportPage.jsx";
 import CommunityPage from "./CommunityPage.jsx";
-import LeaderboardPage from "./LeaderboardPage.jsx";
 import DownloadProgress from "../components/DownloadProgress.jsx";
 import { NotificationBell, useNotifications, pushNotification } from "../components/NotificationSystem.jsx";
 import { notifyDesktop, setDiscordPresence, invoke } from "../lib/tauri.js";
@@ -21,7 +20,7 @@ import { CATALOG_BY_ID } from "./catalog.js";
 const NAV_ITEMS = [
   { id: "play",        label: "ИГРАТЬ",      icon: GameController },
   { id: "profile",     label: "ПРОФИЛЬ",     icon: User },
-  { id: "leaderboard", label: "ВОСХОЖДЕНИЕ", icon: Trophy },
+  { id: "community",   label: "СООБЩЕСТВА",  icon: UsersThree },
   { id: "shop",        label: "МАГАЗИН",     icon: ShoppingBag },
   { id: "news",        label: "НОВОСТИ",     icon: Newspaper },
   { id: "support",     label: "ПОМОЩЬ",      icon: Headset },
@@ -71,7 +70,6 @@ function GlobalBackground() {
 
 export default function MainLayout({ user, onLogout }) {
   const [page, setPage] = useState("play");
-  const [showCommunity, setShowCommunity] = useState(false);
   const [viewUserId, setViewUserId] = useState(null);
   const [friendBadge, setFriendBadge] = useState(0);
   const [balance, setBalance] = useState(user?.balance ?? 0);
@@ -85,13 +83,21 @@ export default function MainLayout({ user, onLogout }) {
     let dead = false;
     let ws;
     let reconnectTimer;
+    let reconnectDelay = 1000; // start at 1s
+    const MAX_DELAY = 30000;   // cap at 30s
 
     const connect = () => {
       if (dead) return;
-      ws = new WebSocket(WS_URL);
+      try {
+        ws = new WebSocket(WS_URL);
+      } catch {
+        scheduleReconnect();
+        return;
+      }
 
       ws.onopen = () => {
         if (dead) { ws.close(); return; }
+        reconnectDelay = 1000; // reset backoff on success
         const u = userRef.current;
         ws.send(JSON.stringify({
           type: "auth",
@@ -107,8 +113,8 @@ export default function MainLayout({ user, onLogout }) {
           if (msg.type === "balance_update") {
             const diff = msg.balance - balanceRef.current;
             setBalance(msg.balance);
-            pushNotification("Баланс пополнен", `+${diff} СБТ · Новый баланс: ${msg.balance} СБТ`, "balance");
-            await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} СБТ`);
+            pushNotification("Баланс пополнен", `+${diff} SBT · Новый баланс: ${msg.balance} SBT`, "balance");
+            await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} SBT`);
           }
           if (msg.type === "friend_accepted") {
             pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
@@ -122,13 +128,21 @@ export default function MainLayout({ user, onLogout }) {
       };
 
       ws.onclose = () => {
-        if (!dead) reconnectTimer = setTimeout(connect, 3000);
+        scheduleReconnect();
       };
 
       ws.onerror = () => {
+        // onclose will fire after onerror, reconnect handled there
         if (ws.readyState !== WebSocket.CLOSED) ws.close();
       };
     };
+
+    function scheduleReconnect() {
+      if (dead) return;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_DELAY); // exponential backoff
+    }
 
     // Delay to avoid React StrictMode double-invocation closing the socket before it connects
     const timer = setTimeout(connect, 100);
@@ -203,9 +217,9 @@ export default function MainLayout({ user, onLogout }) {
 
   const renderPage = (id) => {
     switch (id) {
-      case "play":        return <PlayPage user={user} onOpenCommunity={() => setShowCommunity(true)} />;
+      case "play":        return <PlayPage user={user} onOpenCommunity={() => setPage("community")} />;
       case "profile":     return <ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} />;
-      case "leaderboard": return <LeaderboardPage />;
+      case "community":   return <CommunityPage user={user} onBadgeChange={setFriendBadge} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} />;
       case "news":        return <NewsPage />;
       case "shop":        return <ShopPage user={user} onBalanceChange={setBalance} />;
       case "support":     return <SupportPage user={user} />;
@@ -267,7 +281,7 @@ export default function MainLayout({ user, onLogout }) {
           })}
         </div>
 
-        {/* Right group: balance + community + logout */}
+        {/* Right group: balance + notifications + logout */}
         <div className="flex items-center gap-2.5 justify-self-end">
           {/* Balance pill with coin icon */}
           <div
@@ -282,26 +296,6 @@ export default function MainLayout({ user, onLogout }) {
 
           {/* Notification bell */}
           <NotificationBell />
-
-          {/* Community toggle */}
-          <button
-            onClick={() => setShowCommunity(v => !v)}
-            className="relative w-[34px] h-[34px] rounded-xl flex items-center justify-center transition-all duration-150"
-            style={showCommunity
-              ? { background: "linear-gradient(135deg, rgba(37,99,235,0.9), rgba(59,130,246,0.85))", color: "#fff", boxShadow: "0 0 12px rgba(37,99,235,0.3)" }
-              : { background: "transparent", color: "rgba(255,255,255,0.35)" }
-            }
-            onMouseEnter={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.7)"; e.currentTarget.style.background = "rgba(255,255,255,0.06)"; } }}
-            onMouseLeave={e => { if (!showCommunity) { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background = "transparent"; } }}
-          >
-            <UsersThree size={15} weight={showCommunity ? "fill" : "bold"} />
-            {friendBadge > 0 && (
-              <span className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center"
-                style={{ boxShadow: "0 0 8px rgba(37,99,235,0.5)" }}>
-                {friendBadge}
-              </span>
-            )}
-          </button>
 
           {/* Logout */}
           <button
@@ -331,19 +325,6 @@ export default function MainLayout({ user, onLogout }) {
           </motion.div>
         ))}
 
-        <AnimatePresence>
-          {showCommunity && (
-            <motion.div
-              initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 32, stiffness: 320 }}
-              className="absolute top-0 right-0 bottom-0 z-30"
-            >
-              <CommunityPage onClose={() => setShowCommunity(false)} user={user} onBadgeChange={setFriendBadge}
-                onViewProfile={(id) => { setShowCommunity(false); setViewUserId(id); setPage("profile"); }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* 6. Download progress overlay */}

@@ -127,7 +127,7 @@ export default function TrayPopup() {
                   <div className="flex items-center gap-1 mt-0.5">
                     <Coins size={9} style={{ color: "#60a5fa" }} />
                     <span className="text-[10px] font-bold tabular-nums text-white">{user.balance ?? 0}</span>
-                    <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>СБТ</span>
+                    <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>SBT</span>
                   </div>
                 </div>
               </div>

@@ -275,7 +275,7 @@ function DonateView({ user, onBalanceChange }) {
                       <div className="flex items-center gap-1 flex-1">
                         <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain" style={{ filter: "drop-shadow(0 0 3px rgba(37,99,235,0.6))" }} />
                         <span className="text-[14px] font-black text-white tabular-nums">{item.price}</span>
-                        <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>СБТ</span>
+                        <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>SBT</span>
                       </div>
                       {/* Подробнее */}
                       <button
@@ -364,7 +364,7 @@ function DonateView({ user, onBalanceChange }) {
                   <div className="flex items-center gap-2">
                     <img src="/money.png" alt="" className="w-5 h-5" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
                     <span className="text-[22px] font-black text-white tabular-nums">{detail.price}</span>
-                    <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.75)" }}>СБТ</span>
+                    <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.75)" }}>SBT</span>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => { toggleCart(detail.id); setDetail(null); }}
@@ -462,7 +462,7 @@ function DonateView({ user, onBalanceChange }) {
                     <span className="text-[18px] font-black text-white tabular-nums">
                       {[...cart].reduce((sum, id) => sum + (ITEMS.find(i => i.id === id)?.price || 0), 0)}
                     </span>
-                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.75)" }}>СБТ</span>
+                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.75)" }}>SBT</span>
                   </div>
                 </div>
                 <button
@@ -661,7 +661,7 @@ function ListingCard({ listing, onBought }) {
         className="rounded-xl py-1.5 text-[11px] font-bold flex items-center justify-center gap-1.5 text-white"
         style={{ background: "rgba(99,102,241,0.5)" }}>
         <Tag size={11} weight="fill" />
-        {buying ? "Покупаем…" : `${listing.price} СБТ`}
+        {buying ? "Покупаем…" : `${listing.price} SBT`}
       </button>
     </motion.div>
   );
@@ -730,7 +730,7 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
           {picked && (
             <div className="flex flex-col gap-1.5 mt-2">
               <label className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.75)" }}>
-                Цена (СБТ)
+                Цена (SBT)
               </label>
               <input type="number" min="10" max="100000" step="10" value={price}
                 onChange={e => setPrice(Math.max(10, Math.min(100000, parseInt(e.target.value) || 0)))}

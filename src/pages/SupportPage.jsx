@@ -292,7 +292,7 @@ function AdminPanel({ user }) {
   const confirmPayment = (amount) => {
     if (!active) return;
     send({ type: "confirm_payment", ticketId: active.id, amount });
-    const sysMsg = { id: Date.now().toString(), from: "system", text: `Оплата подтверждена. +${amount} СБТ зачислено.`, time: Date.now() };
+    const sysMsg = { id: Date.now().toString(), from: "system", text: `Оплата подтверждена. +${amount} SBT зачислено.`, time: Date.now() };
     setMessages(prev => [...prev, sysMsg]);
     setActive(t => ({ ...t, status: "closed" }));
     setTickets(prev => prev.map(t => t.id === active.id ? { ...t, status: "closed" } : t));
@@ -555,11 +555,11 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
                 type="number"
                 value={payAmount}
                 onChange={e => setPayAmount(e.target.value)}
-                placeholder="Сумма СБТ"
+                placeholder="Сумма SBT"
                 className="w-28 rounded-xl text-[12px] px-3 py-1.5 outline-none"
                 style={{ background: "rgba(255,255,255,0.06)", color: "#fff", caretColor: "#34d399" }}
               />
-              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>СБТ</span>
+              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>SBT</span>
               <motion.button onClick={handleConfirmPayment} whileTap={{ scale: 0.95 }}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-150 ml-auto"
                 style={{ background: payAmount ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.05)", color: payAmount ? "#34d399" : "rgba(255,255,255,0.45)" }}

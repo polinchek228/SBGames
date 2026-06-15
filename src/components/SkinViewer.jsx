@@ -93,13 +93,13 @@ export default function SkinViewer({ username, customSkin }) {
 
   return (
     <div className="rounded-2xl p-4 flex flex-col gap-3 h-full"
-      style={{ background: "rgba(255,255,255,0.03)" }}
+      style={{ background: "rgba(10,10,18,0.88)" }}
     >
       <p className="text-[10px] uppercase tracking-[0.14em] font-semibold"
-        style={{ color: "rgba(255,255,255,0.18)" }}>3D Скин</p>
+        style={{ color: "rgba(255,255,255,0.35)" }}>3D Скин</p>
 
       <div className="flex-1 flex items-center justify-center relative min-h-0 rounded-xl overflow-hidden"
-        style={{ background: "rgba(0,0,0,0.4)" }}
+        style={{ background: "rgba(0,0,0,0.35)" }}
       >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center z-10"
@@ -121,7 +121,7 @@ export default function SkinViewer({ username, customSkin }) {
 
       <div className="flex flex-col gap-1.5">
         <p className="text-[9px] uppercase tracking-widest"
-          style={{ color: "rgba(255,255,255,0.18)" }}>Анимация</p>
+          style={{ color: "rgba(255,255,255,0.3)" }}>Анимация</p>
         <div className="grid grid-cols-2 gap-1">
           {ANIMATIONS.map(({ label }, i) => (
             <button

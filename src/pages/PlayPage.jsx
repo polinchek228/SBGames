@@ -242,7 +242,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <div className="w-6 h-6 rounded-md overflow-hidden flex-shrink-0">
                 <img src="/logo.jpg" alt="" className="w-full h-full object-cover" />
               </div>
-              <p className="text-[13px] font-black tracking-wide" style={{ color: "#2563eb" }}>
+              <p className="text-[13px] font-black tracking-wide"
+                style={{
+                  background: "linear-gradient(135deg, #3b82f6, #60a5fa, #93c5fd)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}>
                 SBGames
               </p>
             </div>
@@ -308,7 +314,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       {/* ── Content layer ── */}
       {!selected ? (
         /* Hero (when no server selected) */
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ paddingLeft: 110 }}>
           <div className="text-[64px] font-display font-black leading-none tracking-tight text-white text-center"
             style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
           >
@@ -402,13 +408,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 className="flex items-center gap-3 h-[44px] rounded-2xl font-black text-[14px] tracking-widest uppercase disabled:opacity-60 transition-colors duration-150"
                 style={{
                   padding: "0 32px",
-                  background: launched ? "#16a34a" : "#2563EB",
+                  background: launched ? "#16a34a" : "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))",
                   color: "#fff",
                   boxShadow: launched
                     ? "0 0 24px rgba(22,163,74,0.4)"
                     : "0 0 24px rgba(37,99,235,0.4)",
                 }}
-                onMouseEnter={e => { if (!launching && !launched && selected) e.currentTarget.style.background = "#1d4ed8"; }}
+                onMouseEnter={e => { if (!launching && !launched && selected) e.currentTarget.style.background = "linear-gradient(135deg, rgba(29,78,216,0.95), rgba(37,99,235,0.9))"; }}
                 onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = launched ? "#16a34a" : "#2563EB"; }}
               >
                 {launching ? (
