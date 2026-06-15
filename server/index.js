@@ -140,6 +140,12 @@ function areFriends(a, b) {
 function dmKey(a, b) {
   return [a, b].sort().join("_");
 }
+function publicFriends(userId) {
+  return [...getFriends(userId)].map(fid => {
+    const fa = [...accounts.values()].find(a => a.id === fid);
+    return fa ? { id: fa.id, username: fa.username } : null;
+  }).filter(Boolean);
+}
 function getPendingRequests(userId) {
   return (friendRequests.get(userId) || []);
 }
@@ -234,6 +240,22 @@ app.get("/user/search", (req, res) => {
   const found = [...accounts.values()].find(a => (a.username || "").toLowerCase() === q);
   if (!found) return res.json({ found: false });
   res.json({ found: true, id: found.id, username: found.username });
+});
+
+app.get("/auth/search", requireAuth, (req, res) => {
+  const q = sanitize(req.query.q || "", 32).toLowerCase();
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 20);
+  if (q.length < 2) return res.json({ users: [] });
+  const users = [...accounts.values()]
+    .filter(a => a.id !== req.userId && (a.username || "").toLowerCase().includes(q))
+    .slice(0, limit)
+    .map(a => ({
+      id: a.id,
+      username: a.username,
+      role: a.role === "admin" ? "admin" : "user",
+      online: [...wsClients.values()].some(c => c.userId === a.id),
+    }));
+  res.json({ users });
 });
 
 // ─── Публичный профиль (без авторизации) ─────────────────────────────────────
@@ -685,7 +707,10 @@ app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
   const accept = !!req.body.accept;
-  const list = (groupInvites.get(gid) || []).filter(i => i.toId !== req.userId);
+  const currentInvites = groupInvites.get(gid) || [];
+  const invite = currentInvites.find(i => i.toId === req.userId);
+  if (!invite) return res.status(403).json({ message: "Нет приглашения" });
+  const list = currentInvites.filter(i => i.toId !== req.userId);
   groupInvites.set(gid, list);
   if (accept) {
     if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "Группа уже заполнена" });
@@ -852,12 +877,8 @@ wss.on("connection", (ws) => {
         broadcastOnlineUsers();
 
         // Отправить себе список друзей и входящих запросов
-        const myFriends = [...getFriends(client.userId)].map(fid => {
-          const fa = [...accounts.values()].find(a => a.id === fid);
-          return fa ? { id: fa.id, username: fa.username } : null;
-        }).filter(Boolean);
         const myRequests = getPendingRequests(client.userId);
-        send(ws, { type: "friends_list", friends: myFriends });
+        send(ws, { type: "friends_list", friends: publicFriends(client.userId) });
         send(ws, { type: "friend_requests", requests: myRequests });
 
         // Отправить статус — сколько открытых тикетов если админ
@@ -865,6 +886,19 @@ wss.on("connection", (ws) => {
           const openCount = [...tickets.values()].filter(t => t.status !== "closed").length;
           send(ws, { type: "admin_ready", openTickets: openCount });
         }
+        break;
+      }
+
+      // Отправить заявку в друзья по нику
+      case "community_sync": {
+        send(ws, { type: "friends_list", friends: publicFriends(client.userId) });
+        send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+        send(ws, {
+          type: "online_users",
+          users: [...wsClients.values()]
+            .filter(c => c.userId && c.username)
+            .map(c => ({ id: c.userId, username: c.username, role: c.role })),
+        });
         break;
       }
 
@@ -918,11 +952,8 @@ wss.on("connection", (ws) => {
           friendships.get(client.userId).add(fromId);
           friendships.get(fromId).add(client.userId);
           // Оба получают обновлённые списки
-          const meFriends = [...getFriends(client.userId)].map(fid => {
-            const fa = [...accounts.values()].find(a => a.id === fid);
-            return fa ? { id: fa.id, username: fa.username } : null;
-          }).filter(Boolean);
-          send(ws, { type: "friends_list", friends: meFriends });
+          send(ws, { type: "friends_list", friends: publicFriends(client.userId) });
+          sendToUser(fromId, { type: "friends_list", friends: publicFriends(fromId) });
           sendToUser(fromId, { type: "friend_accepted", byId: client.userId, byUsername: client.username });
         }
         send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });

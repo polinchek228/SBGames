@@ -72,11 +72,16 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         onBadgeChange?.(msg.requests?.length || 0);
         break;
       case "friend_request_received":
-        setRequests(prev => { const next = [...prev, msg.request]; onBadgeChange?.(next.length); return next; });
+        setRequests(prev => {
+          if (prev.some(r => r.fromId === msg.request.fromId)) return prev;
+          const next = [...prev, msg.request];
+          onBadgeChange?.(next.length);
+          return next;
+        });
         pushNotif?.("Заявка в друзья", `${msg.request.fromUsername} хочет добавить вас`, "friend");
         break;
       case "friend_accepted":
-        setFriends(prev => [...prev, { id: msg.byId, username: msg.byUsername }]);
+        setFriends(prev => prev.some(f => f.id === msg.byId) ? prev : [...prev, { id: msg.byId, username: msg.byUsername }]);
         pushNotif?.("Заявка принята", `${msg.byUsername} теперь твой друг`, "friend");
         break;
       case "friend_request_sent":
@@ -141,6 +146,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
   useEffect(() => {
     if (!connected) return;
+    sendWS({ type: "community_sync" });
     (async () => {
       try { const r = await authFetch("/api/groups"); const d = await r.json(); setGroups(d.groups || []); } catch {}
       try { const r = await authFetch("/api/groups/invites"); const d = await r.json(); setGroupInvites(d.invites || []); } catch {}
