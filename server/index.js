@@ -227,6 +227,19 @@ app.get("/api/user/:id", async (req, res) => {
   });
 });
 
+app.get("/api/user/:id/activity", requireAuth, (req, res) => {
+  const targetId = sanitize(req.params.id, 64);
+  const list = activityStore.get(targetId) || [];
+  const byServer = {};
+  let totalSec = 0, lastSession = null;
+  for (const s of list) {
+    byServer[s.serverId] = (byServer[s.serverId] || 0) + s.durationSec;
+    totalSec += s.durationSec;
+    if (!lastSession || s.endedAt > lastSession) lastSession = s.endedAt;
+  }
+  res.json({ totalSec, byServer, lastSessionAt: lastSession || null, recent: list.slice(-10).reverse() });
+});
+
 // ─── Комментарии профиля (rate-limit + sanitization) ─────────────────────────
 const profileComments = new Map(); // userId -> [{id, fromId, fromUsername, text, time}]
 const lastCommentAt   = new Map(); // fromId -> ts (1 в 10с)

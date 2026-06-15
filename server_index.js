@@ -559,7 +559,32 @@ app.get("/api/user/:id", async (req, res) => {
   const id = sanitize(req.params.id, 64);
   const acc = await redisAccounts.get(id);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
-  res.json({ id: acc.id, username: acc.username, role: acc.role, bio: acc.bio || "", equip: acc.equip || {}, createdAt: acc.createdAt });
+  const online = [...wsClients.values()].some(c => c.userId === id);
+  const friendCount = getFriends(id).size;
+  res.json({
+    id: acc.id,
+    username: acc.username,
+    role: acc.role,
+    bio: acc.bio || "",
+    equip: acc.equip || {},
+    inventory: Array.isArray(acc.inventory) ? acc.inventory : [],
+    createdAt: acc.createdAt,
+    online,
+    friendCount,
+  });
+});
+
+app.get("/api/user/:id/activity", requireAuth, (req, res) => {
+  const targetId = sanitize(req.params.id, 64);
+  const list = activityStore.get(targetId) || [];
+  const byServer = {};
+  let totalSec = 0, lastSession = null;
+  for (const s of list) {
+    byServer[s.serverId] = (byServer[s.serverId] || 0) + s.durationSec;
+    totalSec += s.durationSec;
+    if (!lastSession || s.endedAt > lastSession) lastSession = s.endedAt;
+  }
+  res.json({ totalSec, byServer, lastSessionAt: lastSession || null, recent: list.slice(-10).reverse() });
 });
 
 // ─── Profile comments ─────────────────────────────────────────────────────────

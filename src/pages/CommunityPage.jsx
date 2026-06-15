@@ -249,14 +249,27 @@ export default function CommunityPage({ onClose, user, onBadgeChange, onViewProf
             <p className="text-[12px] font-bold text-white">
               {tab === "chats" && chatWith ? chatWith.username : "Сообщество"}
             </p>
-            <div className="flex items-center gap-1 mt-0.5">
-              {connected
-                ? <WifiHigh size={9} style={{ color: "rgba(74,222,128,0.6)" }} />
-                : <WifiSlash size={9} style={{ color: "rgba(255,255,255,0.2)" }} />
-              }
-              <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>
-                {connected ? `${friends.length} друзей` : "подключение..."}
-              </p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-black tracking-wider transition-all duration-300 ${
+                connected
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+              }`}>
+                <motion.span
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ repeat: Infinity, duration: 1.5 }}
+                  className={`w-1 h-1 rounded-full ${connected ? "bg-emerald-400" : "bg-amber-400"}`}
+                  style={{
+                    boxShadow: connected ? "0 0 6px #34d399" : "0 0 6px #fbbf24"
+                  }}
+                />
+                {connected ? "СЕТЬ АКТИВНА" : "ПОДКЛЮЧЕНИЕ"}
+              </span>
+              {connected && (
+                <span className="text-[8px] font-bold text-white/30 tracking-wider">
+                  · {friends.length} ДРУЗЕЙ
+                </span>
+              )}
             </div>
           </div>
         </div>
