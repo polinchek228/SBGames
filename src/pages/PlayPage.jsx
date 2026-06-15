@@ -314,7 +314,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       {/* ── Content layer ── */}
       {!selected ? (
         /* Hero (when no server selected) */
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ paddingLeft: 110 }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ paddingLeft: 216 }}>
           <div className="text-[64px] font-display font-black leading-none tracking-tight text-white text-center"
             style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
           >
