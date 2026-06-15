@@ -362,6 +362,14 @@ async fn launch_minecraft(
         return Err(e);
     }
 
+    // ─── Environment hygiene: scrub rogue variables ───
+    let toxic_flags = ["JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JAVA_OPTIONS", "CLASSPATH"];
+    for flag in &toxic_flags {
+        if std::env::var(flag).is_ok() {
+            std::env::remove_var(flag);
+        }
+    }
+
     use std::path::PathBuf;
 
     // ─── Modpack sync: качаем whitelist модов с сервера, удаляем чужие ─
@@ -787,16 +795,61 @@ async fn launch_minecraft(
     // -DmergeModules для JNA
     cmd.arg("-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar");
 
-    // 2) Остальные библиотеки + vanilla в -cp (всё в одном classpath,
-    //    чтобы Forge видел Implementation-Version из manifest)
-    let cp = rest_classpath.iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(cp_sep);
-    cmd.arg("-cp").arg(cp);
+    // Write embedded sbg-bootstrap.jar from memory
+    let bootstrap_bytes = include_bytes!("../../public/sbg-bootstrap.jar");
+    let bootstrap_path = mc_dir.join("sbg-bootstrap.jar");
+    std::fs::write(&bootstrap_path, bootstrap_bytes)
+        .map_err(|e| format!("Failed to write sbg-bootstrap.jar: {}", e))?;
 
-    // Main class — Forge BootstrapLauncher (находится в module-path)
-    cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
+    // Generate wrapped sbg-classpath.jar
+    let classpath_jar_path = mc_dir.join("sbg-classpath.jar");
+    generate_wrapped_classpath_manifest(&classpath_jar_path, &rest_classpath, &mc_dir)?;
+
+    // Generate sbg-classpath.txt for BootstrapLauncher's legacyClassPath.file property
+    let classpath_txt_path = mc_dir.join("sbg-classpath.txt");
+    let mut txt_content = String::new();
+    for p in &rest_classpath {
+        txt_content.push_str(&p.to_string_lossy());
+        txt_content.push('\n');
+    }
+    std::fs::write(&classpath_txt_path, txt_content)
+        .map_err(|e| format!("Failed to write sbg-classpath.txt: {}", e))?;
+
+    // Pass legacyClassPath.file system property to BootstrapLauncher
+    cmd.arg(format!("-DlegacyClassPath.file={}", classpath_txt_path.display()));
+
+    // Calculate sha256 of all mod jars and write to .mod-hashes
+    let mods_dir = mc_dir.join("mods");
+    let mut hash_content = String::new();
+    if mods_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&mods_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("jar")) {
+                    let name = path.file_name().unwrap().to_string_lossy().to_string();
+                    if let Ok(mut file) = std::fs::File::open(&path) {
+                        use sha2::{Digest, Sha256};
+                        let mut hasher = Sha256::new();
+                        let mut buffer = [0u8; 8192];
+                        while let Ok(n) = std::io::Read::read(&mut file, &mut buffer) {
+                            if n == 0 { break; }
+                            hasher.update(&buffer[..n]);
+                        }
+                        let hash = format!("{:x}", hasher.finalize());
+                        hash_content.push_str(&format!("{}:{}\n", hash, name));
+                    }
+                }
+            }
+        }
+    }
+    std::fs::write(mc_dir.join(".mod-hashes"), hash_content)
+        .map_err(|e| format!("Failed to write .mod-hashes manifest: {}", e))?;
+
+    // Point -cp strictly to sbg-bootstrap.jar and sbg-classpath.jar
+    cmd.arg("-cp").arg("sbg-bootstrap.jar;sbg-classpath.jar");
+
+    // Main class — custom security bootstrapper instead of CPW bootstraplauncher
+    cmd.arg("com.sbgames.bootstrap.SBGBootstrap");
 
     cmd.arg("--username").arg(&username);
     cmd.arg("--version").arg(format!("1.20.1-forge-{}", forge_version));
@@ -835,7 +888,7 @@ async fn launch_minecraft(
     let log_out = std::fs::File::create(&java_log);  // перезаписываем для stdout
     let log_err = std::fs::File::create(&java_err).ok();
 
-    cmd.stdin(Stdio::null());
+    cmd.stdin(Stdio::piped());
     cmd.stdout(if let Ok(f) = log_out { Stdio::from(f) } else { Stdio::null() });
     cmd.stderr(if let Some(f) = log_err { Stdio::from(f) } else { Stdio::null() });
     cmd.current_dir(&mc_dir);
@@ -845,9 +898,52 @@ async fn launch_minecraft(
         downloaded: 100, total: 100, speed_kbs: 0,
     });
 
+    // Native debugger check on launcher itself
+    #[cfg(target_os = "windows")]
+    unsafe {
+        if windows_sys::Win32::System::Diagnostics::Debug::IsDebuggerPresent() != 0 {
+            return Err("Отладчик обнаружен".into());
+        }
+        let mut is_remote = 0;
+        let current_proc = windows_sys::Win32::System::Threading::GetCurrentProcess();
+        if windows_sys::Win32::System::Diagnostics::Debug::CheckRemoteDebuggerPresent(current_proc, &mut is_remote) != 0 && is_remote != 0 {
+            return Err("Удаленный отладчик обнаружен".into());
+        }
+    }
+
     // Spawn
-    let child = cmd.spawn().map_err(|e| format!("Не удалось запустить: {}", e))?;
+    let mut child = cmd.spawn().map_err(|e| format!("Не удалось запустить: {}", e))?;
     let pid = child.id();
+
+    // Spawn native watchdog thread for child process
+    #[cfg(target_os = "windows")]
+    {
+        std::thread::spawn(move || {
+            use windows_sys::Win32::System::Diagnostics::Debug::CheckRemoteDebuggerPresent;
+            use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE};
+            unsafe {
+                let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE, 0, pid);
+                if handle != 0 {
+                    loop {
+                        let mut is_remote = 0;
+                        if CheckRemoteDebuggerPresent(handle, &mut is_remote) != 0 && is_remote != 0 {
+                            let _ = TerminateProcess(handle, 1);
+                            std::process::exit(1);
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                }
+            }
+        });
+    }
+
+    // Secure key handoff via stdin pipe
+    let session_key = generate_secure_random_key();
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write as _;
+        let _ = writeln!(stdin, "{}", session_key);
+        let _ = stdin.flush();
+    }
 
     // Очищаем предыдущий guard-trigger (если был)
     let _ = std::fs::remove_file(mc_dir.join(".guard-trigger"));
@@ -1945,16 +2041,20 @@ fn check_jar_has_module_info(jar: &PathBuf) -> std::io::Result<bool> {
     Ok(false)
 }
 
-// Download file via curl (reqwest таймаутит на libraries.minecraft.net, curl работает за 0.3с)
-async fn download_file(url: &str, dest: &PathBuf, _app: &tauri::AppHandle) -> Result<(), String> {
-    use std::process::Command;
+async fn download_file(url: &str, dest: &PathBuf, app: &tauri::AppHandle) -> Result<(), String> {
+    use futures_util::StreamExt;
+    use std::io::Write as _;
+    use reqwest::header::USER_AGENT;
 
     std::fs::create_dir_all(dest.parent().unwrap()).ok();
 
-    // Список зеркал: основной + fallback на Maven Central
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(45))
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+
     let mut urls = vec![url.to_string()];
     if url.contains("libraries.minecraft.net") {
-        // Fallback: парсим path после libraries.minecraft.net и формируем Maven Central URL
         if let Some(path) = url.strip_prefix("https://libraries.minecraft.net/") {
             let mc = format!("https://repo1.maven.org/maven2/{}", path);
             let forge = format!("https://maven.minecraftforge.net/{}", path);
@@ -1965,33 +2065,76 @@ async fn download_file(url: &str, dest: &PathBuf, _app: &tauri::AppHandle) -> Re
 
     let mut last_err = String::new();
     for attempt_url in &urls {
-        // Пробуем до 3 раз для каждого зеркала
-        for retry in 0..3 {
-            let result = Command::new("curl")
-                .arg("-fsSL")           // fail on errors, silent, follow redirects
-                .arg("--max-time").arg("30")
-                .arg("--connect-timeout").arg("10")
-                .arg("-o").arg(dest)
-                .arg(attempt_url)
-                .output();
+        for retry in 0..2 {
+            let req = client.get(attempt_url)
+                .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SBGames-Launcher/1.0");
 
-            match result {
-                Ok(out) if out.status.success() => {
-                    if dest.exists() && dest.metadata().map(|m| m.len() > 0).unwrap_or(false) {
-                        return Ok(());
-                    }
-                }
-                Ok(out) => {
-                    last_err = String::from_utf8_lossy(&out.stderr).to_string();
-                }
+            let res = match req.send().await {
+                Ok(r) => r,
                 Err(e) => {
-                    last_err = format!("curl не найден или не запускается: {}", e);
+                    last_err = e.to_string();
+                    std::thread::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1)));
+                    continue;
+                }
+            };
+
+            if !res.status().is_success() {
+                last_err = format!("HTTP {}", res.status());
+                std::thread::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1)));
+                continue;
+            }
+
+            let total_size = res.content_length().unwrap_or(0);
+            let mut file = std::fs::File::create(dest).map_err(|e| format!("File create error: {}", e))?;
+            let mut stream = res.bytes_stream();
+            
+            let mut downloaded = 0u64;
+            let start_time = std::time::Instant::now();
+            let mut last_emit = std::time::Instant::now();
+
+            while let Some(chunk_result) = stream.next().await {
+                let chunk = chunk_result.map_err(|e| format!("Stream chunk read error: {}", e))?;
+                file.write_all(&chunk).map_err(|e| format!("Failed to write chunk to file: {}", e))?;
+                downloaded += chunk.len() as u64;
+
+                // Emit progress every 150ms to prevent flooding IPC
+                if last_emit.elapsed() >= std::time::Duration::from_millis(150) {
+                    let elapsed_secs = start_time.elapsed().as_secs_f64();
+                    let speed_kbs = if elapsed_secs > 0.0 {
+                        ((downloaded as f64 / 1024.0) / elapsed_secs) as u64
+                    } else {
+                        0
+                    };
+
+                    let file_name = dest.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+
+                    let _ = app.emit("download_progress", DownloadProgress {
+                        file: file_name,
+                        downloaded,
+                        total: total_size,
+                        speed_kbs,
+                    });
+                    last_emit = std::time::Instant::now();
                 }
             }
-            // Backoff перед retry
-            std::thread::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1)));
+
+            // Final 100% progress emit
+            let file_name = dest.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let _ = app.emit("download_progress", DownloadProgress {
+                file: file_name,
+                downloaded,
+                total: total_size,
+                speed_kbs: 0,
+            });
+
+            return Ok(());
         }
     }
+
     Err(format!("Не удалось скачать {}: {}", url, last_err))
 }
 
@@ -2311,6 +2454,75 @@ async fn install_forge_from_zip(
     Ok(())
 }
 
+fn generate_wrapped_classpath_manifest(path: &std::path::Path, rest_classpath: &[std::path::PathBuf], mc_dir: &std::path::Path) -> Result<(), String> {
+    use zip::write::FileOptions;
+    use std::io::Write as _;
+
+    let file = std::fs::File::create(path).map_err(|e| format!("Failed to create classpath jar: {}", e))?;
+    let mut zip = zip::ZipWriter::new(file);
+
+    zip.start_file("META-INF/MANIFEST.MF", FileOptions::default())
+        .map_err(|e| format!("Failed to create MANIFEST.MF inside jar: {}", e))?;
+
+    let mut manifest = String::new();
+    manifest.push_str("Manifest-Version: 1.0\r\n");
+    manifest.push_str("Main-Class: com.sbgames.bootstrap.SBGBootstrap\r\n");
+    
+    let mut cp_value = String::new();
+    for p in rest_classpath {
+        if let Ok(rel_path) = p.strip_prefix(mc_dir) {
+            let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+            cp_value.push_str(&rel_str);
+            cp_value.push_str(" ");
+        } else {
+            let abs_str = p.to_string_lossy().replace('\\', "/");
+            let url_str = if abs_str.starts_with('/') {
+                format!("file:{}", abs_str)
+            } else {
+                format!("file:///{}", abs_str)
+            };
+            cp_value.push_str(&url_str);
+            cp_value.push_str(" ");
+        }
+    }
+    
+    let mut manifest_cp = String::new();
+    manifest_cp.push_str("Class-Path: ");
+    
+    let mut current_line_len = "Class-Path: ".len();
+    for word in cp_value.split_whitespace() {
+        let word_len = word.len();
+        if current_line_len + word_len + 1 > 70 {
+            manifest_cp.push_str("\r\n ");
+            manifest_cp.push_str(word);
+            current_line_len = word_len + 1;
+        } else {
+            if current_line_len > "Class-Path: ".len() {
+                manifest_cp.push(' ');
+                current_line_len += 1;
+            }
+            manifest_cp.push_str(word);
+            current_line_len += word_len;
+        }
+    }
+    manifest_cp.push_str("\r\n");
+    
+    manifest.push_str(&manifest_cp);
+    manifest.push_str("\r\n");
+    
+    zip.write_all(manifest.as_bytes()).map_err(|e| format!("Failed to write manifest bytes: {}", e))?;
+    zip.finish().map_err(|e| format!("Failed to finalize classpath jar: {}", e))?;
+    
+    Ok(())
+}
+
+fn generate_secure_random_key() -> String {
+    use sha2::Digest;
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let hash = format!("{:x}", sha2::Sha256::digest(time.to_string().as_bytes()));
+    hash[..32].to_string()
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -2358,6 +2570,7 @@ pub fn run() {
             navigate_to,
             tray_launch_game,
             tray_logout,
+            launch_game_hidden,
         ])
         .setup(|app| {
             // Трей
@@ -2383,4 +2596,112 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn find_jvm_dll_path() -> Option<PathBuf> {
+    let mc_dir = minecraft_dir();
+    let runtime_dir = mc_dir.join("runtime");
+    if runtime_dir.exists() {
+        for entry in walkdir::WalkDir::new(&runtime_dir).into_iter().flatten() {
+            let path = entry.path();
+            if path.is_file() && path.file_name().map_or(false, |n| n == "jvm.dll" || n == "libjvm.so" || n == "libjvm.dylib") {
+                return Some(path.to_path_buf());
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn launch_game_hidden(bootstrap_jar_bytes: Vec<u8>, game_args: Vec<String>) -> Result<(), String> {
+    let mc_dir = minecraft_dir();
+    std::env::set_current_dir(&mc_dir).map_err(|e| e.to_string())?;
+
+    std::thread::spawn(move || {
+        let jvm_path = match find_jvm_dll_path() {
+            Some(p) => p,
+            None => {
+                eprintln!("Error: jvm.dll not found in local runtime path");
+                return;
+            }
+        };
+
+        unsafe {
+            let jvm_lib = match libloading::Library::new(&jvm_path) {
+                Ok(lib) => lib,
+                Err(e) => {
+                    eprintln!("Error loading jvm.dll: {}", e);
+                    return;
+                }
+            };
+
+            let jvm_args = match jni::InitArgsBuilder::new()
+                .version(jni::JNIVersion::V8)
+                .option("-Xmx4G")
+                .option("-Djava.class.path=.")
+                .build()
+            {
+                Ok(args) => args,
+                Err(e) => {
+                    eprintln!("Error building JVM args: {:?}", e);
+                    return;
+                }
+            };
+
+            let jvm = match jni::JavaVM::new(jvm_args) {
+                Ok(vm) => vm,
+                Err(e) => {
+                    eprintln!("Error creating JavaVM: {:?}", e);
+                    return;
+                }
+            };
+
+            let mut env = match jvm.attach_current_thread() {
+                Ok(env) => env,
+                Err(e) => {
+                    eprintln!("Error attaching thread: {:?}", e);
+                    return;
+                }
+            };
+
+            let bootstrap_class = match env.define_class("com/sbgames/bootstrap/SBGBootstrap", &jni::objects::JObject::null(), &bootstrap_jar_bytes) {
+                Ok(cls) => cls,
+                Err(e) => {
+                    eprintln!("Error defining class: {:?}", e);
+                    return;
+                }
+            };
+
+            let string_class = match env.find_class("java/lang/String") {
+                Ok(cls) => cls,
+                Err(e) => {
+                    eprintln!("Error finding String class: {:?}", e);
+                    return;
+                }
+            };
+
+            let java_args_array = match env.new_object_array(game_args.len() as i32, &string_class, jni::objects::JObject::null()) {
+                Ok(arr) => arr,
+                Err(e) => {
+                    eprintln!("Error creating object array: {:?}", e);
+                    return;
+                }
+            };
+
+            for (index, arg) in game_args.iter().enumerate() {
+                if let Ok(java_string) = env.new_string(arg) {
+                    let _ = env.set_object_array_element(&java_args_array, index as i32, &java_string);
+                }
+            }
+
+            let method_payload = [jni::objects::JValue::from(&java_args_array)];
+            if let Err(e) = env.call_static_method(bootstrap_class, "main", "([Ljava/lang/String;)V", &method_payload) {
+                eprintln!("Error calling main method: {:?}", e);
+            }
+
+            drop(bootstrap_jar_bytes);
+        }
+    });
+
+    Ok(())
 }

@@ -33,9 +33,9 @@ export default function SkinViewer({ username, customSkin }) {
         canvas: canvasRef.current,
         width: 180,
         height: 200,
-        background: 0x000000,
+        alpha: true, // Allow transparency
       });
-      viewer.renderer.setClearColor(0x000000, 0);
+      viewer.renderer.setClearColor(0x000000, 0); // Transparent background
       viewer.controls.enableRotate = true;
       viewer.controls.enableZoom = false;
       viewer.controls.autoRotate = true;

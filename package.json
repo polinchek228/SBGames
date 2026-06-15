@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir && node -e \"require('fs').cpSync('dist-tray', 'dist', { recursive: true });\"",
-    "build:main": "vite build",
+    "build:java": "node scratch/generate_bootstrap.js && javac -encoding UTF-8 src-java/com/sbgames/bootstrap/SBGBootstrap.java -d src-java/out && jar -cf public/sbg-bootstrap.jar -C src-java/out . && node scratch/obfuscate.js",
+    "build": "npm run build:java && vite build && cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir && node -e \"require('fs').cpSync('dist-tray', 'dist', { recursive: true });\"",
+    "build:main": "npm run build:java && vite build",
     "build:tray": "cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir",
     "preview": "vite preview",
     "tauri": "tauri"
@@ -17,6 +18,7 @@
     "clsx": "^2.1.0",
     "framer-motion": "^11.18.2",
     "lucide-react": "^0.344.0",
+    "pngjs": "^7.0.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

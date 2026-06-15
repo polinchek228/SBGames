@@ -27,42 +27,47 @@ const SORT_OPTIONS = [
 /* ── Item visual previews (clean, Steam-style) ──────────────────────────────── */
 
 function FramePreview({ color, item, large }) {
-  const outerSz = large ? 120 : 82;
-  const br = large ? 20 : 14;
+  const outerSz = large ? 160 : 120;
 
   return (
     <div className="relative w-full h-full flex items-center justify-center">
-      <div className="relative" style={{ width: outerSz, height: outerSz }}>
-        {/* Actual Avatar Image */}
-        <img
-          src="/logo.jpg"
-          alt="Avatar"
-          className="absolute inset-[3px] object-cover"
-          style={{
-            width: `calc(100% - 6px)`,
-            height: `calc(100% - 6px)`,
-            borderRadius: br,
-            border: "1px solid rgba(255,255,255,0.06)",
-          }}
-          onError={(e) => {
-            e.currentTarget.src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80";
-          }}
+      <div 
+        className="relative flex items-center justify-center transition-all duration-300"
+        style={{ 
+          width: outerSz, 
+          height: outerSz,
+          borderRadius: 12,
+          background: "rgba(255,255,255,0.01)",
+          boxShadow: `inset 0 0 16px ${color}05`,
+        }}
+      >
+        <div 
+          className="absolute inset-4 rounded-full pointer-events-none opacity-20" 
+          style={{ background: `radial-gradient(circle, ${color}25 0%, transparent 75%)`, filter: "blur(8px)" }} 
         />
 
-        {/* Frame Image Overlay */}
+        {/* Mini avatar preview in top-left corner (Steam-style) */}
+        {!large && item?.image && (
+          <div className="absolute top-1 left-1 w-7 h-7 rounded-lg overflow-hidden border border-white/5 z-20 shadow-lg">
+            <img src="/logo.jpg" alt="" className="w-full h-full object-cover opacity-80" />
+            <img src={item.image} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          </div>
+        )}
+        
+        {/* The Frame Image itself — full size inside preview */}
         {item?.image ? (
           <img
             src={item.image}
             alt={item.name}
-            className="absolute inset-0 w-full h-full object-contain z-10 select-none pointer-events-none"
+            className="w-[92%] h-[92%] object-contain z-10 select-none pointer-events-none"
           />
         ) : (
           <div
-            className="absolute inset-0 z-10"
+            className="w-[85%] h-[85%] z-10"
             style={{
               border: `3px solid ${color}`,
-              borderRadius: br + 2,
-              boxShadow: `0 0 16px ${color}40`,
+              borderRadius: 14,
+              boxShadow: `0 0 16px ${color}35`,
             }}
           />
         )}
@@ -112,43 +117,116 @@ function BackgroundPreview({ color, item, large }) {
   );
 }
 
-function AnimatedPreview({ color }) {
-  return (
-    <div className="relative w-[80px] h-[80px] flex items-center justify-center">
-      {/* Outer ring */}
-      <div className="absolute inset-0 rounded-full"
-        style={{
-          border: `3px solid ${color}`,
-          boxShadow: `0 0 16px ${color}20`,
-        }} />
-      {/* Inner glow */}
-      <div className="absolute inset-[8px] rounded-full"
-        style={{
-          background: `radial-gradient(circle, ${color}20, transparent 70%)`,
-        }} />
-      {/* Avatar silhouette */}
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.35 }}>
-        <circle cx="12" cy="8" r="4" fill={color} />
-        <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
+// Badge Icon Helper with actual SVG shapes
+function BadgeIcon({ name, color, size }) {
+  const normName = name?.toLowerCase() || "";
+  if (normName.includes("сердце") || normName.includes("heart")) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
       </svg>
+    );
+  }
+  if (normName.includes("звезда") || normName.includes("star")) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+      </svg>
+    );
+  }
+  if (normName.includes("пламя") || normName.includes("flame")) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+        <path d="M17.66 11.57c-.77-3.95-2.5-6.86-5.65-8.57 0 0 .1 3.11-1.9 4.67-1.9 1.48-3.8 3.53-3.8 6.42 0 3.47 2.8 6.28 6.27 6.28 3.47 0 6.27-2.81 6.27-6.28 0-1-.29-1.91-.79-2.72-.19.2-.38.4-.59.59-.44.44-1.02.73-1.67.73-1.3 0-2.35-1.05-2.35-2.35 0-.65.26-1.24.69-1.67.2-.2.4-.38.59-.59.33-.33.53-.78.53-1.27v-.71c-.01-.01-.01-.01-.01-.02-.1-.01-.2-.01-.3-.01-.89 0-1.74.34-2.38.96-.33.32-.59.7-.77 1.13-.19.46-.29.96-.29 1.47 0 .54.12 1.05.34 1.51.21.46.52.86.91 1.18.39.32.86.55 1.37.68.5.13 1.03.18 1.56.14.78-.06 1.51-.38 2.07-.9.55-.52.92-1.22 1.02-2.02.04-.32.06-.65.06-.98 0-.96-.4-1.83-1.05-2.48z" />
+      </svg>
+    );
+  }
+  if (normName.includes("бриллиант") || normName.includes("diamond")) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-4-4h8l-4 4zm-4-6l4-4 4 4H8z" />
+      </svg>
+    );
+  }
+  if (normName.includes("череп") || normName.includes("skull")) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+        <path d="M12 2C7.03 2 3 6.03 3 11c0 3.32 1.82 6.22 4.5 7.75V21c0 .55.45 1 1 1h7c.55 0 1-.45 1-1v-2.25c2.68-1.53 4.5-4.43 4.5-7.75 0-4.97-4.03-9-9-9zm-3 9c-.83 0-1.5-.67-1.5-1.5S8.17 8 9 8s1.5.67 1.5 1.5S9.83 11 9 11zm6 0c-.83 0-1.5-.67-1.5-1.5S14.17 8 15 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+    </svg>
+  );
+}
+
+function AnimatedPreview({ color, large }) {
+  const outerSz = large ? 110 : 78;
+  const br = large ? 18 : 12;
+
+  return (
+    <div className="relative w-full h-full flex items-center justify-center">
+      <div 
+        className="relative flex items-center justify-center" 
+        style={{ 
+          width: outerSz, 
+          height: outerSz,
+          background: `radial-gradient(circle, ${color}22 0%, transparent 70%)` 
+        }}
+      >
+        {/* Real Avatar */}
+        <img
+          src="/logo.jpg"
+          alt="Avatar"
+          className="object-cover"
+          style={{
+            width: outerSz - 8,
+            height: outerSz - 8,
+            borderRadius: br,
+            border: `2px solid ${color}80`,
+            boxShadow: `0 0 16px ${color}35`,
+          }}
+          onError={(e) => {
+            e.currentTarget.src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80";
+          }}
+        />
+      </div>
     </div>
   );
 }
 
-function BadgePreview({ color, name }) {
+function BadgePreview({ color, name, large }) {
+  const sz = large ? 48 : 34;
+  const br = large ? 16 : 12;
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
-      style={{
-        background: `${color}10`,
-        border: `1.5px solid ${color}25`,
-      }}>
-      <div className="w-6 h-6 rounded-full flex items-center justify-center"
-        style={{ background: `${color}18` }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill={color}>
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-        </svg>
+    <div className="relative w-full h-full flex items-center justify-center">
+      <div 
+        className="flex items-center justify-center relative transition-all duration-300"
+        style={{
+          width: large ? 110 : 78,
+          height: large ? 110 : 78,
+          borderRadius: br,
+          background: "rgba(255,255,255,0.02)",
+          border: "1px solid rgba(255,255,255,0.04)",
+          boxShadow: `inset 0 0 12px ${color}08`,
+        }}
+      >
+        <div 
+          className="absolute inset-2 rounded-full pointer-events-none opacity-40" 
+          style={{ background: `radial-gradient(circle, ${color}33 0%, transparent 75%)`, filter: "blur(6px)" }} 
+        />
+        <div className="relative z-10 flex flex-col items-center gap-1.5">
+          <BadgeIcon name={name} color={color} size={sz} />
+          {large && (
+            <span className="text-[10px] font-black uppercase tracking-wider" style={{ color, textShadow: `0 0 8px ${color}40` }}>
+              {name}
+            </span>
+          )}
+        </div>
       </div>
-      <span className="text-[11px] font-bold tracking-wide uppercase" style={{ color }}>{name}</span>
     </div>
   );
 }
@@ -165,76 +243,8 @@ function ItemVisual({ type, color, name, item, large = false }) {
 
 /* ── Large visual for modal ───────────────────────────────────────────────── */
 
-function ItemVisualLarge({ type, color, name }) {
-  switch (type) {
-    case "frame":
-      return (
-        <div className="relative w-[160px] h-[160px] flex items-center justify-center">
-          <div className="absolute inset-0 rounded-[28px]"
-            style={{ border: `4px solid ${color}`, boxShadow: `0 0 40px ${color}30` }} />
-          <div className="relative w-[120px] h-[120px] rounded-[16px] flex items-center justify-center"
-            style={{ background: "rgba(255,255,255,0.04)" }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.25 }}>
-              <circle cx="12" cy="8" r="4" fill={color} />
-              <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
-            </svg>
-          </div>
-        </div>
-      );
-    case "background":
-      return (
-        <div className="w-[200px] h-[130px] rounded-2xl overflow-hidden relative"
-          style={{ border: `2px solid ${color}20` }}>
-          <div className="absolute inset-0"
-            style={{
-              background: `
-                radial-gradient(ellipse at 25% 20%, ${color}55 0%, transparent 55%),
-                radial-gradient(ellipse at 75% 80%, ${color}35 0%, transparent 50%),
-                radial-gradient(ellipse at 50% 50%, ${color}15 0%, transparent 70%),
-                linear-gradient(160deg, #06060c 0%, #0a0a18 50%, #04040a 100%)
-              `,
-            }} />
-          <div className="absolute inset-0"
-            style={{
-              background: `radial-gradient(2px 2px at 20% 30%, ${color}80, transparent),
-                           radial-gradient(2px 2px at 60% 20%, ${color}60, transparent),
-                           radial-gradient(2px 2px at 80% 60%, ${color}50, transparent),
-                           radial-gradient(2px 2px at 40% 70%, ${color}40, transparent)`,
-            }} />
-        </div>
-      );
-    case "avatar_animated":
-      return (
-        <div className="relative w-[140px] h-[140px] flex items-center justify-center">
-          <div className="absolute inset-0 rounded-full"
-            style={{ border: `4px solid ${color}`, boxShadow: `0 0 30px ${color}20` }} />
-          <div className="absolute inset-[12px] rounded-full"
-            style={{ background: `radial-gradient(circle, ${color}18, transparent 70%)` }} />
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
-            <circle cx="12" cy="8" r="4" fill={color} />
-            <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill={color} />
-          </svg>
-        </div>
-      );
-    case "badge":
-      return (
-        <div className="flex items-center gap-3 px-8 py-5 rounded-2xl"
-          style={{
-            background: `${color}12`,
-            border: `2px solid ${color}30`,
-          }}>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center"
-            style={{ background: `${color}18` }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill={color}>
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-            </svg>
-          </div>
-          <span className="text-[18px] font-black tracking-wide uppercase" style={{ color }}>{name}</span>
-        </div>
-      );
-    default:
-      return <Package size={64} style={{ color: "rgba(255,255,255,0.15)" }} />;
-  }
+function ItemVisualLarge({ type, color, name, item }) {
+  return <ItemVisual type={type} color={color} name={name} item={item} large />;
 }
 
 /* ── Equip slot (drop target) ─────────────────────────────────────────────── */

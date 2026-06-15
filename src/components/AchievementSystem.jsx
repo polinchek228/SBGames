@@ -135,7 +135,7 @@ export default function AchievementSystem({ user }) {
                 style={{
                   background: isUnlocked ? `${ach.color}0a` : "rgba(255,255,255,0.02)",
                   border: isUnlocked ? `1px solid ${ach.color}20` : "1px solid rgba(255,255,255,0.03)",
-                  opacity: isUnlocked ? 1 : 0.5,
+                  opacity: isUnlocked ? 1 : 0.75,
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.background = isUnlocked ? `${ach.color}14` : "rgba(255,255,255,0.04)";
@@ -143,7 +143,7 @@ export default function AchievementSystem({ user }) {
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.background = isUnlocked ? `${ach.color}0a` : "rgba(255,255,255,0.02)";
-                  e.currentTarget.style.opacity = isUnlocked ? "1" : "0.5";
+                  e.currentTarget.style.opacity = isUnlocked ? "1" : "0.75";
                 }}
               >
                 {/* Symbol slot */}
@@ -151,7 +151,7 @@ export default function AchievementSystem({ user }) {
                   style={{ background: isUnlocked ? `${ach.color}18` : "rgba(255,255,255,0.03)" }}>
                   <span className="text-[15px] leading-none select-none"
                     style={{
-                      color: isUnlocked ? ach.color : "rgba(255,255,255,0.1)",
+                      color: isUnlocked ? ach.color : "rgba(255,255,255,0.18)",
                       filter: isUnlocked ? `drop-shadow(0 0 5px ${ach.color}50)` : "none",
                     }}>
                     {isUnlocked ? ach.symbol : "·"}
@@ -161,11 +161,11 @@ export default function AchievementSystem({ user }) {
                 {/* Text */}
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] font-bold leading-none mb-0.5 truncate"
-                    style={{ color: isUnlocked ? "rgba(255,255,255,0.82)" : "rgba(255,255,255,0.28)" }}>
+                    style={{ color: isUnlocked ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.45)" }}>
                     {ach.name}
                   </p>
                   <p className="text-[9px] truncate"
-                    style={{ color: isUnlocked ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)" }}>
+                    style={{ color: isUnlocked ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.22)" }}>
                     {ach.desc}
                   </p>
                 </div>
@@ -173,11 +173,11 @@ export default function AchievementSystem({ user }) {
                 {/* Right: XP + date */}
                 <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
                   <span className="text-[10px] font-black tabular-nums"
-                    style={{ color: isUnlocked ? "#f59e0b" : "rgba(255,255,255,0.08)" }}>
+                    style={{ color: isUnlocked ? "#f59e0b" : "rgba(255,255,255,0.25)" }}>
                     +{ach.xp} XP
                   </span>
                   {date && (
-                    <span className="text-[8px] tabular-nums" style={{ color: "rgba(255,255,255,0.18)" }}>
+                    <span className="text-[8px] tabular-nums" style={{ color: "rgba(255,255,255,0.25)" }}>
                       {date}
                     </span>
                   )}

@@ -30,6 +30,9 @@ futures-util = "0.3"
 zip          = "0.6"
 tokio        = { version = "1", features = ["full"] }
 dirs-next    = "2"
+libloading   = "0.8"
+jni          = { version = "0.21", features = ["invocation"] }
+walkdir      = "2"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.52"
@@ -46,12 +49,8 @@ features = [
 ]
 
 [profile.release]
-panic = "abort"
-codegen-units = 1
-lto = "fat"
 opt-level = 3
-strip = "symbols"
-overflow-checks = false
-debug = false
-debug-assertions = false
-incremental = false
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

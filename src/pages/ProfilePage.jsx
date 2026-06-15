@@ -67,11 +67,29 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
     });
   }, []);
 
+  const bgItem = CATALOG_BY_ID[equip?.background];
+
   return (
-    <div className="flex h-full bg-black overflow-hidden">
+    <div className="flex h-full overflow-hidden bg-transparent w-full relative">
+      {bgItem?.video && (
+        <video
+          src={bgItem.video}
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay muted loop playsInline
+          style={{ pointerEvents: "none", opacity: 0.55, zIndex: 0 }}
+        />
+      )}
+      
+      {/* Heavy overlay gradient to block bright colors of the video behind text sections */}
+      <div className="absolute inset-0 z-[1] pointer-events-none"
+        style={{
+          background: "linear-gradient(to bottom, rgba(7,7,10,0.5) 0%, rgba(10,10,15,0.78) 50%, rgba(10,10,15,0.95) 100%)"
+        }}
+      />
+
       {/* Left tab nav */}
-      <div className="w-[180px] flex-shrink-0 flex flex-col pt-4 px-3 gap-0.5"
-        style={{ background: "rgba(8,8,10,0.5)" }}
+      <div className="w-[180px] flex-shrink-0 flex flex-col pt-4 px-3 gap-0.5 relative z-10"
+        style={{ background: "rgba(10,10,15,0.45)", borderRight: "1px solid rgba(255,255,255,0.05)" }}
       >
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = tab === id;
@@ -102,7 +120,7 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
       </div>
 
       {/* Content — все табы всегда смонтированы, переключаем opacity */}
-      <div className="flex-1 min-h-0 relative overflow-hidden">
+      <div className="flex-1 min-h-0 relative overflow-hidden z-10">
         {TABS.map(({ id }) => (
           <motion.div
             key={id}
@@ -165,19 +183,7 @@ function ProfileTab({ user, equip }) {
 
   return (
     <div className="relative flex flex-col h-full overflow-y-auto">
-      {bgItem?.video && (
-        <video
-          src={bgItem.video}
-          className="absolute inset-0 w-full h-full object-cover"
-          autoPlay muted loop playsInline
-          style={{ pointerEvents: "none", opacity: 0.6, zIndex: 0 }}
-        />
-      )}
-      {/* Gradient overlay bottom fade */}
-      <div className="absolute inset-0 z-[1] pointer-events-none"
-        style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(10,10,14,0.7) 55%, rgba(10,10,14,0.97) 100%)" }} />
-
-      <div className="relative z-10 flex flex-col h-full overflow-y-auto">
+      <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto w-full px-8 pt-8 pb-6 gap-6">
         {/* ═══ HEADER ═══ */}
         <div className="relative flex-shrink-0 px-6 pt-8 pb-6">
           <div className="flex items-end gap-5">
@@ -610,7 +616,7 @@ function SettingsTab() {
   return (
     <div className="flex flex-col">
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-5 pt-5 pb-0 flex-shrink-0 sticky top-0 z-10" style={{ background: "#000" }}>
+      <div className="flex items-center gap-1 px-5 pt-5 pb-0 flex-shrink-0 sticky top-0 z-10" style={{ background: "transparent" }}>
         {[
           { id: "game",    label: "Игра",    icon: SlidersHorizontal },
           { id: "mods",    label: "Моды",    icon: Package },
