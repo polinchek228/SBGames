@@ -1,0 +1,32 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Build & deploy website
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install & build
+        run: cd website && npm install && npm run build
+
+      - name: Upload to server
+        run: |
+          sudo apt-get install -y sshpass >/dev/null 2>&1
+          sshpass -p "${{ secrets.SERVER_PASS }}" \
+            scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -r website/dist/. \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/sbgames/
+          echo "✅ Website deployed"
