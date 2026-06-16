@@ -89,11 +89,23 @@ jobs:
           sed -i "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server_index.js
           sed -i "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server/index.js
 
+      - name: Verify signing key is set
+        shell: bash
+        run: |
+          echo "Key length: ${#TAURI_SIGNING_PRIVATE_KEY} chars"
+          echo "Key prefix: ${TAURI_SIGNING_PRIVATE_KEY:0:20}..."
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is EMPTY!"
+            exit 1
+          fi
+
       # ── Build с подписью ──
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: 'SBGames v__VERSION__'
