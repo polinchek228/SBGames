@@ -78,18 +78,31 @@ function FramePreview({ color, item, large }) {
 
 function BackgroundPreview({ color, item, large }) {
   const [videoFailed, setVideoFailed] = React.useState(false);
+  const ref = React.useRef(null);
+  const [inView, setInView] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.1 });
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+
   if (item?.video && !videoFailed) {
     return (
-      <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden">
-        <video
-          src={item.video}
-          autoPlay
-          loop
-          muted
-          playsInline
-          onError={() => setVideoFailed(true)}
-          className="w-full h-full object-cover opacity-80"
-        />
+      <div ref={ref} className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden">
+        {inView && (
+          <video
+            src={item.video}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="none"
+            onError={() => setVideoFailed(true)}
+            className="w-full h-full object-cover opacity-80"
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
       </div>
     );

@@ -49,15 +49,14 @@ function GlobalBackground() {
       if (e.key === "sbgames_settings" || e.key === "sbgames_user") update();
     };
     window.addEventListener("storage", onStorage);
-    const iv = setInterval(update, 1500);
-    return () => { window.removeEventListener("storage", onStorage); clearInterval(iv); };
+    return () => { window.removeEventListener("storage", onStorage); };
   }, []);
 
   if (!videoSrc || videoFailed) return null;
   return (
     <video
       key={videoSrc}
-      autoPlay loop muted playsInline
+      autoPlay loop muted playsInline preload="none"
       src={videoSrc}
       onError={() => setVideoFailed(true)}
       style={{

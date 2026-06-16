@@ -36,7 +36,7 @@ function VideoBackground({ src, opacity = 0.5 }) {
   return (
     <video
       src={src}
-      autoPlay muted loop playsInline
+      autoPlay muted loop playsInline preload="none"
       onError={() => setFailed(true)}
       className="absolute inset-0 w-full h-full object-cover"
       style={{ pointerEvents: "none", opacity, zIndex: 0 }}
@@ -92,8 +92,7 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
       try { setGlobalBgActive(!!JSON.parse(localStorage.getItem("sbgames_settings"))?.globalBg); } catch {}
     };
     window.addEventListener("storage", check);
-    const iv = setInterval(check, 1000);
-    return () => { window.removeEventListener("storage", check); clearInterval(iv); };
+    return () => { window.removeEventListener("storage", check); };
   }, []);
 
   const showLocalVideo = bgItem?.video && !globalBgActive;
