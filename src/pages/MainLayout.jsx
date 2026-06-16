@@ -173,7 +173,7 @@ export default function MainLayout({ user, onLogout }) {
     switch (id) {
       case "play":        return <PlayPage user={user} onOpenCommunity={() => setCommunityOpen(v => !v)} />;
       case "profile":     return <ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} />;
-      case "community":   return <CommunityPage user={user} onBadgeChange={setFriendBadge} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} />;
+      case "community":   return <CommunityPage user={user} onBadgeChange={setFriendBadge} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} suppressNotifications={communityOpen && page !== "community"} />;
       case "news":        return <NewsPage />;
       case "shop":        return <ShopPage user={user} onBalanceChange={setBalance} />;
       case "support":     return <SupportPage user={user} />;
@@ -295,7 +295,7 @@ export default function MainLayout({ user, onLogout }) {
 
         {/* ── Community mini sidebar ── */}
         <AnimatePresence>
-          {communityOpen && (
+          {communityOpen && page !== "community" && (
             <motion.div
               key="community-sidebar"
               initial={{ x: 420, opacity: 0 }}

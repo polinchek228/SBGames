@@ -2654,14 +2654,6 @@ pub fn run() {
         if scan_loaded_modules() { std::process::exit(1); }
         start_guard_thread();
     }
-    #[cfg(not(debug_assertions))]
-    {
-        if !verify_integrity() { std::process::exit(1); }
-        if check_debugger()    { std::process::exit(1); }
-        setup_dll_protection();
-        if scan_loaded_modules() { std::process::exit(1); }
-        start_guard_thread();
-    }
 
     tauri::Builder::default()
         .manage(DiscordState(Mutex::new(None)))

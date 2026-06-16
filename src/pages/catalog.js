@@ -6,7 +6,7 @@ export const RARITIES = {
 };
 
 // Server URL for streaming assets (not bundled locally)
-const CDN = "https://api.sbgames.hyperionsearch.xyz:8443";
+const CDN = "https://api.hyperionsearch.xyz";
 
 export const LIBRARY_CATALOG = [
   // ── Бесплатные ──

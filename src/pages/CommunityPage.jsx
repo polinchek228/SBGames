@@ -11,7 +11,7 @@ import { sendWS, onWSMessage, isWSConnected } from "../lib/ws.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
 
 function highlight(text, query) {
-  if (!query) return text;
+  if (!query || !text) return text;
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
   if (idx === -1) return text;
   return (
@@ -26,7 +26,7 @@ function highlight(text, query) {
 const STATUS_DOT = { online: "#4ade80", offline: "rgba(255,255,255,0.12)" };
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini }) {
+export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini, suppressNotifications }) {
   const [tab,         setTab]         = useState("friends");
   const [friends,     setFriends]     = useState([]);
   const [requests,    setRequests]    = useState([]);
@@ -60,7 +60,8 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     return () => clearTimeout(t);
   }, [addNick, tab]);
 
-  const { push: pushNotif } = useNotifications() || {};
+  const { push: pushNotifRaw } = useNotifications() || {};
+  const pushNotif = suppressNotifications ? null : pushNotifRaw;
 
   const handleEvent = useCallback((msg) => {
     switch (msg.type) {
@@ -78,11 +79,9 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
           onBadgeChange?.(next.length);
           return next;
         });
-        pushNotif?.("Заявка в друзья", `${msg.request.fromUsername} хочет добавить вас`, "friend");
         break;
       case "friend_accepted":
         setFriends(prev => prev.some(f => f.id === msg.byId) ? prev : [...prev, { id: msg.byId, username: msg.byUsername }]);
-        pushNotif?.("Заявка принята", `${msg.byUsername} теперь твой друг`, "friend");
         break;
       case "friend_request_sent":
         setAddStatus({ ok: true, msg: `Заявка отправлена → ${msg.toUsername}` });
@@ -97,7 +96,8 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         setOnlineIds(new Set((msg.users || []).map(u => u.id)));
         break;
       case "dm_message": {
-        const partnerId = msg.with || msg.message?.from;
+        if (!msg.message) break;
+        const partnerId = msg.with || msg.message.from;
         if (chatWith && (msg.with === chatWith.id || msg.message.from === chatWith.id)) {
           setMessages(prev => [...prev, msg.message]);
         } else if (partnerId) {
@@ -125,6 +125,17 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
       case "group_invite":
         setGroupInvites(prev => [...prev, msg.invite]);
         pushNotif?.("Приглашение в группу", `${msg.invite.fromUsername} зовёт в «${msg.invite.groupName}»`, "group");
+        break;
+      case "group_kicked":
+        setGroups(prev => prev.filter(g => g.id !== msg.groupId));
+        if (activeGroup?.id === msg.groupId) { setActiveGroup(null); setGroupMessages([]); }
+        pushNotif?.("Кик из группы", `Тебя исключили из «${msg.groupName}»`, "group");
+        break;
+      case "groups_list":
+        setGroups(msg.groups || []);
+        break;
+      case "group_invites_list":
+        setGroupInvites(msg.invites || []);
         break;
       case "dm_history":
         setMessages(msg.messages || []);
@@ -245,7 +256,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               { id: "requests",  label: "Заявки",     icon: ChatCircle, badge: totalBadge },
               { id: "groups",    label: "Группы",      icon: Users, badge: groupInvites.length },
             ].map(({ id, label, icon: Icon, badge }) => (
-              <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); }}
+              <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
                 className="relative flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-150"
                 style={tab === id
                   ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
@@ -324,7 +335,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               { id: "requests",  label: "Заявки",     icon: ChatCircle, badge: totalBadge },
               { id: "groups",    label: "Группы",      icon: Users, badge: groupInvites.length },
             ].map(({ id, label, icon: Icon, badge }) => (
-              <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); }}
+              <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
                 className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
                 style={tab === id
                   ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
@@ -589,11 +600,14 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
             <motion.div key={`grp-${activeGroup.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 flex flex-col overflow-hidden">
               <GroupChat
-                group={activeGroup} user={user} messages={groupMessages} send={sendWS}
+                group={activeGroup} user={user} messages={groupMessages}
                 onLeave={async () => {
                   try { await authFetch(`/api/groups/${activeGroup.id}/leave`, { method: "POST" }); } catch {}
                   setGroups(prev => prev.filter(x => x.id !== activeGroup.id));
                   setActiveGroup(null); setGroupMessages([]);
+                }}
+                onKick={async (userId) => {
+                  sendWS({ type: "group_kick", groupId: activeGroup.id, userId });
                 }}
               />
             </motion.div>
@@ -880,7 +894,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                     {g.members.slice(0, 3).map(m => (
                       <div key={m} className="w-6 h-6 rounded-lg flex items-center justify-center text-[8px] font-bold"
                         style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)" }}>
-                        {m.slice(-2)}
+                        {(g.memberNames?.[m] || m).slice(0, 2).toUpperCase()}
                       </div>
                     ))}
                     {g.members.length > 3 && (
@@ -898,7 +912,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 }
 
 // ─── GroupChat ───────────────────────────────────────────────────────────────
-function GroupChat({ group, user, messages, send, onLeave, onKick }) {
+function GroupChat({ group, user, messages, onLeave, onKick }) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [inviteNick, setInviteNick] = useState("");
@@ -960,21 +974,23 @@ function GroupChat({ group, user, messages, send, onLeave, onKick }) {
               <p className="text-[10px] uppercase tracking-widest mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
                 Участники · {group.members.length}
               </p>
-              {group.members.map(mid => (
+              {group.members.map(mid => {
+                const memberName = group.memberNames?.[mid] || mid;
+                return (
                 <div key={mid} className="flex items-center gap-2.5 py-2">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold"
                     style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
-                    {mid.slice(-2)}
+                    {memberName.slice(0, 2).toUpperCase()}
                   </div>
                   <span className="text-[11px] flex-1" style={{ color: "rgba(255,255,255,0.65)" }}>
-                    {mid === user?.id ? "Ты" : mid}
+                    {mid === user?.id ? "Ты" : memberName}
                     {mid === group.ownerId && (
                       <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded"
                         style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>OWNER</span>
                     )}
                   </span>
                   {isOwner && mid !== user?.id && (
-                    <button onClick={() => onKick?.(group.id, mid)}
+                    <button onClick={() => onKick?.(mid)}
                       className="text-[10px] px-2.5 py-1 rounded-lg transition-all"
                       style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.6)" }}
                       onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
@@ -983,7 +999,8 @@ function GroupChat({ group, user, messages, send, onLeave, onKick }) {
                     </button>
                   )}
                 </div>
-              ))}
+                );
+              })}
               <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                 <input value={inviteNick} onChange={e => setInviteNick(e.target.value)}
                   placeholder="Ник игрока…" maxLength={16}

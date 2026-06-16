@@ -176,7 +176,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
           try {
             const token = localStorage.getItem("sbgames_token");
             if (token) {
-              fetch("https://api.sbgames.hyperionsearch.xyz:8443/api/activity", {
+              fetch("https://api.hyperionsearch.xyz/api/activity", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ serverId: s.serverId, startedAt: s.startedAt, endedAt: Date.now(), durationSec: durSec }),

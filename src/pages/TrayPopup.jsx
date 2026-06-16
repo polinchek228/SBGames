@@ -147,7 +147,7 @@ export default function TrayPopup() {
             <div className="grid grid-cols-2 gap-2">
               {[
                 { id: "profile",     label: "Профиль",   icon: User,        },
-                { id: "leaderboard", label: "Топ",       icon: Trophy,      },
+                { id: "community",   label: "Чат",       icon: MessageCircle, },
                 { id: "shop",        label: "Магазин",   icon: ShoppingBag, },
                 { id: "news",        label: "Новости",   icon: Newspaper,   },
                 { id: "support",     label: "Помощь",    icon: Headset,     },

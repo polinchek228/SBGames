@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
-import { X, Bell, CheckCircle, Users, Coins, MessageCircle, Info, Trash2 } from "lucide-react";
+import { X, Bell, CheckCircle, Users, Coins, MessageCircle, Info, Trash2, MessageSquareText, ShoppingCart } from "lucide-react";
 import { notifyDesktop } from "../lib/tauri.js";
 
 // ─── Sound effects via Web Audio API ──────────────────────────────────────────
@@ -32,6 +32,10 @@ const SOUNDS = {
   ticket:  () => { playTone(523, 0.15, "triangle", 0.10); setTimeout(() => playTone(659, 0.18, "triangle", 0.10), 120); },
   system:  () => { playTone(698, 0.12, "sine", 0.08); },
   success: () => { playTone(523, 0.1, "sine", 0.10); setTimeout(() => playTone(784, 0.15, "sine", 0.10), 80); },
+  dm:      () => { playTone(784, 0.08, "sine", 0.10); setTimeout(() => playTone(988, 0.12, "sine", 0.10), 80); },
+  comment: () => { playTone(587, 0.1, "triangle", 0.10); setTimeout(() => playTone(740, 0.12, "triangle", 0.10), 90); },
+  market:  () => { playTone(523, 0.08, "sine", 0.10); setTimeout(() => playTone(660, 0.08, "sine", 0.10), 60); setTimeout(() => playTone(880, 0.1, "sine", 0.10), 120); },
+  group:   () => { playTone(440, 0.12, "triangle", 0.10); setTimeout(() => playTone(554, 0.15, "triangle", 0.10), 110); },
 };
 
 function playNotifSound(type) {
@@ -52,11 +56,15 @@ export function pushNotification(title, body, type = "system") {
 }
 
 const ICONS = {
-  friend:  { icon: Users,         color: "#60a5fa", accent: "#3b82f6" },
-  balance: { icon: Coins,         color: "#34d399", accent: "#10b981" },
-  ticket:  { icon: MessageCircle, color: "#f59e0b", accent: "#f59e0b" },
-  system:  { icon: Info,          color: "#a78bfa", accent: "#8b5cf6" },
-  success: { icon: CheckCircle,   color: "#34d399", accent: "#10b981" },
+  friend:  { icon: Users,          color: "#60a5fa", accent: "#3b82f6" },
+  balance: { icon: Coins,          color: "#34d399", accent: "#10b981" },
+  ticket:  { icon: MessageCircle,  color: "#f59e0b", accent: "#f59e0b" },
+  system:  { icon: Info,           color: "#a78bfa", accent: "#8b5cf6" },
+  success: { icon: CheckCircle,    color: "#34d399", accent: "#10b981" },
+  dm:      { icon: MessageSquareText, color: "#38bdf8", accent: "#0ea5e9" },
+  comment: { icon: MessageCircle,  color: "#fb923c", accent: "#f97316" },
+  market:  { icon: ShoppingCart,   color: "#4ade80", accent: "#22c55e" },
+  group:   { icon: Users,           color: "#c084fc", accent: "#a855f7" },
 };
 
 // ─── Provider ─────────────────────────────────────────────────────────────────

@@ -117,13 +117,14 @@ app.use(helmet({
 
 // G��G��G�� CORS G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 const ALLOWED_ORIGINS = new Set([
-  "https://api.sbgames.hyperionsearch.xyz:8443",
+  "https://api.hyperionsearch.xyz",
   "https://sbgames.hyperionsearch.xyz:8444",
   "https://sbgames.hyperionsearch.xyz",
   "http://sbgames.hyperionsearch.xyz",
   "http://localhost:1420",
   "http://localhost:5173",
   "tauri://localhost",
+  "http://tauri.localhost",
   "https://tauri.localhost",
 ]);
 app.use(cors({
@@ -213,7 +214,7 @@ app.use("/support/ticket",   apiLimiter);
 
 // ─── Auto-updater endpoint ────────────────────────────────────────────────────
 const LATEST_VERSION = "1.0.0";
-const UPDATE_BASE    = "https://api.sbgames.hyperionsearch.xyz:8443/update";
+const UPDATE_BASE    = "https://api.hyperionsearch.xyz/update";
 const UPDATE_NOTES   = "Обновление лаунчера";
 
 app.get("/update/:target/:arch/:currentVersion", (req, res) => {
@@ -700,8 +701,23 @@ app.post("/api/user/:id/comments", requireAuth, (req, res) => {
   const c = { id: uuidv4(), fromId: req.userId, fromUsername, text, time: now };
   list.push(c);
   profileComments.set(id, list.slice(-200));
+  saveComment(id, c);
   sendToUser(id, { type: "profile_comment", userId: id, comment: c });
   res.json({ ok: true, comment: c });
+});
+
+app.delete("/api/user/:id/comments/:cid", requireAuth, (req, res) => {
+  const targetId = sanitize(req.params.id, 64);
+  const cid = sanitize(req.params.cid, 64);
+  const list = profileComments.get(targetId) || [];
+  const idx = list.findIndex(c => c.id === cid);
+  if (idx === -1) return res.status(404).json({ message: "Comment not found" });
+  const c = list[idx];
+  if (c.fromId !== req.userId) return res.status(403).json({ message: "Not your comment" });
+  list.splice(idx, 1);
+  profileComments.set(targetId, list);
+  try { redis.del(`sbgames:comments:${targetId}`); for (const item of list) redis.rpush(`sbgames:comments:${targetId}`, JSON.stringify(item)); } catch {}
+  res.json({ ok: true });
 });
 
 // G��G��G�� Bio G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -892,7 +908,106 @@ const groups = new Map(), groupMessages = new Map(), groupInvites = new Map();
 let groupCounter = 0;
 const GROUP_MAX = 8;
 
-function publicGroup(g) { return { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.members], createdAt: g.createdAt }; }
+// ─── Redis persistence for groups ──────────────────────────────────────────
+async function saveGroup(g) {
+  try {
+    const data = { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.members], createdAt: g.createdAt };
+    await redis.set(`sbgames:group:${g.id}`, JSON.stringify(data));
+    await redis.sadd("sbgames:group_ids", g.id);
+  } catch {}
+}
+async function deleteGroupFromRedis(gid) {
+  try { await redis.del(`sbgames:group:${gid}`); await redis.srem("sbgames:group_ids", gid); } catch {}
+}
+async function loadGroupsFromRedis() {
+  try {
+    const ids = await redis.smembers("sbgames:group_ids");
+    for (const id of ids) {
+      const raw = await redis.get(`sbgames:group:${id}`);
+      if (!raw) continue;
+      const d = JSON.parse(raw);
+      const g = { id: d.id, name: d.name, ownerId: d.ownerId, members: new Set(d.members), createdAt: d.createdAt };
+      groups.set(id, g); groupMessages.set(id, []);
+      const numId = parseInt(id, 10);
+      if (!isNaN(numId) && numId >= groupCounter) groupCounter = numId + 1;
+    }
+    console.log(`[groups] loaded ${groups.size} groups from Redis`);
+  } catch (e) { console.warn("[groups] failed to load from Redis:", e.message); }
+}
+
+// ─── Redis persistence for comments ────────────────────────────────────────
+async function saveComment(targetId, c) {
+  try {
+    const key = `sbgames:comments:${targetId}`;
+    await redis.rpush(key, JSON.stringify(c));
+    await redis.ltrim(key, -200, -1);
+  } catch {}
+}
+async function loadCommentsFromRedis() {
+  try {
+    // Migrate old RedisMap format (single hash key sbgames:comments) to new per-user keys
+    const type = await redis.type("sbgames:comments");
+    if (type === "hash") {
+      const all = await redis.hgetall("sbgames:comments");
+      for (const [userId, jsonVal] of Object.entries(all)) {
+        try {
+          const arr = JSON.parse(jsonVal);
+          if (Array.isArray(arr) && arr.length) {
+            profileComments.set(userId, arr);
+            await redis.del("sbgames:comments");
+            for (const c of arr) await redis.rpush(`sbgames:comments:${userId}`, JSON.stringify(c));
+          }
+        } catch {}
+      }
+      console.log(`[comments] migrated from old hash format`);
+    }
+    // Load from new per-user keys
+    const stream = redis.scanStream({ match: "sbgames:comments:*", count: 100 });
+    const keys = [];
+    for await (const k of stream) keys.push(...k);
+    for (const key of keys) {
+      const targetId = key.replace("sbgames:comments:", "");
+      if (!targetId) continue;
+      const t = await redis.type(key);
+      if (t !== "list") continue;
+      const list = await redis.lrange(key, 0, -1);
+      if (list.length) profileComments.set(targetId, list.map(JSON.parse));
+    }
+    console.log(`[comments] loaded from Redis`);
+  } catch (e) { console.warn("[comments] failed to load from Redis:", e.message); }
+}
+
+// ─── Redis persistence for DMs ─────────────────────────────────────────────
+async function saveDM(key, msgs) {
+  try { await redis.set(`sbgames:dm:${key}`, JSON.stringify(msgs.slice(-200))); } catch {}
+}
+async function loadDMsFromRedis() {
+  try {
+    const stream = redis.scanStream({ match: "sbgames:dm:*", count: 100 });
+    const keys = [];
+    for await (const k of stream) keys.push(...k);
+    for (const key of keys) {
+      const raw = await redis.get(key);
+      if (raw) dms.set(key.replace("sbgames:dm:", ""), JSON.parse(raw));
+    }
+    console.log(`[dms] loaded from Redis`);
+  } catch (e) { console.warn("[dms] failed to load from Redis:", e.message); }
+}
+
+// Load on startup
+loadGroupsFromRedis();
+loadCommentsFromRedis();
+loadDMsFromRedis();
+
+function publicGroup(g) {
+  const members = [...g.members];
+  const memberNames = {};
+  for (const mid of members) {
+    const acc = redisAccounts._map.get(mid);
+    if (acc) memberNames[mid] = acc.username || mid;
+  }
+  return { id: g.id, name: g.name, ownerId: g.ownerId, members, memberNames, createdAt: g.createdAt };
+}
 
 app.get("/api/groups", requireAuth, (req, res) => {
   res.json({ groups: [...groups.values()].filter(g => g.members.has(req.userId)).map(publicGroup) });
@@ -904,7 +1019,10 @@ app.post("/api/groups", requireAuth, (req, res) => {
   const id = String(++groupCounter);
   const g = { id, name, ownerId: req.userId, members: new Set([req.userId]), createdAt: Date.now() };
   groups.set(id, g); groupMessages.set(id, []);
-  res.json({ ok: true, group: publicGroup(g) });
+  saveGroup(g);
+  const pub = publicGroup(g);
+  sendToUser(req.userId, { type: "group_update", group: pub });
+  res.json({ ok: true, group: pub });
 });
 
 app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
@@ -932,7 +1050,7 @@ app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
   if (!g) return res.status(404).json({ message: "-�-�-�-+-+-� -+-� -+-�-�-�-�-+-�" });
   const accept = !!req.body.accept;
   groupInvites.set(gid, (groupInvites.get(gid) || []).filter(i => i.toId !== req.userId));
-  if (accept) { if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "-�-+-+-+-�-�" }); g.members.add(req.userId); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
+  if (accept) { if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "-�-+-+-+-�-�" }); g.members.add(req.userId); saveGroup(g); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
   res.json({ ok: true, group: publicGroup(g) });
 });
 
@@ -941,8 +1059,8 @@ app.post("/api/groups/:id/leave", requireAuth, (req, res) => {
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "-�-�-�-+-+-� -+-� -+-�-�-�-�-+-�" });
   g.members.delete(req.userId);
-  if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); }
-  else { if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value; for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
+  if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid); }
+  else { if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value; saveGroup(g); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
   res.json({ ok: true });
 });
 
@@ -1087,6 +1205,7 @@ wss.on("connection", (ws, req) => {
           const key = dmKey(client.userId, msg.toId); const msgs = dms.get(key) || [];
           const dm = { id: uuidv4(), from: client.userId, fromUsername: client.username, text: text.trim(), time: Date.now() };
           msgs.push(dm); dms.set(key, msgs.slice(-200));
+          saveDM(key, msgs);
           send(ws, { type: "dm_message", with: msg.toId, message: dm });
           sendToUser(msg.toId, { type: "dm_message", with: client.userId, message: dm });
           break;
@@ -1192,6 +1311,45 @@ wss.on("connection", (ws, req) => {
           client.ticketId = Number(msg.ticketId); wsClients.set(clientId, client);
           const ticket = tickets.get(Number(msg.ticketId));
           if (ticket) send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
+          break;
+        }
+        case "group_send": {
+          const gid = sanitize(msg.groupId || "", 32);
+          const g = groups.get(gid);
+          if (!g || !g.members.has(client.userId)) return;
+          const gtext = sanitize(msg.text || "", 1000);
+          if (!gtext) return;
+          const m = { id: uuidv4(), fromId: client.userId, fromUsername: client.username || "Player", text: gtext, time: Date.now() };
+          const list = groupMessages.get(gid) || [];
+          list.push(m);
+          groupMessages.set(gid, list.slice(-200));
+          for (const memberId of g.members) {
+            sendToUser(memberId, { type: "group_message", groupId: gid, message: m });
+          }
+          break;
+        }
+        case "group_kick": {
+          const gid = sanitize(msg.groupId || "", 32);
+          const targetUserId = sanitize(msg.userId || "", 64);
+          const g = groups.get(gid);
+          if (!g || g.ownerId !== client.userId || !g.members.has(targetUserId) || targetUserId === client.userId) break;
+          g.members.delete(targetUserId);
+          sendToUser(targetUserId, { type: "group_kicked", groupId: gid, groupName: g.name });
+          if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid); }
+          else { saveGroup(g); for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: publicGroup(g) }); }
+          break;
+        }
+        case "community_sync": {
+          send(ws, { type: "friends_list", friends: [...getFriends(client.userId)].map(fid => {
+            const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
+            return fa ? { id: fa.id, username: fa.username } : null;
+          }).filter(Boolean) });
+          send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+          send(ws, { type: "online_users", users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username, role: c.role })) });
+          send(ws, { type: "groups_list", groups: [...groups.values()].filter(g => g.members.has(client.userId)).map(publicGroup) });
+          const myInvites = [];
+          for (const [gid, list] of groupInvites.entries()) for (const inv of list) if (inv.toId === client.userId) myInvites.push({ ...inv, groupId: gid });
+          send(ws, { type: "group_invites_list", invites: myInvites });
           break;
         }
       }
