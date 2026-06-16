@@ -12,10 +12,10 @@ const Coin = ({ size = 14 }) => (
 );
 
 const METHODS = [
-  { id: "card_ru", icon: CreditCard,  label: "Карта МИР",        sub: "Российские карты", color: "#4ade80" },
-  { id: "card_ua", icon: CreditCard,  label: "Visa / Mastercard", sub: "Международные",    color: "#60a5fa" },
-  { id: "sbp",     icon: Lightning,   label: "СБП",               sub: "Быстрые платежи",  color: "#fb923c" },
-  { id: "crypto",  icon: CurrencyEth, label: "Крипто",            sub: "USDT · BTC · ETH", color: "#a78bfa" },
+  { id: "card_ru", icon: CreditCard,  label: "Карта МИР",        sub: "Российские карты" },
+  { id: "card_ua", icon: CreditCard,  label: "Visa / Mastercard", sub: "Международные"   },
+  { id: "sbp",     icon: Lightning,   label: "СБП",               sub: "Быстрые платежи" },
+  { id: "crypto",  icon: CurrencyEth, label: "Крипто",            sub: "USDT · BTC · ETH"},
 ];
 
 export default function TopupPage({ user }) {
@@ -129,19 +129,19 @@ export default function TopupPage({ user }) {
         <p className="text-[11px] font-bold tracking-widest uppercase mb-3"
           style={{ color: "rgba(255,255,255,0.3)" }}>Способ оплаты</p>
         <div className="grid grid-cols-2 gap-2">
-          {METHODS.map(({ id, icon: Icon, label, sub, color }) => {
+          {METHODS.map(({ id, icon: Icon, label, sub }) => {
             const sel = method === id;
             return (
               <button key={id} onClick={() => setMethod(id)}
                 className="rounded-2xl p-4 flex items-center gap-3 text-left transition-all duration-150"
                 style={sel
-                  ? { background: `${color}10`, boxShadow: `inset 0 0 0 1px ${color}45` }
+                  ? { background: "rgba(37,99,235,0.1)", boxShadow: "inset 0 0 0 1px rgba(59,130,246,0.4)" }
                   : { background: "rgba(255,255,255,0.04)" }
                 }
               >
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: sel ? `${color}18` : "rgba(255,255,255,0.06)" }}>
-                  <Icon size={17} style={{ color: sel ? color : "rgba(255,255,255,0.35)" }} />
+                  style={{ background: sel ? "rgba(37,99,235,0.18)" : "rgba(255,255,255,0.06)" }}>
+                  <Icon size={17} style={{ color: sel ? "#60a5fa" : "rgba(255,255,255,0.35)" }} />
                 </div>
                 <div>
                   <p className="text-[13px] font-bold leading-tight"

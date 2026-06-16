@@ -63,25 +63,21 @@ export default function CabinetPage({ user }) {
       {/* Profile hero */}
       <motion.div
         initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-        className="rounded-3xl overflow-hidden mb-4"
+        className="rounded-2xl mb-4 p-5 flex items-center justify-between flex-wrap gap-4"
         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}
       >
-        {/* Gradient accent bar */}
-        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #2563eb, #7c3aed, #ec4899)" }} />
-
-        <div className="p-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             {/* Avatar placeholder – first letter of username */}
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-[22px] font-black flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #2563eb55, #7c3aed55)", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}>
+              style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)", color: "#60a5fa" }}>
               {username !== "—" ? username[0].toUpperCase() : "?"}
             </div>
             <div>
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[22px] font-black text-white leading-none">{username}</span>
                 {isAdmin && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded"
+                    style={{ background: "#ef4444", color: "#fff" }}>
                     ADMIN
                   </span>
                 )}
@@ -110,12 +106,11 @@ export default function CabinetPage({ user }) {
             </div>
             <Link to="/topup"
               className="flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold text-[13px] text-white transition-opacity hover:opacity-90"
-              style={{ background: "linear-gradient(90deg, #2563eb, #6d28d9)" }}>
+              style={{ background: "rgba(37,99,235,0.9)" }}>
               <Coins size={15} weight="fill" />
               Пополнить
             </Link>
           </div>
-        </div>
       </motion.div>
 
       {/* Main grid */}
@@ -178,15 +173,15 @@ export default function CabinetPage({ user }) {
               style={{ color: "rgba(255,255,255,0.3)" }}>Аккаунт</p>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { icon: GameController, label: "Игровой ник",  value: username,   color: "#60a5fa" },
-                { icon: TelegramLogo,   label: "Telegram",     value: telegram ?? "не привязан", color: "#38bdf8" },
-                { icon: IdentificationCard, label: "ID",       value: user?.id ? `#${user.id}` : "—", color: "#a78bfa" },
-                { icon: Shield,         label: "Роль",         value: isAdmin ? "Администратор" : "Игрок", color: isAdmin ? "#f59e0b" : "#4ade80" },
-              ].map(({ icon: Icon, label, value, color }) => (
+                { icon: GameController,    label: "Игровой ник", value: username },
+                { icon: TelegramLogo,      label: "Telegram",    value: telegram ?? "не привязан" },
+                { icon: IdentificationCard,label: "ID",          value: user?.id ? `#${user.id}` : "—" },
+                { icon: Shield,            label: "Роль",        value: isAdmin ? "Администратор" : "Игрок" },
+              ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="rounded-xl p-4"
                   style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <div className="flex items-center gap-2 mb-2">
-                    <Icon size={13} style={{ color }} />
+                    <Icon size={13} style={{ color: "rgba(255,255,255,0.3)" }} />
                     <span className="text-[10px] font-bold tracking-wide uppercase"
                       style={{ color: "rgba(255,255,255,0.3)" }}>{label}</span>
                   </div>
@@ -209,7 +204,7 @@ export default function CabinetPage({ user }) {
                   Загрузи квадратный PNG 64×64 или 128×128 — появится в игре.
                 </p>
                 <label className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold text-[13px] text-white cursor-pointer hover:opacity-90 transition-opacity"
-                  style={{ background: "linear-gradient(90deg, #2563eb, #6d28d9)" }}>
+                  style={{ background: "rgba(37,99,235,0.9)" }}>
                   <UploadSimple size={14} weight="bold" />
                   Загрузить скин
                   <input type="file" accept="image/png" style={{ display: "none" }}
@@ -226,7 +221,7 @@ export default function CabinetPage({ user }) {
                 </div>
                 <Link to="/topup"
                   className="flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold text-[13px] text-white flex-shrink-0 hover:opacity-90 transition-opacity"
-                  style={{ background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>
+                  style={{ background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#93c5fd" }}>
                   Пополнить <ArrowRight size={13} />
                 </Link>
               </div>
