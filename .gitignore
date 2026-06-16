@@ -13,4 +13,4 @@ mimo.exe
 
 # Background videos — served from server, not bundled
 public/fon*.mp4
-dist-tray/fon*.mp4
+dist-tray/
