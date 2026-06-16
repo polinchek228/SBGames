@@ -112,8 +112,8 @@ export default function LoginPage({ onLogin }) {
       setCode(data.code);
       setLoading(false);
       startPolling(data.code);
-    } catch {
-      setError("Ошибка подключения");
+    } catch (e) {
+      setError("Ошибка подключения: " + (e?.message || String(e)));
       setLoading(false);
     }
   };
@@ -130,8 +130,8 @@ export default function LoginPage({ onLogin }) {
       setLoading(false);
       await openURL(`https://t.me/sbgamescbot?start=auth_${data.code}`);
       startPolling(data.code);
-    } catch {
-      setError("Ошибка подключения");
+    } catch (e) {
+      setError("Ошибка подключения: " + (e?.message || String(e)));
       setLoading(false);
     }
   };
