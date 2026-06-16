@@ -118,7 +118,7 @@ function ItemCard({ item, equipped, onEquip, onUnequip, busy }) {
 
       {/* Info */}
       <div className="px-3 py-2.5">
-        <p className="text-[12px] font-bold text-white truncate">{item.name}</p>
+        {item.name && <p className="text-[12px] font-bold text-white truncate">{item.name}</p>}
         <div className="flex items-center gap-1.5 mt-1">
           <span className="text-[9px] px-1.5 py-0.5 rounded-md"
             style={{ background: `${rarity.color}12`, color: `${rarity.color}cc` }}>
@@ -161,7 +161,7 @@ function ItemDetail({ item, equipped, onEquip, onUnequip, busy, onClose }) {
           <Package size={28} style={{ color: rarity.color, opacity: 0.8 }} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[16px] font-black text-white leading-tight">{item.name}</p>
+          {item.name && <p className="text-[16px] font-black text-white leading-tight">{item.name}</p>}
           <div className="flex items-center gap-2 mt-1">
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{ background: `${rarity.color}20`, color: rarity.color, border: `1px solid ${rarity.color}30` }}>

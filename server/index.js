@@ -74,12 +74,15 @@ app.use(cors({
     // Разрешаем: Tauri (null origin), наш домен
     const allowed = [
       null, undefined,
-      "https://api.sbgames.hyperionsearch.xyz:8443",
+      "https://api.hyperionsearch.xyz",
       "https://sbgames.hyperionsearch.xyz:8444",
       "https://sbgames.hyperionsearch.xyz",
       "http://sbgames.hyperionsearch.xyz",
       "http://localhost:1420",
       "http://localhost:5173",
+      "tauri://localhost",
+      "http://tauri.localhost",
+      "https://tauri.localhost",
     ];
     if (!origin || allowed.includes(origin)) return cb(null, true);
     cb(new Error("CORS: not allowed"));
@@ -98,7 +101,7 @@ app.use("/api",  apiLimiter);
 
 // ─── Auto-updater endpoint ────────────────────────────────────────────────────
 const LATEST_VERSION = "1.0.0";
-const UPDATE_BASE    = "https://api.sbgames.hyperionsearch.xyz:8443/update";
+const UPDATE_BASE    = "https://api.hyperionsearch.xyz/update";
 const UPDATE_NOTES   = "Обновление лаунчера";
 
 app.get("/update/:target/:arch/:currentVersion", (req, res) => {
@@ -1275,7 +1278,7 @@ async function createCryptoInvoice(amount, userId) {
         amount: String(amount),
         description: `Пополнение СБТ · ${amount} руб · ID:${userId}`,
         paid_btn_name: "callback",
-        paid_btn_url: `https://api.sbgames.hyperionsearch.xyz:8443/cryptobot/paid?userId=${userId}&amount=${amount}`,
+        paid_btn_url: `https://api.hyperionsearch.xyz/cryptobot/paid?userId=${userId}&amount=${amount}`,
         allow_comments: false,
         allow_anonymous: false,
       }),
@@ -1318,7 +1321,7 @@ app.post("/tg-webhook", (req, res) => {
 
 // Регистрируем webhook при старте (после listen, с задержкой)
 async function setupBotWebhook() {
-  const url = `https://api.sbgames.hyperionsearch.xyz:8443/tg-webhook`;
+  const url = `https://api.hyperionsearch.xyz/tg-webhook`;
   try {
     // Сначала снимаем старый webhook (если был)
     await bot.deleteWebHook({ drop_pending_updates: true });

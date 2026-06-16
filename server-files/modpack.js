@@ -64,7 +64,7 @@ function buildManifest() {
     }
 
     // URL zip
-    const base = process.env.MODPACK_BASE_URL || "https://api.sbgames.hyperionsearch.xyz:8443";
+    const base = process.env.MODPACK_BASE_URL || "https://api.hyperionsearch.xyz:8443";
     const zip_url = `${base}/api/mods/zip/${encodeURIComponent(latest)}`;
 
     const manifest = {

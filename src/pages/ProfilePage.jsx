@@ -1209,7 +1209,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                       className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
                       style={{ background: `${item.color}10` }}>
                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: item.color }} />
-                      <span className="text-[10px] font-semibold truncate" style={{ color: "rgba(255,255,255,0.7)" }}>{item.name}</span>
+                       {item.name && <span className="text-[10px] font-semibold truncate" style={{ color: "rgba(255,255,255,0.7)" }}>{item.name}</span>}
                     </div>
                   ))}
                 </div>

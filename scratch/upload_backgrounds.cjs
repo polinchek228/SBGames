@@ -1,101 +1,70 @@
 #!/usr/bin/env node
-/**
- * Upload background videos to the SB Games server.
- * Usage: node scratch/upload_backgrounds.js
- *
- * Connects via SSH2, creates /opt/sbgames-auth/backgrounds/,
- * uploads fon1-7.mp4, and restarts the PM2 process.
- */
 const { Client } = require("ssh2");
 const fs = require("fs");
 const path = require("path");
 
-const SERVER   = "94.26.83.31";
-const PORT     = 22;
-const USER     = "root";
-const PASSWORD = "WJ1gaad33hNXRVJL9qti";
-const REMOTE_DIR = "/opt/sbgames-auth/backgrounds";
-
-// Files to upload from public/
-const FILES = [
-  "fon1.mp4", "fon2.mp4", "fon3.mp4",
-  "fon4.mp4", "fon5.mp4", "fon6.mp4", "fon7.mp4",
+const downloads = path.join(process.env.USERPROFILE, "Downloads");
+const files = [
+  "2c41221bc39d4b87682307a664c39cf3a17156bb.mp4",
+  "36ef79f8270e768bd365eac7d32e5f78246df91a.mp4",
+  "6345416eef48f0a2a00e7f61c6ca926c838db04f.mp4",
+  "7a607efd136dec22f3e73ff1f577788f8d1f99e3.mp4",
+  "8786bd5c1b5026b9759927f82416e60787e459c9.mp4",
+  "c588325b959d8f9abe102f95dbffee8b2b069761.mp4",
+  "e0784baa9c5e1fc47cf4577a40b14a954204cbf5.mp4",
+  "e524b0dc6aa2e64e1525df0db6e7701e3cd28160.mp4",
+  "e8e8381b784e01defa002fdfca3c05810e667396.mp4",
+  "ecaec9741996bd52333b5d0848504d840b1a5206.mp4",
+  "f8401a4804ea458142ca8e1e80494d5a48cc1279.mp4",
+  "fdc6faed91add24b6519612f9b9143bebb443e85.mp4",
 ];
-
-const LOCAL_DIR = path.join(__dirname, "..", "public");
 
 async function run() {
   const conn = new Client();
-
   await new Promise((resolve, reject) => {
     conn.on("ready", resolve).on("error", reject).connect({
-      host: SERVER, port: PORT, username: USER, password: PASSWORD,
-      readyTimeout: 30000,
+      host: "94.26.83.31", port: 22, username: "root",
+      password: "WJ1gaad33hNXRVJL9qti", readyTimeout: 30000,
     });
   });
-  console.log(`[ssh] connected to ${SERVER}`);
+  console.log("[ssh] connected");
 
-  // Helper: exec command
-  const exec = (cmd) => new Promise((resolve, reject) => {
-    conn.exec(cmd, (err, stream) => {
-      if (err) return reject(err);
-      let out = "", errOut = "";
-      stream.on("data", (d) => { out += d; });
-      stream.stderr.on("data", (d) => { errOut += d; });
-      stream.on("close", (code) => {
-        resolve({ code, out, errOut });
-      });
-    });
-  });
-
-  // Create remote directory
-  console.log("[ssh] creating backgrounds directory...");
-  await exec(`mkdir -p ${REMOTE_DIR}`);
-
-  // Upload each file via SFTP
   const sftp = await new Promise((resolve, reject) => {
     conn.sftp((err, sftp) => err ? reject(err) : resolve(sftp));
   });
 
-  for (const file of FILES) {
-    const localPath  = path.join(LOCAL_DIR, file);
-    const remotePath = `${REMOTE_DIR}/${file}`;
+  // Try uploading first file to test
+  const testLocal = path.join(downloads, files[0]);
+  const testRemote = "/opt/sbgames-auth/public/backgrounds/fon8.mp4";
+  console.log(`[test] uploading ${files[0]}...`);
+  
+  await new Promise((resolve, reject) => {
+    const read = fs.createReadStream(testLocal);
+    const write = sftp.createWriteStream(testRemote);
+    write.on("close", () => { console.log("[test] first file done"); resolve(); });
+    write.on("error", (e) => { console.error("[test] write error:", e.message); reject(e); });
+    read.on("error", (e) => { console.error("[test] read error:", e.message); reject(e); });
+    read.pipe(write);
+  });
 
-    if (!fs.existsSync(localPath)) {
-      console.log(`[skip] ${file} not found locally`);
-      continue;
-    }
-
-    const sizeMB = (fs.statSync(localPath).size / (1024 * 1024)).toFixed(1);
-    console.log(`[upload] ${file} (${sizeMB} MB)...`);
-
+  // Upload remaining
+  for (let i = 1; i < files.length; i++) {
+    const localPath = path.join(downloads, files[i]);
+    const remoteName = `fon${i + 8}.mp4`;
+    const remotePath = `/opt/sbgames-auth/public/backgrounds/${remoteName}`;
+    const size = fs.statSync(localPath).size;
+    process.stdout.write(`[${i + 1}/${files.length}] ${remoteName} (${(size / 1024 / 1024).toFixed(1)}MB)... `);
     await new Promise((resolve, reject) => {
-      const readStream  = fs.createReadStream(localPath);
-      const writeStream = sftp.createWriteStream(remotePath);
-      writeStream.on("close", () => resolve());
-      writeStream.on("error", (e) => reject(e));
-      readStream.on("error", (e) => reject(e));
-      readStream.pipe(writeStream);
+      fs.createReadStream(localPath)
+        .pipe(sftp.createWriteStream(remotePath))
+        .on("close", resolve)
+        .on("error", reject);
     });
-
-    console.log(`[upload] ${file} ✓`);
+    console.log("done");
   }
 
-  // Restart server
-  console.log("[ssh] restarting sbgames-auth via PM2...");
-  const restart = await exec("cd /opt/sbgames-auth && pm2 restart sbgames-auth 2>&1 || pm2 start server_index.js --name sbgames-auth 2>&1");
-  console.log(restart.out || restart.errOut);
-
-  // Verify backgrounds directory
-  const verify = await exec(`ls -la ${REMOTE_DIR}/`);
-  console.log("[verify] remote files:");
-  console.log(verify.out);
-
   conn.end();
-  console.log("\n✅ Backgrounds uploaded! Videos now stream from the server.");
+  console.log("\n✅ All uploaded!");
 }
 
-run().catch((e) => {
-  console.error("❌ Upload failed:", e.message);
-  process.exit(1);
-});
+run().catch(e => { console.error("❌", e.message); process.exit(1); });

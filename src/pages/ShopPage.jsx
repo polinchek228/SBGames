@@ -259,7 +259,7 @@ function DonateView({ user, onBalanceChange }) {
                   {/* ── Контент ── */}
                   <div className="px-4 pb-4 pt-2 flex flex-col gap-2.5 flex-1">
                     <div>
-                      <p className="text-[13px] font-bold text-white leading-tight">{item.name}</p>
+                      {item.name && <p className="text-[13px] font-bold text-white leading-tight">{item.name}</p>}
                       <p className="text-[10px] mt-1 leading-relaxed line-clamp-2"
                         style={{ color: "rgba(255,255,255,0.6)" }}
                       >
@@ -351,7 +351,7 @@ function DonateView({ user, onBalanceChange }) {
 
               {/* Content */}
               <div className="p-6">
-                <h2 className="text-[18px] font-black text-white mb-1">{detail.name}</h2>
+                {detail.name && <h2 className="text-[18px] font-black text-white mb-1">{detail.name}</h2>}
                 <p className="text-[12px] mb-4" style={{ color: "rgba(255,255,255,0.65)" }}>
                   {detail.server === "starwars" ? "StarWars сервер" : "Глобальный"} · {detail.category}
                 </p>
@@ -431,7 +431,7 @@ function DonateView({ user, onBalanceChange }) {
                         <ItemIcon size={20} weight="fill" style={{ color: r.color }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold text-white truncate">{item.name}</p>
+                        {item.name && <p className="text-[12px] font-semibold text-white truncate">{item.name}</p>}
                         <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.75)" }}>{r.label}</p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -652,7 +652,7 @@ function ListingCard({ listing, onBought }) {
         </span>
       </div>
       <div>
-        <p className="text-[12px] font-bold text-white">{item.name}</p>
+        {item.name && <p className="text-[12px] font-bold text-white">{item.name}</p>}
         <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.65)" }}>
           @{listing.sellerName}
         </p>
@@ -720,7 +720,7 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
                     }}>
                     <div className="w-10 h-10 rounded-lg"
                       style={{ background: item.preview, boxShadow: `0 0 12px ${item.preview}55` }} />
-                    <span className="text-[9px] text-white truncate w-full text-center">{item.name}</span>
+                    {item.name && <span className="text-[9px] text-white truncate w-full text-center">{item.name}</span>}
                   </button>
                 );
               })}

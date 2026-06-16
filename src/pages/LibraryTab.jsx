@@ -284,7 +284,7 @@ function EquipSlot({ type, meta, equippedItem, onDrop, onClear }) {
       {equippedItem ? (
         <>
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: equippedItem.color, boxShadow: `0 0 6px ${equippedItem.color}60` }} />
-          <span className="text-[10px] font-semibold truncate" style={{ color: equippedItem.color }}>{equippedItem.name}</span>
+          {equippedItem.name && <span className="text-[10px] font-semibold truncate" style={{ color: equippedItem.color }}>{equippedItem.name}</span>}
           <button
             onClick={() => onClear(type)}
             className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded"
@@ -381,10 +381,10 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
         <div className="px-5 pb-5 -mt-8 relative z-10 flex flex-col gap-3.5">
 
           {/* Name */}
-          <h3 className="text-[22px] font-black text-white leading-tight tracking-tight"
+          {item.name && <h3 className="text-[22px] font-black text-white leading-tight tracking-tight"
             style={{ textShadow: `0 0 40px ${item.color}40` }}>
             {item.name}
-          </h3>
+          </h3>}
 
           {/* Divider */}
           <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
@@ -538,7 +538,7 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
       <div className="px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-black text-white leading-tight truncate">{item.name}</p>
+            {item.name && <p className="text-[12px] font-black text-white leading-tight truncate">{item.name}</p>}
             {item.desc && (
               <p className="text-[10px] mt-1 leading-relaxed line-clamp-1"
                 style={{ color: "rgba(255,255,255,0.5)" }}>
