@@ -61,9 +61,24 @@ fn scan_loaded_modules() -> bool {
     extern "system" {
         fn GetCurrentProcess() -> *mut c_void;
         fn EnumProcessModulesEx(p: *mut c_void, mods: *mut *mut c_void, cb: u32, needed: *mut u32, flag: u32) -> i32;
-        fn GetModuleBaseNameW(p: *mut c_void, m: *mut c_void, buf: *mut u16, n: u32) -> u32;
+        fn GetModuleFileNameExW(p: *mut c_void, m: *mut c_void, buf: *mut u16, n: u32) -> u32;
     }
-    let allowed = allowed_dlls();
+
+    let known_bad: Vec<String> = [
+        "inject","hook","cheat","trainer","loader","d3d11 hook",
+        "x96dbg","x32dbg","x64dbg","scylla","process hacker",
+        "processhacker","ollydbg","ida","ida64","idag","windbg",
+        "dnSpy","de4dot","httpdebuggerpro","molecular","speedhack",
+        "frida","dbghelp",
+    ].iter().map(|s| s.to_lowercase()).collect();
+
+    let trusted_dirs: Vec<String> = [
+        std::env::var("WINDIR").unwrap_or_default().to_lowercase(),
+        std::env::var("SYSTEMROOT").unwrap_or_default().to_lowercase(),
+        std::env::var("PROGRAMFILES").unwrap_or_default().to_lowercase(),
+        std::env::var("PROGRAMFILES(X86)").unwrap_or_default().to_lowercase(),
+    ].into_iter().filter(|s| !s.is_empty()).collect();
+
     unsafe {
         let proc = GetCurrentProcess();
         let mut mods = vec![std::ptr::null_mut::<c_void>(); 1024];
@@ -72,10 +87,23 @@ fn scan_loaded_modules() -> bool {
         for &m in &mods[..(needed as usize/8).min(mods.len())] {
             if m.is_null() { continue; }
             let mut buf = vec![0u16; 260];
-            let len = GetModuleBaseNameW(proc, m, buf.as_mut_ptr(), buf.len() as u32);
+            let len = GetModuleFileNameExW(proc, m, buf.as_mut_ptr(), buf.len() as u32);
             if len == 0 { continue; }
-            let name = String::from_utf16_lossy(&buf[..len as usize]).to_lowercase();
-            if !allowed.contains(name.as_str()) { return true; }
+            let full_path = String::from_utf16_lossy(&buf[..len as usize]).to_lowercase();
+            let name = std::path::Path::new(&full_path).file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+
+            if known_bad.iter().any(|b| name.contains(b)) {
+                return true;
+            }
+
+            let from_trusted = trusted_dirs.iter().any(|d| full_path.starts_with(d));
+            let from_app = full_path.contains("sbgames");
+            let from_java = full_path.contains("\\java") || full_path.contains("\\jdk") || full_path.contains("\\jre");
+            if !from_trusted && !from_app && !from_java {
+                return true;
+            }
         }
     }
     false
