@@ -3,6 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import LoginPage from "./pages/LoginPage.jsx";
 import MainLayout from "./pages/MainLayout.jsx";
 import CustomCursor from "./components/CustomCursor.jsx";
+import UpdateNotifier from "./components/UpdateNotifier.jsx";
 import { NotificationProvider } from "./components/NotificationSystem.jsx";
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <NotificationProvider>
       <CustomCursor />
+      <UpdateNotifier />
       <AnimatePresence>
         {!user ? (
           <LoginPage key="login" onLogin={handleLogin} />

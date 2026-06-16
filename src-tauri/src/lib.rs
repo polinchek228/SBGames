@@ -143,6 +143,53 @@ fn verify_integrity() -> bool { true }
 fn get_version() -> String { env!("CARGO_PKG_VERSION").to_string() }
 
 #[tauri::command]
+async fn check_for_update(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let update = app.updater().check().await.map_err(|e| e.to_string())?;
+    match update {
+        Some(u) => Ok(serde_json::json!({
+            "available": true,
+            "version": u.version,
+            "currentVersion": u.current_version,
+            "body": u.body,
+            "date": u.date.map(|d| d.to_string()),
+        })),
+        None => Ok(serde_json::json!({ "available": false })),
+    }
+}
+
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    use tauri_plugin_process::ProcessExt;
+    let update = app.updater().check().await.map_err(|e| e.to_string())?;
+    match update {
+        Some(u) => {
+            let version = u.version.clone();
+            u.download_and_install(
+                |event| {
+                    match event {
+                        tauri_plugin_updater::DownloadEvent::Started { content_length } => {
+                            println!("[updater] started: {:?} bytes", content_length);
+                        }
+                        tauri_plugin_updater::DownloadEvent::Progress { chunk_length } => {
+                            println!("[updater] progress: +{} bytes", chunk_length);
+                        }
+                        tauri_plugin_updater::DownloadEvent::Finished => {
+                            println!("[updater] download finished");
+                        }
+                    }
+                },
+                None,
+            ).await.map_err(|e| e.to_string())?;
+            app.restart();
+            Ok(version)
+        }
+        None => Err("No update available".to_string()),
+    }
+}
+
+#[tauri::command]
 fn get_system_ram_gb() -> u64 {
     #[cfg(target_os = "windows")]
     {
@@ -2604,8 +2651,12 @@ pub fn run() {
         .manage(TrayState::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             get_version,
+            check_for_update,
+            install_update,
             get_system_ram_gb,
             launch_minecraft,
             get_minecraft_status,

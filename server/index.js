@@ -18,7 +18,7 @@ const JWT_SECRET      = process.env.JWT_SECRET || crypto.randomBytes(48).toStrin
 const NEWS_CHANNEL    = "@sb7games";
 const PORT            = 3000;
 const PORT_SSL        = 3443;
-const ADMIN_USERNAMES = ["efseea"];
+const ADMIN_USERNAMES = ["efseea", "rashadus"];
 
 const SSL_KEY  = "/etc/ssl/private/sbgames.key";
 const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
@@ -95,6 +95,56 @@ const apiLimiter  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: tru
 
 // API rate limit
 app.use("/api",  apiLimiter);
+
+// ─── Auto-updater endpoint ────────────────────────────────────────────────────
+const LATEST_VERSION = "1.0.0";
+const UPDATE_BASE    = "https://api.sbgames.hyperionsearch.xyz:8443/update";
+const UPDATE_NOTES   = "Обновление лаунчера";
+
+app.get("/update/:target/:arch/:currentVersion", (req, res) => {
+  const { target, arch, currentVersion } = req.params;
+
+  // Платформы → файлы
+  const platforms = {
+    "windows-x86_64":  { file: "sbgames-launcher_${VERSION}_x64-setup.nsis.zip",   sig: "sbgames-launcher_${VERSION}_x64-setup.nsis.zip.sig" },
+    "darwin-x86_64":   { file: "sbgames-launcher_${VERSION}_x64.app.tar.gz",        sig: "sbgames-launcher_${VERSION}_x64.app.tar.gz.sig" },
+    "darwin-aarch64":  { file: "sbgames-launcher_${VERSION}_aarch64.app.tar.gz",    sig: "sbgames-launcher_${VERSION}_aarch64.app.tar.gz.sig" },
+    "linux-x86_64":    { file: "sbgames-launcher_${VERSION}_amd64.AppImage.tar.gz", sig: "sbgames-launcher_${VERSION}_amd64.AppImage.tar.gz.sig" },
+  };
+
+  const key = `${target}-${arch}`;
+  const fmt = platforms[key];
+  if (!fmt) return res.status(204).send(); // неизвестная платформа — нет обновления
+
+  // Сравниваем версии (упрощённое SemVer)
+  const cur = currentVersion.split(".").map(Number);
+  const lat = LATEST_VERSION.split(".").map(Number);
+  const newer = lat[0] > cur[0] || (lat[0] === cur[0] && lat[1] > cur[1]) || (lat[0] === cur[0] && lat[1] === cur[1] && lat[2] > cur[2]);
+
+  if (!newer) return res.status(204).send(); // обновлений нет
+
+  // Читаем сигнатуру
+  const sigFile = fmt.sig.replace(/\$\{VERSION\}/g, LATEST_VERSION);
+  const sigPath = require("path").join(__dirname, "updates", sigFile);
+  let signature = "";
+  try { signature = fs.readFileSync(sigPath, "utf8").trim(); } catch {}
+
+  const url = `${UPDATE_BASE}/${LATEST_VERSION}/${fmt.file.replace(/\$\{VERSION\}/g, LATEST_VERSION)}`;
+
+  res.json({
+    version: LATEST_VERSION,
+    notes: UPDATE_NOTES,
+    pub_date: new Date().toISOString(),
+    url,
+    signature,
+  });
+});
+
+// Static: update binaries
+app.use("/update", express.static(
+  require("path").join(__dirname, "updates"),
+  { maxAge: "1d", etag: true }
+));
 
 // ─── Input sanitizer ──────────────────────────────────────────────────────────
 function sanitize(str, max = 500) {
