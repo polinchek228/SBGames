@@ -1,0 +1,7 @@
+- Dual entry points: `src/main.jsx` renders the main app (`App.jsx`) while `src/tray.jsx` renders a standalone tray popup (`TrayPopup.jsx`), each creating its own React root.
+- Authentication gating in `App.jsx` uses localStorage-persisted session state to conditionally render either `LoginPage` or `MainLayout`, with login/logout handlers managing both user data and token storage.
+- `MainLayout.jsx` serves as the primary navigation hub, rendering page components (Play, Profile, Leaderboard, Shop, News, Support) via absolute-positioned motion divs with opacity transitions, plus a slide-in Community panel.
+- Custom titlebar (`Titlebar.jsx`) delegates window operations to `src/lib/window.js`, which lazily imports `@tauri-apps/api/window` and caches the window handle for minimize/maximize/close actions.
+- Tray popup (`TrayPopup.jsx`) communicates with the Rust backend via Tauri IPC commands (`tray_get_state`, `tray_update_state`, `navigate_to`, `tray_launch_game`, `tray_logout`) and positions itself near the system tray using `LogicalPosition`.
+- Bidirectional bridge between main window and tray: the main window exposes global functions (`window.__navigateTo`, `window.__requestTrayState`, `window.__launchGame`, `window.__logout`) that the Rust side invokes to synchronize state and trigger actions.
+- WebSocket integration in `MainLayout` handles real-time events (balance updates, friend requests, support ticket responses) and pushes desktop notifications via a separate `notifyDesktop` helper.

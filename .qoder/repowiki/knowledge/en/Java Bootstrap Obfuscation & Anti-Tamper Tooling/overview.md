@@ -1,0 +1,1 @@
+Automates ProGuard-based obfuscation and embeds anti-debugging/integrity checks into the Java bootstrap launcher.

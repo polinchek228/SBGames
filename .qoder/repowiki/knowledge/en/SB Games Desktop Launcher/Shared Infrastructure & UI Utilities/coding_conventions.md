@@ -1,0 +1,4 @@
+- API client functions in `lib/api.js` automatically inject Bearer tokens from localStorage into request headers for authenticated endpoints.
+- Tauri API imports in `lib/tauri.js` use dynamic `import()` calls to gracefully handle environments where Tauri runtime is unavailable.
+- React components consume framer-motion's `AnimatePresence` and spring-based transitions for enter/exit animations of overlays and toasts.
+- Notification types are mapped to consistent icon/color pairs via a centralized `ICONS` configuration object in `NotificationSystem.jsx`.

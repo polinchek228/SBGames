@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: desktop_app_frontend/social_and_community
+title: Social Interaction & Gamification
+scope:
+    - src/pages/CommunityPage.jsx
+    - src/pages/LeaderboardPage.jsx
+    - src/components/AchievementShowcase.jsx
+    - src/components/AchievementSystem.jsx
+source_files: []
+depends_on: []
+related_to:
+    - path: auth_server

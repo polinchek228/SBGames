@@ -1,0 +1,4 @@
+- Entry point: `server/index.js` acts as a monolithic Express server handling HTTP REST, WebSocket connections, and Telegram Bot webhooks.
+- Modular routing: `server-files/modpack.js` and `server-files/verify.js` are Express routers exported for specific game-launcher and anti-cheat functionalities, likely mounted in the main server.
+- Data persistence: Uses `ioredis` for account storage and session verification with an in-memory Map fallback if Redis is unavailable.
+- Security layer: Implements JWT for stateless API/WebSocket authentication, Helmet for HTTP headers, and CORS restrictions for Tauri/desktop clients.

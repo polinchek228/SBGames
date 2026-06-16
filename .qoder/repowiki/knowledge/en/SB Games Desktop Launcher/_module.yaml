@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: desktop_app_frontend
+title: SB Games Desktop Launcher
+scope:
+    - src/
+source_files: []
+depends_on: []
+related_to: []

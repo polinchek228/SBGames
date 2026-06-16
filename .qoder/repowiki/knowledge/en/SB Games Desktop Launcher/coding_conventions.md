@@ -1,0 +1,3 @@
+- Global API clients in `src/lib/` automatically inject Bearer tokens from `localStorage` for all authenticated requests.
+- Tauri API imports are dynamically loaded via `await import()` to ensure graceful degradation or explicit error handling in non-Tauri environments.
+- Real-time backend events received via WebSocket are dual-dispatched to both the in-app `NotificationProvider` and native `notifyDesktop` for consistent user awareness.

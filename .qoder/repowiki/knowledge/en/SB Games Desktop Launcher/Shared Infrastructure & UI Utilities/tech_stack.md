@@ -1,0 +1,1 @@
+Tauri v2 desktop integration via `@tauri-apps/api` (dynamic imports for `invoke`, `listen`, `WebviewWindow`); Framer Motion for animated UI transitions; Lucide React for iconography; Tailwind CSS for utility-first styling.

@@ -1,0 +1,1 @@
+Provides Telegram-based authentication, real-time social features, inventory management, and modpack verification for the SBGames ecosystem.

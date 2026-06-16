@@ -1,0 +1,4 @@
+- Use of `AnimatePresence` and `motion` components from framer-motion for all modal dialogs and page transitions to ensure consistent animation physics.
+- Implementation of custom loading states and skeleton screens during asynchronous data fetching to maintain UI responsiveness.
+- Persistence of user input drafts and filter preferences in `localStorage` to prevent data loss during navigation or refreshes.
+- Conditional rendering of admin-specific controls in SupportPage based on the `user.role` property, separating user and admin views within the same module.

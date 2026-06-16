@@ -1,0 +1,2 @@
+- **WebSocket Protocol**: Used for bidirectional real-time communication (friend requests, chat messages) alongside standard HTTP REST APIs.
+- **Framer Motion**: Employed for complex UI animations and layout transitions in achievement lists and chat interfaces.

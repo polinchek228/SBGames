@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: desktop_app_frontend/shared_infra
+title: Shared Infrastructure & UI Utilities
+scope:
+    - src/lib/api.js
+    - src/lib/tauri.js
+    - src/components/NotificationSystem.jsx
+    - src/components/DownloadProgress.jsx
+    - src/pages/catalog.js
+    - src/index.css
+source_files: []
+depends_on: []
+related_to: []

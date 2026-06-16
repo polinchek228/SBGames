@@ -1,0 +1,5 @@
+- Entry points: `LoginPage.jsx` manages the authentication flow (QR code or bot link) and polls the backend for confirmation; `ProfilePage.jsx` serves as the main dashboard for user data.
+- Component structure: `ProfileComments.jsx` and `RecentActivityCard.jsx` are reusable presentational components that fetch and display user-specific data.
+- State management: Relies on React local state (`useState`) and `localStorage` for persisting session tokens (`sbgames_token`) and user preferences (e.g., `sbgames_settings`).
+- API integration: Uses a centralized `authedFetch` utility in `src/lib/api.js` to handle authenticated requests to the backend, injecting Bearer tokens automatically.
+- Desktop integration: Leverages Tauri APIs (via `src/lib/tauri.js`) for native window controls and system-level interactions like Discord presence updates.

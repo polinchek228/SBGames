@@ -1,0 +1,3 @@
+- Scripts enforce strict error handling using `set -e` at the beginning of execution to halt on any command failure.
+- Configuration files (Nginx, fail2ban, systemd) are generated dynamically within scripts using heredocs to ensure environment-specific consistency.
+- Security patterns such as rate limiting zones and bad-bot user-agent filtering are consistently applied across both Nginx main configs and included snippets.

@@ -1,0 +1,1 @@
+React 18 with Framer Motion for UI transitions; Tauri API for native window management, system notifications, and Discord RPC integration; WebSocket for real-time bidirectional communication with the game backend.

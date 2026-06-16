@@ -1,0 +1,3 @@
+- Build: `bash scripts/build-all.sh [--linux|--macos|--windows|--all]` triggers platform-specific compilations.
+- Provisioning: `bash scripts/setup-server.sh` initializes the production environment, generating JWT secrets and installing systemd/Nginx configs.
+- Hardening: `bash scripts/server-hardening.sh` applies strict security policies, including payment anti-fraud guards and automated monitoring cron jobs.

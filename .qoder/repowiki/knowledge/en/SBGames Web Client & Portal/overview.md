@@ -1,0 +1,1 @@
+A React-based single-page application providing the public-facing portal, user authentication, and account management for the SBGames server complex.

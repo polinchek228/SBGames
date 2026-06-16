@@ -1,0 +1,3 @@
+- `npm run build`: Executes a multi-stage pipeline that compiles and obfuscates the Java bootstrap, then builds both the main desktop UI and the system tray interface.
+- `npm run tauri build`: Invokes the Tauri CLI to package the desktop application into native installers (.exe, .dmg, .deb) for all target platforms.
+- `bash scripts/build-all.sh --macos`: A cross-platform orchestration script that handles macOS-specific signing and packaging requirements for the desktop launcher.

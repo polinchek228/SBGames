@@ -1,0 +1,2 @@
+- Both frontend modules utilize a React + Vite + Tailwind CSS stack with identical styling dependencies (framer-motion, lucide-react).
+- JavaScript obfuscation is applied as a standard security measure in both the root desktop build (`vite-plugin-obfuscator`) and the website build (`javascript-obfuscator`).

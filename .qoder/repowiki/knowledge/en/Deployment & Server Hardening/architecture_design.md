@@ -1,0 +1,3 @@
+- Entry points: `build-all.sh` orchestrates platform-specific builds, delegating Linux compilation to `build-linux.sh` which utilizes Docker containers defined in `Dockerfile.linux` and `Dockerfile.cirrus-linux`.
+- Server provisioning: `setup-server.sh` handles initial deployment, generating environment variables, configuring systemd services, and setting up Nginx reverse proxies with SSL termination.
+- Security hardening: `server-hardening.sh` applies post-deployment security measures, including UFW firewall rules, SSH restrictions, fail2ban jail configurations, and Nginx rate-limiting snippets.

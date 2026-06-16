@@ -1,0 +1,3 @@
+- XOR-based string obfuscation with immediate memory zeroing (Arrays.fill) to prevent plaintext leakage in heap dumps.
+- Use of visually ambiguous identifiers (I, l, |, 1) and zero-width Unicode characters in obfuscation dictionaries to disrupt decompiler output.
+- Runtime environment hardening by checking both JVM input arguments and system environment variables for debugger/agent signatures.

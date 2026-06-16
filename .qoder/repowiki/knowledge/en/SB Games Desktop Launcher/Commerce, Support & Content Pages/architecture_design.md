@@ -1,0 +1,6 @@
+- **Component Structure**: Implements five distinct page-level components (`ShopPage`, `SupportPage`, `SupportModal`, `NewsPage`, `ScreenshotsPage`) acting as route targets or modal overlays.
+- **State Management**: Relies on local React state (`useState`) and side-effects (`useEffect`) for data fetching, with `localStorage` used for client-side caching of drafts and preferences (e.g., shop filters, support tickets).
+- **API Integration**: Communicates with backend services via a centralized `authedFetch` utility for authenticated requests (shop, market) and standard `fetch` for public endpoints (news).
+- **Real-time Communication**: `SupportPage` establishes a direct WebSocket connection (`useWS` hook) for live chat functionality, handling authentication and message synchronization independently.
+- **Native Bridge**: `ScreenshotsPage` interacts with the desktop environment through Tauri's `invoke` command to access local file systems for screenshot retrieval and base64 encoding.
+- **UI Framework**: Utilizes `framer-motion` for complex layout transitions and modal animations, combined with Tailwind CSS for styling.

@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: auth_server
+title: Authentication, Social & Game Services Backend
+scope:
+    - server/
+    - server-files/
+source_files: []
+depends_on: []
+related_to:
+    - path: desktop_app_frontend/social_and_community
+    - path: desktop_app_frontend/commerce_and_support
+    - path: deployment_scripts

@@ -1,0 +1,1 @@
+Provides shared API clients, Tauri desktop integration wrappers, and reusable notification/download UI components for the SBGames desktop application.

@@ -83,11 +83,12 @@ jobs:
         shell: bash
         run: |
           VER="${{ github.event.inputs.version }}"
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VER\"/" src-tauri/tauri.conf.json
-          sed -i "s/^version = \"[^\"]*\"/version = \"$VER\"/" src-tauri/Cargo.toml
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VER\"/" package.json
-          sed -i "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server_index.js
-          sed -i "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server/index.js
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VER\"/" src-tauri/tauri.conf.json
+          sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VER\"/" src-tauri/Cargo.toml
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VER\"/" package.json
+          sed -i.bak "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server_index.js
+          sed -i.bak "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server/index.js
+          rm -f src-tauri/tauri.conf.json.bak src-tauri/Cargo.toml.bak package.json.bak server_index.js.bak server/index.js.bak
 
       - name: Verify signing key is set
         shell: bash

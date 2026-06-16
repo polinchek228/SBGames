@@ -1,0 +1,1 @@
+Tauri IPC via `invoke` for native file access in ScreenshotsPage; WebSocket protocol for real-time support chat in SupportPage.

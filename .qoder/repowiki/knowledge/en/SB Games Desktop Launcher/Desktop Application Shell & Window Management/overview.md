@@ -1,0 +1,1 @@
+Provides the Tauri-based desktop application shell with custom titlebar, tray popup, authentication flow, and window control utilities for the SB Games launcher.

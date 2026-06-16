@@ -1,0 +1,3 @@
+- Use of `framer-motion` for all page transitions and interactive element animations (e.g., tab switching, modal appearances).
+- Consistent dark-mode UI styling using inline styles with rgba values for glassmorphism effects (e.g., `background: 'rgba(255,255,255,0.05)'`).
+- Centralized API communication through `src/lib/api.js` utilities (`authedFetch`, `API_URL`) rather than direct `fetch` calls in components.

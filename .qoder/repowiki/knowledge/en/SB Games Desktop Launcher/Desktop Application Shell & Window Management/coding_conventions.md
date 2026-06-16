@@ -1,0 +1,4 @@
+- Window control functions in `src/lib/window.js` use lazy dynamic import of Tauri APIs with singleton caching to avoid repeated module resolution overhead.
+- Global bridge functions are attached to `window` object (e.g., `window.__navigateTo`, `window.__launchGame`) for Rust-to-JavaScript IPC, and cleaned up on component unmount to prevent stale references.
+- Custom cursor component hides the native cursor via Tauri API on mount and restores visibility on unmount, using requestAnimationFrame loop for smooth pointer tracking with context-aware styling (hover/click states).
+- Page navigation in MainLayout uses absolute-positioned motion divs with opacity/pointer-events transitions rather than route-based navigation, keeping all pages mounted but visually toggled.

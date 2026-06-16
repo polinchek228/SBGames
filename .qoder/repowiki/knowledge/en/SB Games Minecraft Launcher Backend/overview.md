@@ -1,0 +1,1 @@
+A Tauri v2 backend that manages the secure download, synchronization, and anti-cheat protected execution of a Forge 1.20.1 Minecraft client.
