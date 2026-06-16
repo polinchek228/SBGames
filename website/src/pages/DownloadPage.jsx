@@ -121,20 +121,40 @@ export default function DownloadPage() {
 
       {/* Notes */}
       <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
-        <p className="text-[13px] font-bold text-white mb-3">Примечания</p>
+        <p className="text-[13px] font-bold text-white mb-3">Установка</p>
         <div className="flex flex-col gap-2">
-          {[
-            { icon: "🪟", text: "Windows: запусти .exe, следуй установщику" },
-            { icon: "🍎", text: "macOS: открой .dmg, перетащи в Applications. При ошибке — ПКМ → Открыть" },
-            { icon: "🐧", text: "Linux: сделай файл исполняемым: chmod +x *.AppImage && ./*.AppImage" },
-          ].map(({ icon, text }) => (
-            <div key={text} className="flex items-start gap-2.5 rounded-xl px-4 py-2.5"
-              style={{ background: "rgba(255,255,255,0.04)" }}
-            >
-              <span>{icon}</span>
-              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>{text}</p>
+          <div className="flex items-start gap-2.5 rounded-xl px-4 py-2.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <span>🪟</span>
+            <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
+              <span className="text-white font-medium">Windows:</span> запусти .exe и следуй установщику
+            </p>
+          </div>
+
+          <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <span>🍎</span>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[12px] text-white font-medium">macOS — первый запуск:</p>
+              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
+                1. Открой .dmg и перетащи лаунчер в Applications
+              </p>
+              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
+                2. <span className="text-yellow-400 font-medium">Не двойной клик</span> — нажми правой кнопкой → «Открыть»
+              </p>
+              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
+                3. В диалоге снова нажми «Открыть» — это нужно только один раз
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+                Это защита macOS от неизвестных разработчиков — не вирус
+              </p>
             </div>
-          ))}
+          </div>
+
+          <div className="flex items-start gap-2.5 rounded-xl px-4 py-2.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <span>🐧</span>
+            <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
+              <span className="text-white font-medium">Linux:</span> chmod +x *.AppImage && ./*.AppImage
+            </p>
+          </div>
         </div>
       </div>
     </main>
