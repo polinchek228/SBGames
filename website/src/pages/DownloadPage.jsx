@@ -3,59 +3,30 @@ import { motion } from "framer-motion";
 import { DownloadSimple, WindowsLogo, AppleLogo, LinuxLogo, ArrowClockwise } from "@phosphor-icons/react";
 
 const PLATFORMS = [
-  {
-    id: "windows",
-    icon: WindowsLogo,
-    label: "Windows",
-    sub: "Windows 10 / 11",
-    ext: ".exe",
-    color: "#60a5fa",
-    assetSuffix: "x64-setup.exe",
-  },
-  {
-    id: "macos",
-    icon: AppleLogo,
-    label: "macOS",
-    sub: "macOS 10.15+",
-    ext: ".dmg",
-    color: "#a5b4fc",
-    assetSuffix: "aarch64.dmg",
-  },
-  {
-    id: "linux",
-    icon: LinuxLogo,
-    label: "Linux",
-    sub: "Ubuntu / Debian",
-    ext: ".AppImage",
-    color: "#86efac",
-    assetSuffix: "amd64.AppImage",
-  },
+  { id: "windows", icon: WindowsLogo, label: "Windows", sub: "Windows 10 / 11",  ext: ".exe",      color: "#60a5fa" },
+  { id: "macos",   icon: AppleLogo,   label: "macOS",   sub: "macOS 10.15+",     ext: ".dmg",      color: "#a5b4fc" },
+  { id: "linux",   icon: LinuxLogo,   label: "Linux",   sub: "Ubuntu / Debian",  ext: ".AppImage", color: "#86efac" },
 ];
 
 export default function DownloadPage() {
-  const [release,  setRelease]  = useState(null);
+  const [manifest, setManifest] = useState(null);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState("windows");
 
   useEffect(() => {
-    fetch("https://api.github.com/repos/polinchek228/SBGames/releases/latest")
+    fetch("https://api.hyperionsearch.xyz/downloads/latest.json")
       .then(r => r.ok ? r.json() : null)
-      .then(data => { setRelease(data); setLoading(false); })
+      .then(data => { setManifest(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
-  const getAsset = (platform) => {
-    if (!release?.assets) return null;
-    return release.assets.find(a => a.name.includes(platform.assetSuffix));
-  };
-
-  const version = release?.tag_name || "v1.0.0";
-  const date    = release?.published_at
-    ? new Date(release.published_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })
-    : "—";
+  const version = manifest?.version || "v1.0.0";
+  const date    = manifest?.publishedAt
+    ? new Date(manifest.publishedAt).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
 
   const selectedPlatform = PLATFORMS.find(p => p.id === selected);
-  const selectedAsset    = getAsset(selectedPlatform);
+  const selectedAsset    = manifest?.platforms?.[selected] || null;
 
   return (
     <main className="relative z-10 max-w-3xl mx-auto px-4 pb-16">
@@ -66,13 +37,14 @@ export default function DownloadPage() {
         <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.35)" }}>
           Выбери свою платформу — установи и играй
         </p>
-        {!loading && (
+        {!loading && manifest && (
           <div className="inline-flex items-center gap-2 mt-3 rounded-xl px-4 py-2"
             style={{ background: "rgba(255,255,255,0.05)" }}
           >
             <div className="w-2 h-2 rounded-full bg-green-400" />
             <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
-              Последняя версия: <span className="text-white font-bold">{version}</span> · {date}
+              Последняя версия: <span className="text-white font-bold">{version}</span>
+              {date && <> · {date}</>}
             </span>
           </div>
         )}
@@ -129,7 +101,8 @@ export default function DownloadPage() {
           </div>
         ) : selectedAsset ? (
           <motion.a
-            href={selectedAsset.browser_download_url}
+            href={selectedAsset.url}
+            download
             whileTap={{ scale: 0.97 }}
             className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-[13px] text-black transition-colors hover:opacity-90"
             style={{ background: selectedPlatform.color, flexShrink: 0 }}
@@ -138,15 +111,11 @@ export default function DownloadPage() {
             Скачать
           </motion.a>
         ) : (
-          <a
-            href={`https://github.com/polinchek228/SBGames/releases/latest`}
-            target="_blank" rel="noreferrer"
-            className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-[13px] text-white transition-colors"
-            style={{ background: "rgba(255,255,255,0.08)" }}
+          <div className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-[13px]"
+            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)", flexShrink: 0 }}
           >
-            <DownloadSimple size={16} />
-            GitHub Releases
-          </a>
+            Скоро
+          </div>
         )}
       </div>
 

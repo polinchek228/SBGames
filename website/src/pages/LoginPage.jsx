@@ -75,7 +75,11 @@ export default function LoginPage({ onLogin }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/auth/create-code`, { method: "POST" });
+      const res = await fetch(`${API_URL}/auth/create-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "web" }),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Сервер не ответил");
       setLoginCode(json.code);
@@ -85,6 +89,34 @@ export default function LoginPage({ onLogin }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (step !== "code" || !loginCode) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/auth/check-code?code=${loginCode}`);
+        const json = await res.json();
+        if (!json.confirmed) return;
+        clearInterval(interval);
+        const loginRes = await fetch(`${API_URL}/auth/tg-login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tgUser: json.tgUser }),
+        });
+        const loginJson = await loginRes.json();
+        if (loginJson.needNick) {
+          setTgUser(json.tgUser);
+          setNick(json.tgUser.username || "");
+          setStep("nick");
+        } else if (loginRes.ok) {
+          finishLogin(loginJson.user, loginJson.token);
+        } else {
+          setError(loginJson.message || "Ошибка входа");
+        }
+      } catch {}
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [step, loginCode]);
 
   const handleNick = async (e) => {
     e.preventDefault();
@@ -297,7 +329,7 @@ export default function LoginPage({ onLogin }) {
                 </a>
 
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 12, lineHeight: 1.5 }}>
-                  Открой бот, отправь ему код. Он пустит тебя в аккаунт. Код живёт 10 минут.
+                  Нажми кнопку, отправь боту код. Страница автоматически войдёт в аккаунт. Код живёт 10 минут.
                 </p>
               </>
             ) : null}

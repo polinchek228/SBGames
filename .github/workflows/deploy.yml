@@ -77,18 +77,43 @@ jobs:
           fi
           echo "✅ Signing key available (length: ${#TAURI_SIGNING_PRIVATE_KEY} chars)"
 
-      # ── Version bump (опционально) ──
-      - name: Bump version
-        if: github.event.inputs.version != ''
+      # ── Version: ручной или автоматический (git commit count) ──
+      - name: Compute version
+        id: version
         shell: bash
         run: |
-          VER="${{ github.event.inputs.version }}"
-          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VER\"/" src-tauri/tauri.conf.json
-          sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VER\"/" src-tauri/Cargo.toml
-          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VER\"/" package.json
-          sed -i.bak "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server_index.js
-          sed -i.bak "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VER\"/" server/index.js
-          rm -f src-tauri/tauri.conf.json.bak src-tauri/Cargo.toml.bak package.json.bak server_index.js.bak server/index.js.bak
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            BASE=$(node -p "require('./src-tauri/tauri.conf.json').version.split('.').slice(0,2).join('.')")
+            PATCH=$(git rev-list --count HEAD)
+            VER="${BASE}.${PATCH}"
+          fi
+          echo "VER=$VER" >> $GITHUB_ENV
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Building version: $VER"
+
+      - name: Apply version to build files
+        shell: bash
+        run: |
+          python3 - << 'EOF'
+          import json, re, os
+          ver = os.environ['VER']
+
+          with open('src-tauri/tauri.conf.json', 'r') as f: d = json.load(f)
+          d['version'] = ver
+          with open('src-tauri/tauri.conf.json', 'w') as f: json.dump(d, f, indent=2)
+
+          with open('src-tauri/Cargo.toml', 'r') as f: c = f.read()
+          c = re.sub(r'^version = "[^"]*"', f'version = "{ver}"', c, count=1, flags=re.MULTILINE)
+          with open('src-tauri/Cargo.toml', 'w') as f: f.write(c)
+
+          with open('package.json', 'r') as f: p = json.load(f)
+          p['version'] = ver
+          with open('package.json', 'w') as f: json.dump(p, f, indent=2)
+
+          print(f'Version set to: {ver}')
+          EOF
 
       - name: Verify signing key is set
         shell: bash
@@ -201,12 +226,33 @@ jobs:
         run: |
           sudo apt-get install -y sshpass >/dev/null 2>&1
           find artifacts -type f -print0 | while IFS= read -r -d '' f; do
-            echo "Uploading: $f"
-            sshpass -p "${{ secrets.SERVER_PASS }}" \
-              scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              "$f" \
-              ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/sbgames-auth/updates/ || true
+            fname=$(basename "$f")
+            # Upload only installer files (skip updater .zip/.sig for now)
+            case "$fname" in
+              *.exe|*.msi|*.dmg|*.AppImage|*.deb)
+                echo "Uploading installer: $fname"
+                sshpass -p "${{ secrets.SERVER_PASS }}" \
+                  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                  "$f" \
+                  ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/sbgames-auth/updates/ || true
+                ;;
+              *.zip|*.sig)
+                echo "Uploading updater: $fname"
+                sshpass -p "${{ secrets.SERVER_PASS }}" \
+                  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                  "$f" \
+                  ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/sbgames-auth/updates/ || true
+                ;;
+            esac
           done
+
+      - name: Generate latest.json on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASS }}
+          script: python3 /opt/sbgames-auth/gen-latest.sh
 
       - name: Deploy server code
         run: |
