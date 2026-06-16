@@ -466,6 +466,7 @@ app.post("/support/ticket", (req, res) => {
     { id: uuidv4(), from: userId, username: rawUsername, text: rawMessage, time: Date.now() },
   ]};
   tickets.set(ticketId, ticket);
+  saveTicket(ticket);
   broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
   res.json({ ticketId });
 });
@@ -864,6 +865,7 @@ app.post("/api/market/sell", requireAuth, async (req, res) => {
   const id = String(++listingCounter);
   const listing = { id, itemId: cleanId, itemType: item.type, name: item.name, preview: item.preview, price: priceNum, sellerId: req.userId, sellerName: acc.username, createdAt: Date.now(), status: "active" };
   listings.set(id, listing);
+  saveListing(listing);
   res.json({ ok: true, listing: publicListing(listing) });
 });
 
@@ -886,6 +888,7 @@ app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
   await redisAccounts.set(listing.sellerId, seller);
   listing.status = "sold"; listing.soldTo = req.userId; listing.soldAt = Date.now();
   listings.set(id, listing);
+  saveListing(listing);
   sendToUser(listing.sellerId, { type: "market_sold", listingId: id, price: listing.price, buyerName: buyer.username });
   res.json({ ok: true, balance: buyer.balance, market: buyer.market_inventory });
 });
@@ -900,6 +903,7 @@ app.delete("/api/market/:id", requireAuth, async (req, res) => {
   if (acc) { acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId]; await redisAccounts.set(req.userId, acc); }
   listing.status = "cancelled";
   listings.set(id, listing);
+  saveListing(listing);
   res.json({ ok: true });
 });
 
@@ -994,10 +998,145 @@ async function loadDMsFromRedis() {
   } catch (e) { console.warn("[dms] failed to load from Redis:", e.message); }
 }
 
+// ─── Redis persistence for friendships ───────────────────────────────────────
+async function saveFriendships(userId) {
+  try {
+    const set = friendships.get(userId);
+    if (set && set.size > 0) {
+      await redis.set(`sbgames:friends:${userId}`, JSON.stringify([...set]));
+    } else {
+      await redis.del(`sbgames:friends:${userId}`);
+    }
+  } catch {}
+}
+async function saveFriendRequests(userId) {
+  try {
+    const reqs = friendRequests.get(userId);
+    if (reqs && reqs.length > 0) {
+      await redis.set(`sbgames:friendreqs:${userId}`, JSON.stringify(reqs));
+    } else {
+      await redis.del(`sbgames:friendreqs:${userId}`);
+    }
+  } catch {}
+}
+async function loadFriendshipsFromRedis() {
+  try {
+    const stream = redis.scanStream({ match: "sbgames:friends:*", count: 100 });
+    const keys = [];
+    for await (const k of stream) keys.push(...k);
+    for (const key of keys) {
+      const userId = key.replace("sbgames:friends:", "");
+      const raw = await redis.get(key);
+      if (raw) friendships.set(userId, new Set(JSON.parse(raw)));
+    }
+    console.log(`[friendships] loaded ${friendships.size} users from Redis`);
+  } catch (e) { console.warn("[friendships] failed to load:", e.message); }
+}
+async function loadFriendRequestsFromRedis() {
+  try {
+    const stream = redis.scanStream({ match: "sbgames:friendreqs:*", count: 100 });
+    const keys = [];
+    for await (const k of stream) keys.push(...k);
+    for (const key of keys) {
+      const userId = key.replace("sbgames:friendreqs:", "");
+      const raw = await redis.get(key);
+      if (raw) friendRequests.set(userId, JSON.parse(raw));
+    }
+    console.log(`[friendRequests] loaded ${friendRequests.size} users from Redis`);
+  } catch (e) { console.warn("[friendRequests] failed to load:", e.message); }
+}
+
+// ─── Redis persistence for listings ──────────────────────────────────────────
+async function saveListing(l) {
+  try { await redis.set(`sbgames:listing:${l.id}`, JSON.stringify(l)); await redis.sadd("sbgames:listing_ids", l.id); } catch {}
+}
+async function deleteListingFromRedis(id) {
+  try { await redis.del(`sbgames:listing:${id}`); await redis.srem("sbgames:listing_ids", id); } catch {}
+}
+async function loadListingsFromRedis() {
+  try {
+    const ids = await redis.smembers("sbgames:listing_ids");
+    for (const id of ids) {
+      const raw = await redis.get(`sbgames:listing:${id}`);
+      if (raw) { const l = JSON.parse(raw); listings.set(id, l); const numId = parseInt(id, 10); if (!isNaN(numId) && numId >= listingCounter) listingCounter = numId + 1; }
+    }
+    console.log(`[listings] loaded ${listings.size} from Redis`);
+  } catch (e) { console.warn("[listings] failed to load:", e.message); }
+}
+
+// ─── Redis persistence for tickets ───────────────────────────────────────────
+async function saveTicket(t) {
+  try { await redis.set(`sbgames:ticket:${t.id}`, JSON.stringify(t)); await redis.sadd("sbgames:ticket_ids", String(t.id)); } catch {}
+}
+async function loadTicketsFromRedis() {
+  try {
+    const ids = await redis.smembers("sbgames:ticket_ids");
+    for (const id of ids) {
+      const raw = await redis.get(`sbgames:ticket:${id}`);
+      if (raw) { const t = JSON.parse(raw); tickets.set(id, t); const numId = parseInt(id, 10); if (!isNaN(numId) && numId >= ticketCounter) ticketCounter = numId + 1; }
+    }
+    console.log(`[tickets] loaded ${tickets.size} from Redis`);
+  } catch (e) { console.warn("[tickets] failed to load:", e.message); }
+}
+
+// ─── Redis persistence for groupMessages ─────────────────────────────────────
+async function saveGroupMessages(gid) {
+  try {
+    const msgs = groupMessages.get(gid);
+    if (msgs && msgs.length > 0) {
+      await redis.set(`sbgames:groupmsgs:${gid}`, JSON.stringify(msgs));
+    }
+  } catch {}
+}
+async function loadGroupMessagesFromRedis() {
+  try {
+    const stream = redis.scanStream({ match: "sbgames:groupmsgs:*", count: 100 });
+    const keys = [];
+    for await (const k of stream) keys.push(...k);
+    for (const key of keys) {
+      const gid = key.replace("sbgames:groupmsgs:", "");
+      const raw = await redis.get(key);
+      if (raw && groups.has(gid)) groupMessages.set(gid, JSON.parse(raw));
+    }
+    console.log(`[groupMessages] loaded from Redis`);
+  } catch (e) { console.warn("[groupMessages] failed to load:", e.message); }
+}
+
+// ─── Redis persistence for groupInvites ──────────────────────────────────────
+async function saveGroupInvites(gid) {
+  try {
+    const invs = groupInvites.get(gid);
+    if (invs && invs.length > 0) {
+      await redis.set(`sbgames:groupinv:${gid}`, JSON.stringify(invs));
+    } else {
+      await redis.del(`sbgames:groupinv:${gid}`);
+    }
+  } catch {}
+}
+async function loadGroupInvitesFromRedis() {
+  try {
+    const stream = redis.scanStream({ match: "sbgames:groupinv:*", count: 100 });
+    const keys = [];
+    for await (const k of stream) keys.push(...k);
+    for (const key of keys) {
+      const gid = key.replace("sbgames:groupinv:", "");
+      const raw = await redis.get(key);
+      if (raw && groups.has(gid)) groupInvites.set(gid, JSON.parse(raw));
+    }
+    console.log(`[groupInvites] loaded from Redis`);
+  } catch (e) { console.warn("[groupInvites] failed to load:", e.message); }
+}
+
 // Load on startup
 loadGroupsFromRedis();
+loadGroupMessagesFromRedis();
+loadGroupInvitesFromRedis();
 loadCommentsFromRedis();
 loadDMsFromRedis();
+loadFriendshipsFromRedis();
+loadFriendRequestsFromRedis();
+loadListingsFromRedis();
+loadTicketsFromRedis();
 
 function publicGroup(g) {
   const members = [...g.members];
@@ -1040,6 +1179,7 @@ app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
   const from = wsClientsByUserId(req.userId);
   const invite = { toId: target.id, fromId: req.userId, fromUsername: from?.username || "Player", groupId: gid, groupName: g.name, time: Date.now() };
   list.push(invite); groupInvites.set(gid, list);
+  saveGroupInvites(gid);
   sendToUser(target.id, { type: "group_invite", invite });
   res.json({ ok: true });
 });
@@ -1050,6 +1190,7 @@ app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
   if (!g) return res.status(404).json({ message: "-�-�-�-+-+-� -+-� -+-�-�-�-�-+-�" });
   const accept = !!req.body.accept;
   groupInvites.set(gid, (groupInvites.get(gid) || []).filter(i => i.toId !== req.userId));
+  saveGroupInvites(gid);
   if (accept) { if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "-�-+-+-+-�-�" }); g.members.add(req.userId); saveGroup(g); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
   res.json({ ok: true, group: publicGroup(g) });
 });
@@ -1174,6 +1315,7 @@ wss.on("connection", (ws, req) => {
           if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "-�-�-�-�-�-� -�-�-� -+-�-+-�-�-�-+-�-+-�" }); break; }
           const reqData = { fromId: client.userId, fromUsername: client.username, time: Date.now() };
           friendRequests.set(target.id, [...existing, reqData]);
+          saveFriendRequests(target.id);
           sendToUser(target.id, { type: "friend_request_received", request: reqData });
           send(ws, { type: "friend_request_sent", toUsername: target.username });
           break;
@@ -1181,10 +1323,13 @@ wss.on("connection", (ws, req) => {
         case "friend_request_respond": {
           const { fromId, accept } = msg;
           friendRequests.set(client.userId, getPendingRequests(client.userId).filter(r => r.fromId !== fromId));
+          saveFriendRequests(client.userId);
           if (accept) {
             if (!friendships.has(client.userId)) friendships.set(client.userId, new Set());
             if (!friendships.has(fromId))         friendships.set(fromId,         new Set());
             friendships.get(client.userId).add(fromId); friendships.get(fromId).add(client.userId);
+            saveFriendships(client.userId);
+            saveFriendships(fromId);
             let meFriends = [];
             try {
               meFriends = [...getFriends(client.userId)].map(fid => {
@@ -1323,6 +1468,7 @@ wss.on("connection", (ws, req) => {
           const list = groupMessages.get(gid) || [];
           list.push(m);
           groupMessages.set(gid, list.slice(-200));
+          saveGroupMessages(gid);
           for (const memberId of g.members) {
             sendToUser(memberId, { type: "group_message", groupId: gid, message: m });
           }
@@ -1595,6 +1741,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
       ],
     };
     tickets.set(ticketId, ticket);
+    saveTicket(ticket);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
     if (inv) inv.ticketId = ticketId;
 
@@ -1770,6 +1917,7 @@ bot.on("callback_query", async (q) => {
       { id: uuidv4(), from: tgId, username: account.username, text: `-�-+-+-+-+-+-�-+-+-� -+-� ${amount} -�-�-�`, time: Date.now() },
     ]};
     tickets.set(ticketId, t);
+    saveTicket(t);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
     bot.sendMessage(chatId,
       `*-�-�-�-�-�-� -+-� -+-+-+-+-+-+-�-+-+-� G�� -�-+-�-�-� #${ticketId}*\n\n-�-�-�-�-�-+-�: \`${account.username}\`\n-�-�-+-+-�: *${amount} -�-�-�* (${amount} G�+)\n-�-�-�-�: ${dateStr}\n\n-�-�-+-+-+-+-�-�-�-�-�-+-� -+-�-�-�-�-+-� -+ -+-�-+-�-+-�-� -�-�-�-�-+-+-+-�-�. -�-+-�-+-� -+-+-+-�-�-� -+-�-�-+-+ -�-+-+-+-�-� -+ -+-�-+-�-�-�-+-+ -�-�-�-+-+-�-+-� -�-�-�-�.`,
@@ -1973,6 +2121,7 @@ bot.on("message", async (msg) => {
       { id: uuidv4(), from: tgId, username: account.username, text: `-�-+-+-+-+-+-�-+-+-� -+-� ${amount} -�-�-�`, time: Date.now() },
     ]};
     tickets.set(ticketId, t);
+    saveTicket(t);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
     bot.sendMessage(chatId,
       `*-�-�-�-�-�-� -+-� -+-+-+-+-+-+-�-+-+-� G�� -�-+-�-�-� #${ticketId}*\n\n-�-�-�-�-�-+-�: \`${account.username}\`\n-�-�-+-+-�: *${amount} -�-�-�* (${amount} G�+)\n-�-�-�-�: ${dateStr}\n\n-�-�-+-+-+-+-�-�-�-�-�-+-� -+-�-�-�-�-+-� -+ -+-�-+-�-+-�-� -�-�-�-�-+-+-+-�-�. -�-+-�-+-� -+-+-+-�-�-� -+-�-�-+-+ -�-+-+-+-�-� -+ -+-�-+-�-�-�-+-+ -�-�-�-+-+-�-+-� -�-�-�-�.`,
@@ -2048,6 +2197,7 @@ bot.on("message", async (msg) => {
       { id: uuidv4(), from: tgId, username: account?.username || "Telegram", text, time: Date.now() },
     ]};
     tickets.set(ticketId, ticket);
+    saveTicket(ticket);
     botSessions.delete(chatId);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
     bot.sendMessage(chatId,
