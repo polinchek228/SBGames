@@ -1,4 +1,4 @@
-#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
+﻿#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -407,6 +407,7 @@ async fn launch_minecraft(
         Some(j) if !j.is_empty() => PathBuf::from(j),
         _ => find_java().ok_or_else(|| "Java не найдена. Установите Java 17 (https://adoptium.net)".to_string())?,
     };
+    validate_java_binary(&java)?;
 
     let _ = app.emit("download_progress", DownloadProgress {
         file: "Java найдена".into(), downloaded: 3, total: 100, speed_kbs: 0,
@@ -778,6 +779,8 @@ async fn launch_minecraft(
     // Добавляем vanilla client.jar в обычный classpath
     rest_classpath.push(client_jar.clone());
 
+    validate_launch_classpath(&mc_dir, &boot_modules, &rest_classpath)?;
+
     // 1) Boot модули в --module-path
     if !boot_modules.is_empty() {
         let mp = boot_modules.iter()
@@ -818,35 +821,10 @@ async fn launch_minecraft(
     // Pass legacyClassPath.file system property to BootstrapLauncher
     cmd.arg(format!("-DlegacyClassPath.file={}", classpath_txt_path.display()));
 
-    // Calculate sha256 of all mod jars and write to .mod-hashes
-    let mods_dir = mc_dir.join("mods");
-    let mut hash_content = String::new();
-    if mods_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&mods_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("jar")) {
-                    let name = path.file_name().unwrap().to_string_lossy().to_string();
-                    if let Ok(mut file) = std::fs::File::open(&path) {
-                        use sha2::{Digest, Sha256};
-                        let mut hasher = Sha256::new();
-                        let mut buffer = [0u8; 8192];
-                        while let Ok(n) = std::io::Read::read(&mut file, &mut buffer) {
-                            if n == 0 { break; }
-                            hasher.update(&buffer[..n]);
-                        }
-                        let hash = format!("{:x}", hasher.finalize());
-                        hash_content.push_str(&format!("{}:{}\n", hash, name));
-                    }
-                }
-            }
-        }
-    }
-    std::fs::write(mc_dir.join(".mod-hashes"), hash_content)
-        .map_err(|e| format!("Failed to write .mod-hashes manifest: {}", e))?;
+    write_mod_hash_manifest_from_whitelist(&mc_dir)?;
 
     // Point -cp strictly to sbg-bootstrap.jar and sbg-classpath.jar
-    cmd.arg("-cp").arg("sbg-bootstrap.jar;sbg-classpath.jar");
+    cmd.arg("-cp").arg(format!("sbg-bootstrap.jar{}sbg-classpath.jar", cp_sep));
 
     // Main class — custom security bootstrapper instead of CPW bootstraplauncher
     cmd.arg("com.sbgames.bootstrap.SBGBootstrap");
@@ -999,7 +977,7 @@ async fn launch_minecraft(
                 }
                 // Job handle намеренно не закрываем — живёт пока лаунчер жив
                 // При закрытии лаунчера Job убьёт все процессы в нём
-                std::mem::forget(job as usize); // не drop
+                let _ = job as usize; // не drop
             }
         }
     }
@@ -1273,6 +1251,7 @@ async fn launch_minecraft(
         let _ = std::fs::write(&body_path, &body_str);
         let out = std::process::Command::new("curl")
             .arg("--proto").arg("=https").arg("--tlsv1.2")
+            .arg("--pinnedpubkey").arg(SBG_API_PINNED_PUBKEY)
             .arg("-fsSL").arg("--max-time").arg("15")
             .arg("-H").arg("Content-Type: application/json")
             .arg("--data-binary").arg(format!("@{}", body_path.display()))
@@ -1325,6 +1304,7 @@ async fn launch_minecraft(
                     "https://api.sbgames.hyperionsearch.xyz:8443/api/verify/banlist");
                 let out = std::process::Command::new("curl")
                     .arg("--proto").arg("=https").arg("--tlsv1.2")
+                    .arg("--pinnedpubkey").arg(SBG_API_PINNED_PUBKEY)
                     .arg("-fsSL").arg("--max-time").arg("10")
                     .arg(&url).output();
                 if let Ok(o) = out {
@@ -1496,6 +1476,7 @@ async fn kill_minecraft() -> Result<(), String> {
 // Secret (на клиенте и сервере) — общий. Хранится в обфусцированном виде.
 // Можно потом заменить на Ed25519 с публичным ключом на клиенте.
 const MODPACK_HMAC_SECRET: &str = "sbg-modpack-secret-2026-rotate-quarterly";
+const SBG_API_PINNED_PUBKEY: &str = "sha256//Nj0HWj3BmhhfuFc7Hv+UJB0PFiigLebYlt1SNGq3JZI=";
 
 #[derive(serde::Serialize, Clone)]
 struct ModIssue {
@@ -1521,6 +1502,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
     let mc_dir = minecraft_dir();
     let mods_dir = mc_dir.join("mods");
     std::fs::create_dir_all(&mods_dir).ok();
+    let whitelist_path = mc_dir.join(".modpack-whitelist.json");
     let tmp_dir = mc_dir.join(".modpack-tmp");
     let _ = std::fs::remove_dir_all(&tmp_dir);
     std::fs::create_dir_all(&tmp_dir).ok();
@@ -1542,11 +1524,14 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
         .output()
         .map_err(|e| format!("curl manifest: {}", e))?;
     if !out.status.success() {
-        // API недоступен → пропускаем синхронизацию
+        if !whitelist_path.exists() {
+            return Err("Modpack manifest unavailable and local whitelist is missing".into());
+        }
         let _ = app.emit("download_progress", DownloadProgress {
-            file:       "Манифест недоступен".into(),
+            file:       "Manifest unavailable, using local whitelist".into(),
             downloaded: 100, total: 100, speed_kbs: 0,
         });
+        write_mod_hash_manifest_from_whitelist(&mc_dir)?;
         report.ok = true;
         return Ok(report);
     }
@@ -1572,6 +1557,8 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
     }
     let mods_list = manifest["mods"].as_array()
         .ok_or("manifest: mods[] missing")?;
+    let whitelist_json = serde_json::to_string(mods_list).unwrap_or_default();
+    let _ = std::fs::write(&whitelist_path, &whitelist_json);
 
     // 2. Скачиваем zip мод-пака
     let _ = app.emit("download_progress", DownloadProgress {
@@ -1669,6 +1656,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
 
     if !need_download {
         let _ = std::fs::remove_dir_all(&tmp_dir);
+        write_mod_hash_manifest_from_whitelist(&mc_dir)?;
         let _ = app.emit("download_progress", DownloadProgress {
             file: "Мод-пак актуален".into(), downloaded: 100, total: 100, speed_kbs: 0,
         });
@@ -1758,9 +1746,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
     });
     let _ = std::fs::remove_dir_all(&tmp_dir);
 
-    // Сохраняем whitelist для runtime watcher'а
-    let whitelist_json = serde_json::to_string(mods_list).unwrap_or_default();
-    let _ = std::fs::write(mc_dir.join(".modpack-whitelist.json"), &whitelist_json);
+    write_mod_hash_manifest_from_whitelist(&mc_dir)?;
 
     // Записываем отчёт для UI
     let _ = std::fs::write(
@@ -1823,6 +1809,76 @@ fn security_precheck() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn validate_launch_classpath(
+    mc_dir: &std::path::Path,
+    boot_modules: &[std::path::PathBuf],
+    rest_classpath: &[std::path::PathBuf],
+) -> Result<(), String> {
+    let mc_root = std::fs::canonicalize(mc_dir)
+        .map_err(|e| format!("minecraft dir canonicalize: {}", e))?;
+    for path in boot_modules.iter().chain(rest_classpath.iter()) {
+        let canonical = std::fs::canonicalize(path)
+            .map_err(|e| format!("Classpath file missing: {} ({})", path.display(), e))?;
+        if !canonical.starts_with(&mc_root) {
+            return Err(format!("Blocked external classpath entry: {}", canonical.display()));
+        }
+        if canonical.extension().and_then(|e| e.to_str()).map_or(true, |e| !e.eq_ignore_ascii_case("jar")) {
+            return Err(format!("Blocked non-jar classpath entry: {}", canonical.display()));
+        }
+        let lower = canonical.to_string_lossy().to_lowercase();
+        if lower.contains("\\mods\\") || lower.contains("/mods/") {
+            return Err(format!("Blocked mod jar in launch classpath: {}", canonical.display()));
+        }
+    }
+    Ok(())
+}
+
+fn validate_java_binary(java: &std::path::Path) -> Result<(), String> {
+    let canonical = std::fs::canonicalize(java)
+        .map_err(|e| format!("Java path invalid: {}", e))?;
+    let name = canonical.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let allowed = if cfg!(target_os = "windows") {
+        name == "java.exe" || name == "javaw.exe"
+    } else {
+        name == "java"
+    };
+    if !allowed {
+        return Err(format!("Blocked non-Java executable: {}", canonical.display()));
+    }
+    Ok(())
+}
+
+fn write_mod_hash_manifest_from_whitelist(mc_dir: &std::path::Path) -> Result<(), String> {
+    let whitelist_path = mc_dir.join(".modpack-whitelist.json");
+    let data = std::fs::read_to_string(&whitelist_path)
+        .map_err(|_| "Modpack whitelist is missing; refusing to launch".to_string())?;
+    let mods: serde_json::Value = serde_json::from_str(&data)
+        .map_err(|e| format!("Modpack whitelist parse failed: {}", e))?;
+    let list = mods.as_array().ok_or("Modpack whitelist is not an array")?;
+
+    let mut hash_content = String::new();
+    for item in list {
+        let name = item["name"].as_str().unwrap_or("").trim();
+        let sha = item["sha256"].as_str().unwrap_or("").trim().to_lowercase();
+        if name.is_empty() || sha.len() != 64 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(format!("Invalid mod whitelist entry: {}", name));
+        }
+        let path = std::path::Path::new(name);
+        if path.components().count() != 1 || !name.to_lowercase().ends_with(".jar") {
+            return Err(format!("Blocked unsafe mod filename in whitelist: {}", name));
+        }
+        hash_content.push_str(&format!("{}:{}\n", sha, name));
+    }
+    if hash_content.is_empty() {
+        return Err("Modpack whitelist is empty".into());
+    }
+    std::fs::write(mc_dir.join(".mod-hashes"), hash_content)
+        .map_err(|e| format!("Failed to write .mod-hashes manifest: {}", e))
 }
 
 // Проверяем загруженные DLL в Java-процессе MC (после spawn).

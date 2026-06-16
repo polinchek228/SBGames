@@ -29,6 +29,7 @@ const NAV_ITEMS = [
 /* ── Global background video (experimental setting) ─────────────────────── */
 function GlobalBackground() {
   const [videoSrc, setVideoSrc] = useState(null);
+  const [videoFailed, setVideoFailed] = useState(false);
 
   useEffect(() => {
     const update = () => {
@@ -39,27 +40,26 @@ function GlobalBackground() {
         const bgId = userData?.equip?.background;
         if (!bgId) { setVideoSrc(null); return; }
         const item = CATALOG_BY_ID[bgId];
-        if (item?.video) setVideoSrc(item.video);
+        if (item?.video) { setVideoSrc(item.video); setVideoFailed(false); }
         else setVideoSrc(null);
       } catch { setVideoSrc(null); }
     };
     update();
-    // Re-check when settings or user data change
     const onStorage = (e) => {
       if (e.key === "sbgames_settings" || e.key === "sbgames_user") update();
     };
     window.addEventListener("storage", onStorage);
-    // Also poll briefly to catch same-tab changes
     const iv = setInterval(update, 1500);
     return () => { window.removeEventListener("storage", onStorage); clearInterval(iv); };
   }, []);
 
-  if (!videoSrc) return null;
+  if (!videoSrc || videoFailed) return null;
   return (
     <video
       key={videoSrc}
       autoPlay loop muted playsInline
       src={videoSrc}
+      onError={() => setVideoFailed(true)}
       style={{
         position: "absolute", inset: 0, width: "100%", height: "100%",
         objectFit: "cover", zIndex: 0, pointerEvents: "none",
@@ -171,7 +171,7 @@ export default function MainLayout({ user, onLogout }) {
 
   const renderPage = (id) => {
     switch (id) {
-      case "play":        return <PlayPage user={user} onOpenCommunity={() => setPage("community")} />;
+      case "play":        return <PlayPage user={user} onOpenCommunity={() => setCommunityOpen(v => !v)} />;
       case "profile":     return <ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} />;
       case "community":   return <CommunityPage user={user} onBadgeChange={setFriendBadge} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} />;
       case "news":        return <NewsPage />;

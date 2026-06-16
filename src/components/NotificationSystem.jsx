@@ -3,6 +3,45 @@ import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { X, Bell, CheckCircle, Users, Coins, MessageCircle, Info, Trash2 } from "lucide-react";
 import { notifyDesktop } from "../lib/tauri.js";
 
+// ─── Sound effects via Web Audio API ──────────────────────────────────────────
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx;
+}
+
+function playTone(freq, duration, type = "sine", volume = 0.12) {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  } catch {}
+}
+
+const SOUNDS = {
+  friend:  () => { playTone(880, 0.12, "sine", 0.10); setTimeout(() => playTone(1175, 0.15, "sine", 0.10), 100); },
+  balance: () => { playTone(660, 0.08, "sine", 0.10); setTimeout(() => playTone(880, 0.08, "sine", 0.10), 70); setTimeout(() => playTone(1100, 0.12, "sine", 0.10), 140); },
+  ticket:  () => { playTone(523, 0.15, "triangle", 0.10); setTimeout(() => playTone(659, 0.18, "triangle", 0.10), 120); },
+  system:  () => { playTone(698, 0.12, "sine", 0.08); },
+  success: () => { playTone(523, 0.1, "sine", 0.10); setTimeout(() => playTone(784, 0.15, "sine", 0.10), 80); },
+};
+
+function playNotifSound(type) {
+  try {
+    const settings = JSON.parse(localStorage.getItem("sbgames_settings") || "{}");
+    if (settings.notifSound === false) return;
+    (SOUNDS[type] || SOUNDS.system)();
+  } catch {}
+}
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 const NotifCtx = createContext(null);
 export function useNotifications() { return useContext(NotifCtx); }
@@ -49,6 +88,9 @@ export function NotificationProvider({ children }) {
 
     // Кастомное десктопное уведомление (Steam-стиль)
     notifyDesktop(title, body, type);
+
+    // Звуковой эффект
+    playNotifSound(type);
   }, []);
 
   useEffect(() => {

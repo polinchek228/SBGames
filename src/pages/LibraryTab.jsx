@@ -77,7 +77,8 @@ function FramePreview({ color, item, large }) {
 }
 
 function BackgroundPreview({ color, item, large }) {
-  if (item?.video) {
+  const [videoFailed, setVideoFailed] = React.useState(false);
+  if (item?.video && !videoFailed) {
     return (
       <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden">
         <video
@@ -86,6 +87,7 @@ function BackgroundPreview({ color, item, large }) {
           loop
           muted
           playsInline
+          onError={() => setVideoFailed(true)}
           className="w-full h-full object-cover opacity-80"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />

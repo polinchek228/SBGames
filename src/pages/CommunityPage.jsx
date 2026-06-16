@@ -620,7 +620,7 @@ function ConversationRow({ f, i, myId, onOpen, onProfile }) {
         className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-left"
         onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-        <div className="relative flex-shrink-0">
+        <div className="relative flex-shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); onProfile(); }}>
           <div className="w-11 h-11 rounded-xl flex items-center justify-center text-[13px] font-black"
             style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.5)" }}>
             {f.username?.slice(0, 2).toUpperCase()}

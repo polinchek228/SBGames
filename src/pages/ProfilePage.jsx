@@ -30,6 +30,20 @@ import RecentActivityCard, { pushLocalActivity, ACTIVITY_KEY } from "../componen
 import AchievementShowcase, { trackDate, unlockAchievement } from "../components/AchievementShowcase.jsx";
 import AchievementSystem from "../components/AchievementSystem.jsx";
 
+function VideoBackground({ src, opacity = 0.5 }) {
+  const [failed, setFailed] = React.useState(false);
+  if (failed) return null;
+  return (
+    <video
+      src={src}
+      autoPlay muted loop playsInline
+      onError={() => setFailed(true)}
+      className="absolute inset-0 w-full h-full object-cover"
+      style={{ pointerEvents: "none", opacity, zIndex: 0 }}
+    />
+  );
+}
+
 const TABS = [
   { id: "profile",       label: "Профиль",        icon: User },
   { id: "achievements",  label: "Достижения",     icon: Trophy },
@@ -87,12 +101,7 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
   return (
     <div className="flex h-full overflow-hidden bg-transparent w-full relative">
       {showLocalVideo && (
-        <video
-          src={bgItem.video}
-          className="absolute inset-0 w-full h-full object-cover"
-          autoPlay muted loop playsInline
-          style={{ pointerEvents: "none", opacity: 0.55, zIndex: 0 }}
-        />
+        <VideoBackground src={bgItem.video} opacity={0.55} />
       )}
       
       {/* Heavy overlay gradient to block bright colors of the video behind text sections */}
@@ -304,22 +313,22 @@ function ProfileTab({ user, equip }) {
 
             </div>
 
-            {/* Balance + Level — right side, stacked */}
-            <div className="flex flex-col gap-1.5 pb-1 flex-shrink-0 items-end">
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            {/* Balance + Level — right side, horizontal */}
+            <div className="flex items-center gap-2 flex-shrink-0 self-end pb-1">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
                 <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain"
                   onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                <span className="text-[14px] font-black text-white tabular-nums leading-none">
+                <span className="text-[13px] font-bold text-white tabular-nums leading-none">
                   {(user?.balance ?? 0).toLocaleString("ru-RU")}
                 </span>
-                <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>SBT</span>
+                <span className="text-[8px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>SBT</span>
               </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-                style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.15)" }}>
-                <Zap size={11} style={{ color: "#60a5fa" }} />
-                <span className="text-[13px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
-                <span className="text-[8px] font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>LVL</span>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+                style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.1)" }}>
+                <Zap size={10} style={{ color: "#60a5fa" }} />
+                <span className="text-[13px] font-bold tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
+                <span className="text-[8px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>LVL</span>
               </div>
             </div>
           </div>
@@ -662,6 +671,7 @@ function SettingsTab() {
   const saved = loadSettings();
   const [resolution, setResolution] = useState(saved.resolution ?? "1920×1080");
   const [notifs,     setNotifs]     = useState(saved.notifs     ?? true);
+  const [notifSound, setNotifSound] = useState(saved.notifSound ?? true);
   const [autoLogin,  setAutoLogin]  = useState(saved.autoLogin  ?? false);
   const [settingTab, setSettingTab] = useState("game");
   const [savedOk,    setSavedOk]    = useState(false);
@@ -675,7 +685,7 @@ function SettingsTab() {
   }, [globalBg]);
 
   const handleSaveGame = () => {
-    saveSettings({ ...loadSettings(), resolution, notifs, autoLogin, globalBg });
+    saveSettings({ ...loadSettings(), resolution, notifs, notifSound, autoLogin, globalBg });
     setSavedOk(true);
     setTimeout(() => setSavedOk(false), 2000);
   };
@@ -733,6 +743,7 @@ function SettingsTab() {
               {/* Launcher toggles */}
               <Section title="Лаунчер">
                 <Toggle label="Уведомления" icon={Bell} value={notifs} onChange={setNotifs} />
+                <Toggle label="Звук уведомлений" icon={Bell} value={notifSound} onChange={setNotifSound} />
                 <Toggle label="Автовход при запуске" icon={Shield} value={autoLogin} onChange={setAutoLogin} />
               </Section>
 
@@ -1022,12 +1033,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
   return (
     <div className="relative flex-1 flex h-full overflow-hidden">
       {activeBg?.video && !globalBgOn && (
-        <video
-          src={activeBg.video}
-          className="absolute inset-0 w-full h-full object-cover"
-          autoPlay muted loop playsInline
-          style={{ pointerEvents: "none", opacity: 0.45, zIndex: 0 }}
-        />
+        <VideoBackground src={activeBg.video} opacity={0.45} />
       )}
 
       {/* Dark overlay */}
