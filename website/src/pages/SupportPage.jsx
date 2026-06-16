@@ -289,7 +289,7 @@ function NewTicketForm({ user, onBack, onCreated }) {
       id: ticketId, category, preview: text.trim().slice(0, 60),
       status: "open", username: user?.username, createdAt: now,
       messages: [
-        { id: "sys", from: "system", text: `Тикет #${ticketId} создан.`, time: now },
+        { id: "sys", from: "system", text: "Обращение создано. Ожидайте ответа — обычно отвечаем в течение часа.", time: now },
         { id: "m1",  from: user?.id, username: user?.username, role: "user", text: text.trim(), time: now },
       ],
     });
@@ -422,7 +422,7 @@ function ChatView({ ticket, messages, user, onBack, onSend }) {
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ticket.category}</p>
-          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>#{ticket.id} · Поддержка</p>
+          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>Обращение в поддержку</p>
         </div>
         <span style={{ fontSize: 10, fontWeight: 600, padding: "4px 10px", borderRadius: 20, flexShrink: 0, background: st.bg, color: st.color }}>
           {st.label}
@@ -467,7 +467,7 @@ function ChatView({ ticket, messages, user, onBack, onSend }) {
               {!isSystem && (
                 <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 2px" }}>
                   <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>
-                    {new Date(msg.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                    {msg.time ? new Date(msg.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : ""}
                   </span>
                   {isMe && <Checks size={10} color="rgba(96,165,250,0.4)" />}
                 </div>
