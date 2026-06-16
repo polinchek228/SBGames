@@ -120,41 +120,43 @@ export default function DownloadPage() {
       </div>
 
       {/* Notes */}
-      <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
-        <p className="text-[13px] font-bold text-white mb-3">Установка</p>
+      <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
+        <p className="text-[11px] font-bold tracking-widest uppercase mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>Установка</p>
         <div className="flex flex-col gap-2">
-          <div className="flex items-start gap-2.5 rounded-xl px-4 py-2.5" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <span>🪟</span>
+
+          <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(96,165,250,0.12)" }}>
+              <WindowsLogo size={14} weight="fill" color="#60a5fa" />
+            </div>
             <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-              <span className="text-white font-medium">Windows:</span> запусти .exe и следуй установщику
+              <span className="text-white font-semibold">Windows</span> — запусти .exe и следуй установщику
             </p>
           </div>
 
-          <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <span>🍎</span>
-            <div className="flex flex-col gap-1.5">
-              <p className="text-[12px] text-white font-medium">macOS — первый запуск:</p>
-              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-                1. Открой .dmg и перетащи лаунчер в Applications
-              </p>
-              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-                2. <span className="text-yellow-400 font-medium">Не двойной клик</span> — нажми правой кнопкой → «Открыть»
-              </p>
-              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-                3. В диалоге снова нажми «Открыть» — это нужно только один раз
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
-                Это защита macOS от неизвестных разработчиков — не вирус
+          <div className="flex items-start gap-3 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(165,180,252,0.12)" }}>
+              <AppleLogo size={14} weight="fill" color="#a5b4fc" />
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-white mb-1">macOS — первый запуск</p>
+              <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
+                Открой .dmg → перетащи в Applications. <span style={{ color: "#fbbf24" }}>Не двойной клик</span> — правой кнопкой → «Открыть» → снова «Открыть» в диалоге. Только один раз.
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-2.5 rounded-xl px-4 py-2.5" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <span>🐧</span>
+          <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(134,239,172,0.12)" }}>
+              <LinuxLogo size={14} weight="fill" color="#86efac" />
+            </div>
             <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-              <span className="text-white font-medium">Linux:</span> chmod +x *.AppImage && ./*.AppImage
+              <span className="text-white font-semibold">Linux</span> —{" "}
+              <code className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: "rgba(134,239,172,0.1)", color: "#86efac" }}>
+                chmod +x *.AppImage && ./*.AppImage
+              </code>
             </p>
           </div>
+
         </div>
       </div>
     </main>
