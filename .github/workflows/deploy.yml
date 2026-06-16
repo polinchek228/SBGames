@@ -226,17 +226,9 @@ jobs:
           sudo apt-get install -y sshpass >/dev/null 2>&1
           find artifacts -type f -print0 | while IFS= read -r -d '' f; do
             fname=$(basename "$f")
-            # Upload only installer files (skip updater .zip/.sig for now)
             case "$fname" in
-              *.exe|*.msi|*.dmg|*.AppImage|*.deb)
-                echo "Uploading installer: $fname"
-                sshpass -p "${{ secrets.SERVER_PASS }}" \
-                  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                  "$f" \
-                  ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/sbgames-auth/updates/ || true
-                ;;
-              *.zip|*.sig)
-                echo "Uploading updater: $fname"
+              *.exe|*.msi|*.dmg|*.AppImage|*.deb|*.zip|*.sig|*.gz)
+                echo "Uploading: $fname"
                 sshpass -p "${{ secrets.SERVER_PASS }}" \
                   scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                   "$f" \
