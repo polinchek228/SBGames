@@ -145,7 +145,8 @@ fn get_version() -> String { env!("CARGO_PKG_VERSION").to_string() }
 #[tauri::command]
 async fn check_for_update(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     use tauri_plugin_updater::UpdaterExt;
-    let update = app.updater().check().await.map_err(|e| e.to_string())?;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
     match update {
         Some(u) => Ok(serde_json::json!({
             "available": true,
@@ -161,28 +162,16 @@ async fn check_for_update(app: tauri::AppHandle) -> Result<serde_json::Value, St
 #[tauri::command]
 async fn install_update(app: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
-    use tauri_plugin_process::ProcessExt;
-    let update = app.updater().check().await.map_err(|e| e.to_string())?;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
     match update {
         Some(u) => {
             let version = u.version.clone();
-            u.download_and_install(
-                |event| {
-                    match event {
-                        tauri_plugin_updater::DownloadEvent::Started { content_length } => {
-                            println!("[updater] started: {:?} bytes", content_length);
-                        }
-                        tauri_plugin_updater::DownloadEvent::Progress { chunk_length } => {
-                            println!("[updater] progress: +{} bytes", chunk_length);
-                        }
-                        tauri_plugin_updater::DownloadEvent::Finished => {
-                            println!("[updater] download finished");
-                        }
-                    }
-                },
-                None,
-            ).await.map_err(|e| e.to_string())?;
+            u.download_and_install(|_chunk, _total| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
             app.restart();
+            #[allow(unreachable_code)]
             Ok(version)
         }
         None => Err("No update available".to_string()),
