@@ -9,6 +9,7 @@ server/node_modules/
 nul
 mimo.exe
 *.b64
+.tauri/
 
 # Background videos — served from server, not bundled
 public/fon*.mp4
