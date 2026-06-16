@@ -114,7 +114,7 @@ export default function LoginPage({ onLogin }) {
       startPolling(data.code);
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
-      alert("AUTH ERROR: " + msg);
+      document.title = "ERR:" + msg;
       setError("Ошибка подключения");
       setLoading(false);
     }
@@ -134,7 +134,7 @@ export default function LoginPage({ onLogin }) {
       startPolling(data.code);
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
-      alert("AUTH ERROR: " + msg);
+      document.title = "ERR:" + msg;
       setError("Ошибка подключения");
       setLoading(false);
     }

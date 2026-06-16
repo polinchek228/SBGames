@@ -77,7 +77,7 @@ export default defineConfig(({ command, mode }) => {
     };
   }
   return {
-    plugins: [react(), obfuscatePlugin()],
+    plugins: [react()], // obfuscatePlugin() disabled temporarily for debugging
     clearScreen: false,
     server: {
       port: 1420,
