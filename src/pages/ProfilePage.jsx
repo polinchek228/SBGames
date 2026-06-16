@@ -76,6 +76,7 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
         const current = JSON.parse(localStorage.getItem("sbgames_user") || "{}");
         current.equip = next;
         localStorage.setItem("sbgames_user", JSON.stringify(current));
+        window.dispatchEvent(new Event("sbgames_equip_changed"));
       } catch {}
       return next;
     });

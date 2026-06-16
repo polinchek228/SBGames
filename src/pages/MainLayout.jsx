@@ -49,7 +49,8 @@ function GlobalBackground() {
       if (e.key === "sbgames_settings" || e.key === "sbgames_user") update();
     };
     window.addEventListener("storage", onStorage);
-    return () => { window.removeEventListener("storage", onStorage); };
+    window.addEventListener("sbgames_equip_changed", update);
+    return () => { window.removeEventListener("storage", onStorage); window.removeEventListener("sbgames_equip_changed", update); };
   }, []);
 
   if (!videoSrc || videoFailed) return null;
