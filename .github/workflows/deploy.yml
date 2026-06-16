@@ -205,14 +205,6 @@ jobs:
     name: Deploy to server
 
     steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: List all downloaded artifacts
-        run: find artifacts -type f | head -50
-
       - name: Download server files
         uses: actions/checkout@v4
         with:
@@ -221,8 +213,15 @@ jobs:
             server/index.js
           sparse-checkout-cone-mode: false
 
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List all downloaded artifacts
+        run: find artifacts -type f | head -50
+
       - name: Deploy updater artifacts to server
-        if: always()
         run: |
           sudo apt-get install -y sshpass >/dev/null 2>&1
           find artifacts -type f -print0 | while IFS= read -r -d '' f; do
