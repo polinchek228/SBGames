@@ -448,7 +448,8 @@ app.get("/auth/google/check", (req, res) => {
   const { state } = req.query;
   if (!state) return res.status(400).json({ status: "error" });
   const pending = googlePending.get(state);
-  if (!pending || Date.now() > (pending.expiresAt || 0)) {
+  if (!pending) return res.json({ status: "expired" });
+  if (pending.step !== "done" && Date.now() > (pending.expiresAt || 0)) {
     googlePending.delete(state);
     return res.json({ status: "expired" });
   }
