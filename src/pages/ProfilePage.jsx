@@ -84,19 +84,8 @@ export default function ProfilePage({ user, viewUserId, onBack }) {
 
   const bgItem = CATALOG_BY_ID[equip?.background];
 
-  // When globalBg is enabled, skip local video — GlobalBackground in MainLayout handles it
-  const [globalBgActive, setGlobalBgActive] = useState(() => {
-    try { return !!JSON.parse(localStorage.getItem("sbgames_settings"))?.globalBg; } catch { return false; }
-  });
-  useEffect(() => {
-    const check = () => {
-      try { setGlobalBgActive(!!JSON.parse(localStorage.getItem("sbgames_settings"))?.globalBg); } catch {}
-    };
-    window.addEventListener("storage", check);
-    return () => { window.removeEventListener("storage", check); };
-  }, []);
-
-  const showLocalVideo = bgItem?.video && !globalBgActive;
+  // GlobalBackground in MainLayout always handles video — no local duplicate
+  const showLocalVideo = false;
 
   return (
     <div className="flex h-full overflow-hidden bg-transparent w-full relative">
@@ -1029,9 +1018,6 @@ function PublicProfileView({ viewer, targetId, onBack }) {
 
   return (
     <div className="relative flex-1 flex h-full overflow-hidden">
-      {activeBg?.video && !globalBgOn && (
-        <VideoBackground src={activeBg.video} opacity={0.45} />
-      )}
 
       {/* Dark overlay */}
       <div className="absolute inset-0 z-[1] pointer-events-none"
