@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const SERVER = "94.26.83.31", USER = "root", PASSWORD = "WJ1gaad33hNXRVJL9qti";
-const DIST_DIR = path.join(__dirname, "..", "dist");
+const DIST_DIR = path.join(__dirname, "..", "website", "dist");
 
 async function run() {
   const conn = new Client();
