@@ -1156,9 +1156,8 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
     const g = viewingGroup;
     const members = g.members || [];
     const memberNames = g.memberNames || {};
-    const lvl = g.level || 1;
-    const xp = g.xp || 0;
-    const xpPct = Math.min(100, Math.round((xp % 100)));
+    const lvl = g.levelInfo?.level || 1;
+    const li = g.levelInfo || {};
     const isMember = members.includes(user?.id);
     const isApplied = appliedIds.has(g.id);
     const onlineCount = members.filter(m => onlineIds.has(m)).length;
@@ -1206,11 +1205,22 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           )}
 
           <div className="rounded-xl p-3.5 mb-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.3)" }}>Опыт клана</p>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
-              <div className="h-full rounded-full" style={{ width: `${xpPct}%`, background: "linear-gradient(90deg, #2563eb, #3b82f6)" }} />
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.3)" }}>Уровень клана</p>
+              <p className="text-[10px] font-bold" style={{ color: "rgba(96,165,250,0.8)" }}>
+                {lvl} / {li.maxLevel || 7}
+              </p>
             </div>
-            <p className="text-[10px] mt-1.5" style={{ color: "rgba(255,255,255,0.35)" }}>{xp} XP</p>
+            <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: "rgba(255,255,255,0.07)" }}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${li.xpPct || 0}%`, background: "linear-gradient(90deg, #2563eb, #3b82f6)" }} />
+            </div>
+            {li.nextLevel ? (
+              <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                До ур. {li.nextLevel}: {li.xp || 0}/{li.maxXp || 0} игроков с {li.nextHoursPerMember || 0}ч+
+              </p>
+            ) : (
+              <p className="text-[9px]" style={{ color: "rgba(251,191,36,0.6)" }}>Максимальный уровень!</p>
+            )}
           </div>
 
           <div className="rounded-xl p-3.5 mb-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1238,6 +1248,9 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                     <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#22c55e" }} />
                   )}
                 </div>
+                <span className="text-[9px] font-mono flex-shrink-0" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  {li.memberHours?.[mid] != null ? `${Math.round((li.memberHours[mid] || 0) * 10) / 10}ч` : "0ч"}
+                </span>
               </div>
               );
             })}
@@ -1375,9 +1388,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             groups.filter(Boolean).map((g, idx) => {
               const onlineCount = (g.members || []).filter(m => onlineIds.has(m)).length;
               const isOwner = g.ownerId === user?.id;
-              const lvl = g.level || 1;
-              const xp = g.xp || 0;
-              const xpPct = Math.min(100, Math.round((xp % 100)));
+              const lvl = g.levelInfo?.level || 1;
               return (
                 <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.03 }} className="mb-2">
@@ -1402,6 +1413,10 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                           {isOwner && (
                             <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
                               style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>OWNER</span>
+                          )}
+                          {g.closed && (
+                            <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
+                              style={{ background: "rgba(239,68,68,0.12)", color: "rgba(239,68,68,0.7)" }}>ЗАКРЫТ</span>
                           )}
                         </div>
                         <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -1434,7 +1449,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             </div>
           ) : (
             browseList.map((g, idx) => {
-              const lvl = g.level || 1;
+              const lvl = g.levelInfo?.level || 1;
               const isApplied = appliedIds.has(g.id);
               const isMember = (g.members || []).includes(user?.id);
               return (
@@ -1765,10 +1780,10 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-[13px] font-bold text-white truncate">{group.name}</p>
-            {group.level && (
+            {group.levelInfo?.level && (
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md flex-shrink-0"
                 style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.25)" }}>
-                LVL {group.level}
+                LVL {group.levelInfo.level}
               </span>
             )}
           </div>
@@ -1822,6 +1837,9 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
                       <span className="ml-1.5 text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
                         style={{ background: roleBg, color: roleColor }}>{roleLabel}</span>
                     )}
+                  </span>
+                  <span className="text-[9px] font-mono flex-shrink-0" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    {group.levelInfo?.memberHours?.[mid] != null ? `${Math.round((group.levelInfo.memberHours[mid] || 0) * 10) / 10}ч` : "0ч"}
                   </span>
                   {canKickMembers && mid !== user?.id && mid !== group.ownerId && !(isOwner && role === "leader") && (
                     <div className="flex gap-1">

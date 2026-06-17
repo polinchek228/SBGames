@@ -1086,7 +1086,7 @@ function userPartiesList(uid) {
 // ─── Redis persistence for groups ─────────────────────────────────────────────
 async function saveGroup(g) {
   try {
-    const data = { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, createdAt: g.createdAt };
+    const data = { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, playHours: g.playHours || {}, createdAt: g.createdAt };
     await redis.set(`sbgames:group:` + g.id, JSON.stringify(data));
     await redis.sadd("sbgames:group_ids", g.id);
   } catch {}
@@ -1101,7 +1101,7 @@ async function loadGroupsFromRedis() {
       const raw = await redis.get(`sbgames:group:` + id);
       if (!raw) continue;
       const d = JSON.parse(raw);
-      const g = { id: d.id, name: d.name, description: d.description || "", avatar: d.avatar || "", ownerId: d.ownerId, members: new Set(d.members), memberRoles: d.memberRoles || {}, closed: !!d.closed, createdAt: d.createdAt };
+      const g = { id: d.id, name: d.name, description: d.description || "", avatar: d.avatar || "", ownerId: d.ownerId, members: new Set(d.members), memberRoles: d.memberRoles || {}, closed: !!d.closed, playHours: d.playHours || {}, createdAt: d.createdAt };
       groups.set(id, g); groupMessages.set(id, []);
       const numId = parseInt(id, 10);
       if (!isNaN(numId) && numId >= groupCounter) groupCounter = numId + 1;
@@ -1332,17 +1332,58 @@ loadFriendshipsFromRedis();
 loadFriendRequestsFromRedis();
 loadListingsFromRedis();
 loadTicketsFromRedis();
+// ─── Clan Level System ───────────────────────────────────────────────────────
+// Level requirements: { level, minMembers, hoursPerMember }
+// To reach level N, at least minMembers must have played >= hoursPerMember each.
+const CLAN_LEVELS = [
+  { level: 1, minMembers: 0, hoursPerMember: 0 },      // default
+  { level: 2, minMembers: 2, hoursPerMember: 3 },       // 2×3h = 6h total
+  { level: 3, minMembers: 5, hoursPerMember: 5 },       // 5×5h = 25h total
+  { level: 4, minMembers: 8, hoursPerMember: 8 },       // 8×8h = 64h total
+  { level: 5, minMembers: 10, hoursPerMember: 10 },     // 10×10h = 100h total
+  { level: 6, minMembers: 15, hoursPerMember: 15 },     // 15×15h = 225h total
+  { level: 7, minMembers: 20, hoursPerMember: 20 },     // 20×20h = 400h total
+];
+const CLAN_MAX_LEVEL = CLAN_LEVELS[CLAN_LEVELS.length - 1].level;
+
+function calcClanLevel(g) {
+  const ph = g.playHours || {};
+  let lvl = 1;
+  for (const req of CLAN_LEVELS) {
+    if (req.level <= 1) continue;
+    const qualified = Object.values(ph).filter(h => h >= req.hoursPerMember).length;
+    if (qualified >= req.minMembers) lvl = req.level;
+  }
+  return lvl;
+}
+
+function clanLevelInfo(g) {
+  const lvl = calcClanLevel(g);
+  const nextReq = CLAN_LEVELS.find(r => r.level === lvl + 1);
+  const ph = g.playHours || {};
+  const qualified = nextReq ? Object.values(ph).filter(h => h >= nextReq.hoursPerMember).length : 0;
+  const progress = nextReq ? Math.min(1, qualified / nextReq.minMembers) : 1;
+  return {
+    level: lvl,
+    maxXp: nextReq ? nextReq.minMembers : 0,
+    xp: qualified,
+    xpPct: Math.round(progress * 100),
+    nextLevel: nextReq ? nextReq.level : null,
+    nextMinMembers: nextReq ? nextReq.minMembers : null,
+    nextHoursPerMember: nextReq ? nextReq.hoursPerMember : null,
+    maxLevel: CLAN_MAX_LEVEL,
+    memberHours: Object.fromEntries(Object.entries(ph).map(([k, v]) => [k, Math.round(v * 10) / 10])),
+  };
+}
+
 function publicGroup(g) {
-  const msgCount = (groupMessages.get(g.id) || []).length;
-  const xp = msgCount * 5;
-  const level = Math.floor(xp / 100) + 1;
-  const xpNext = level * 100;
   const memberNames = {};
   for (const mid of g.members) {
     const acc = [...redisAccounts._map.values()].find(a => a && a.id === mid);
     if (acc) memberNames[mid] = acc.username;
   }
-  return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, memberNames, createdAt: g.createdAt, xp, level, xpNext };
+  const li = clanLevelInfo(g);
+  return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, memberNames, createdAt: g.createdAt, levelInfo: li };
 }
 
 app.get("/api/groups", requireAuth, (req, res) => {
@@ -1357,7 +1398,7 @@ app.post("/api/groups", requireAuth, (req, res) => {
     return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы создать новый" });
   }
   const id = String(++groupCounter);
-  const g = { id, name, description, ownerId: req.userId, members: new Set([req.userId]), memberRoles: {}, closed: false, createdAt: Date.now() };
+  const g = { id, name, description, ownerId: req.userId, members: new Set([req.userId]), memberRoles: {}, closed: false, playHours: {}, createdAt: Date.now() };
   groups.set(id, g); groupMessages.set(id, []);
   saveGroup(g);
   res.json({ ok: true, group: publicGroup(g) });
@@ -1439,9 +1480,7 @@ app.get("/api/groups/browse", requireAuth, (req, res) => {
       name: pub.name,
       description: pub.description,
       avatar: pub.avatar,
-      level: pub.level,
-      xp: pub.xp,
-      xpNext: pub.xpNext,
+      levelInfo: pub.levelInfo,
       members: pub.members,
       memberNames: pub.memberNames,
       memberRoles: pub.memberRoles,
@@ -1450,7 +1489,7 @@ app.get("/api/groups/browse", requireAuth, (req, res) => {
       ownerId: pub.ownerId,
       ownerName: pub.memberNames?.[pub.ownerId] || "",
     };
-  }).sort((a, b) => b.level - a.level || b.memberCount - a.memberCount);
+  }).sort((a, b) => (b.levelInfo?.level || 1) - (a.levelInfo?.level || 1) || b.memberCount - a.memberCount);
   res.json({ groups: out });
 });
 
@@ -1595,7 +1634,7 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
-  wsClients.set(clientId, { ws, userId: null, role: "user", ip, msgCount: 0, msgWindowStart: Date.now(), isAlive: true });
+  wsClients.set(clientId, { ws, userId: null, role: "user", ip, msgCount: 0, msgWindowStart: Date.now(), isAlive: true, lastActive: Date.now() });
 
   // Pong from client marks connection alive
   ws.on("pong", () => {
@@ -1616,6 +1655,7 @@ wss.on("connection", (ws, req) => {
       let msg; try { msg = JSON.parse(raw); } catch { return; }
       const client = wsClients.get(clientId);
       if (!client) return;
+      client.lastActive = Date.now();
 
       // Rate limit сообщений
       const now = Date.now();
@@ -2082,6 +2122,45 @@ setInterval(() => {
   broadcastOnlineUsers();
 }, WS_PING_INTERVAL);
 
+// ─── Clan Play Hours Tracking ────────────────────────────────────────────────
+// Every 60s, increment playHours for each active clan member by 1/60 (1 minute).
+// A user is "active" if they sent any WS message in the last 120s.
+const PLAY_HOURS_TICK_MS = 60_000; // check every 60s
+const PLAY_HOURS活性_THRESHOLD = 120_000; // considered active if last message < 120s ago
+const PLAY_HOURS_INCREMENT = 1 / 60; // each tick = 1 minute = 1/60 hour
+
+setInterval(() => {
+  const now = Date.now();
+  const activeUserIds = new Set();
+  for (const [, client] of wsClients.entries()) {
+    if (client.userId && client.lastActive && (now - client.lastActive) < PLAY_HOURS活性_THRESHOLD) {
+      activeUserIds.add(client.userId);
+    }
+  }
+  if (activeUserIds.size === 0) return;
+
+  let anyUpdate = false;
+  for (const [, g] of groups.entries()) {
+    let groupUpdated = false;
+    for (const mid of g.members) {
+      if (!activeUserIds.has(mid)) continue;
+      if (!g.playHours) g.playHours = {};
+      g.playHours[mid] = (g.playHours[mid] || 0) + PLAY_HOURS_INCREMENT;
+      groupUpdated = true;
+    }
+    if (groupUpdated) {
+      anyUpdate = true;
+      // Check level change and broadcast if needed
+      const oldLvl = calcClanLevel(g);
+      // already updated above
+    }
+  }
+  if (anyUpdate) {
+    // Broadcast level updates to affected clans (throttled — only every 10 ticks = 10 min)
+    // For now, just save — level is computed dynamically in publicGroup
+  }
+}, PLAY_HOURS_TICK_MS);
+
 function send(ws, data) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 function broadcastOnlineUsers() {
   const users = [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username, role: c.role }));
@@ -2124,6 +2203,11 @@ async function fetchNewsPublic() {
 app.get("/news", async (req, res) => res.json({ posts: await fetchNewsPublic() }));
 setInterval(fetchNewsPublic, 300_000);
 fetchNewsPublic();
+
+// Periodically save all groups to Redis to persist playHours (every 5 min)
+setInterval(() => {
+  for (const [, g] of groups.entries()) saveGroup(g);
+}, 300_000);
 
 // ΓöÇΓöÇΓöÇ Telegram Bot ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const TelegramBot = require("node-telegram-bot-api");
