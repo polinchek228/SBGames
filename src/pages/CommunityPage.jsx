@@ -901,6 +901,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 groupVoiceIds={groupVoiceIds}
                 activeCall={activeCall}
                 onJoinCall={() => joinGroupCall(activeGroup.id, groupVoiceIds)}
+                onHangCall={hangUp}
                 onBack={() => { setActiveGroup(null); setGroupMessages([]); }}
                 onLeave={async () => {
                   if (activeCall?.type === "group" && activeCall.groupId === activeGroup.id) hangUp();
@@ -1786,7 +1787,7 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
 }
 
 // ─── GroupChat ───────────────────────────────────────────────────────────────
-function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, onEditDescription, onToggleClosed, groupVoiceIds = [], activeCall, onJoinCall }) {
+function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, onEditDescription, onToggleClosed, groupVoiceIds = [], activeCall, onJoinCall, onHangCall }) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [inviteNick, setInviteNick] = useState("");
@@ -1800,6 +1801,8 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
   const myRole = isOwner ? "owner" : (group.memberRoles?.[user?.id] || "member");
   const canKickMembers = isOwner || myRole === "leader";
   const canManage = isOwner || myRole === "leader";
+  const inThisCall = activeCall?.type === "group" && activeCall.groupId === group.id;
+  const memberNames = group.memberNames || {};
 
   const submit = (e) => {
     e?.preventDefault();
@@ -1846,15 +1849,6 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
             {groupVoiceIds.length > 0 && <span style={{ color: "#4ade80" }}> &middot; {groupVoiceIds.length} в голосе</span>}
           </p>
         </div>
-        {!activeCall && (
-          <button onClick={onJoinCall}
-            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
-            style={{ background: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.3)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.15)"}>
-            <Phone size={14} weight="fill" />
-          </button>
-        )}
         <button onClick={() => setShowMembers(!showMembers)}
           className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
           style={{ background: showMembers ? "rgba(255,255,255,0.1)" : "transparent", color: "rgba(255,255,255,0.5)" }}
@@ -1863,6 +1857,86 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
           <Users size={16} weight={showMembers ? "fill" : "regular"} />
         </button>
       </div>
+
+      {/* ─── Voice call card ─── */}
+      {(groupVoiceIds.length > 0 || inThisCall) && (
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+          className="flex-shrink-0 px-5 pt-3 pb-0">
+          <div className="rounded-2xl p-3.5"
+            style={{
+              background: inThisCall
+                ? "linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(37,99,235,0.08) 100%)"
+                : "rgba(37,99,235,0.06)",
+              border: inThisCall
+                ? "1px solid rgba(34,197,94,0.2)"
+                : "1px solid rgba(59,130,246,0.15)",
+            }}>
+            <div className="flex items-center gap-2.5 mb-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: inThisCall ? "rgba(34,197,94,0.15)" : "rgba(37,99,235,0.15)",
+                  border: inThisCall ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(59,130,246,0.2)",
+                }}>
+                <Phone size={14} weight="fill" style={{ color: inThisCall ? "#4ade80" : "#60a5fa" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold" style={{ color: inThisCall ? "#4ade80" : "#93c5fd" }}>
+                  {inThisCall ? "Голосовой чат" : groupVoiceIds.length > 0 ? "Идёт голосовой чат" : "Голосовой чат"}
+                </p>
+                <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  {groupVoiceIds.length > 0
+                    ? `${groupVoiceIds.length} ${groupVoiceIds.length === 1 ? "участник" : groupVoiceIds.length < 5 ? "участника" : "участников"}`
+                    : "Никто не в голосе"}
+                </p>
+              </div>
+              {!inThisCall && groupVoiceIds.length > 0 && (
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                  onClick={onJoinCall}
+                  className="px-4 py-2 rounded-xl text-[11px] font-bold text-white flex-shrink-0"
+                  style={{ background: "rgba(34,197,94,0.4)" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(34,197,94,0.55)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(34,197,94,0.4)"}>
+                  Присоединиться
+                </motion.button>
+              )}
+              {inThisCall && (
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                  onClick={onHangCall}
+                  className="px-4 py-2 rounded-xl text-[11px] font-bold flex-shrink-0"
+                  style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.25)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.15)"}>
+                  Покинуть
+                </motion.button>
+              )}
+            </div>
+            {groupVoiceIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {groupVoiceIds.map(uid => (
+                  <div key={uid} className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80" }} />
+                    <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>
+                      {uid === user?.id ? "Ты" : (memberNames[uid] || uid)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+      {!inThisCall && groupVoiceIds.length === 0 && (
+        <div className="flex-shrink-0 px-5 pt-3 pb-0">
+          <button onClick={onJoinCall}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all"
+            style={{ background: "rgba(37,99,235,0.08)", color: "rgba(96,165,250,0.7)", border: "1px dashed rgba(59,130,246,0.2)" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(37,99,235,0.15)"; e.currentTarget.style.color = "rgba(96,165,250,1)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(37,99,235,0.08)"; e.currentTarget.style.color = "rgba(96,165,250,0.7)"; }}>
+            <Phone size={12} weight="fill" /> Начать голосовой чат
+          </button>
+        </div>
+      )}
 
       <AnimatePresence>
         {showMembers && (
