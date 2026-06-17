@@ -1179,8 +1179,8 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           </p>
         </div>
       ) : (
-        groups.map((g, idx) => {
-          const onlineCount = g.members.filter(m => onlineIds.has(m)).length;
+        groups.filter(Boolean).map((g, idx) => {
+          const onlineCount = (g.members || []).filter(m => onlineIds.has(m)).length;
           const isOwner = g.ownerId === user?.id;
           const lvl = g.level || 1;
           const xp = g.xp || 0;
