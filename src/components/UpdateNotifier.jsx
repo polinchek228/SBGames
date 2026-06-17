@@ -67,9 +67,10 @@ export default function UpdateNotifier() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
                 width: 32, height: 32, borderRadius: 8,
-                background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+                background: "rgba(37,99,235,0.2)",
+                border: "1px solid rgba(59,130,246,0.3)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 16,
+                fontSize: 16, color: "#60a5fa",
               }}>
                 &#x2191;
               </div>
@@ -174,7 +175,7 @@ export default function UpdateNotifier() {
                   onClick={handleInstall}
                   style={{
                     flex: 2, padding: "8px 0", borderRadius: 8,
-                    background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+                    background: "linear-gradient(135deg, #2563eb, #3b82f6)",
                     border: "none",
                     color: "#fff",
                     fontSize: 12, fontWeight: 600, cursor: "pointer",
@@ -206,7 +207,7 @@ export default function UpdateNotifier() {
             width: 44,
             height: 44,
             borderRadius: 12,
-            background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+            background: "linear-gradient(135deg, #2563eb, #3b82f6)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
