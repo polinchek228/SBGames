@@ -1397,10 +1397,11 @@ wss.on("connection", (ws, req) => {
           wsClients.set(clientId, client); broadcastOnlineUsers();
           let myFriends = [];
           try {
-            myFriends = [...getFriends(client.userId)].map(fid => {
-              const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
+            myFriends = (await Promise.all([...getFriends(client.userId)].map(async fid => {
+              let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
+              if (!fa) { try { fa = await redisAccounts.get(fid); } catch {} }
               return fa ? { id: fa.id, username: fa.username } : null;
-            }).filter(Boolean);
+            }))).filter(Boolean);
           } catch (e) {
             console.error("[WS Auth Error] Failed to retrieve friends:", e);
           }
@@ -1450,10 +1451,11 @@ wss.on("connection", (ws, req) => {
             saveFriendships(fromId);
             let meFriends = [];
             try {
-              meFriends = [...getFriends(client.userId)].map(fid => {
-                const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
+              meFriends = (await Promise.all([...getFriends(client.userId)].map(async fid => {
+                let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
+                if (!fa) { try { fa = await redisAccounts.get(fid); } catch {} }
                 return fa ? { id: fa.id, username: fa.username } : null;
-              }).filter(Boolean);
+              }))).filter(Boolean);
             } catch (e) {
               console.error("[WS Friend Respond Error] Failed to get friends list:", e);
             }
@@ -1681,10 +1683,13 @@ wss.on("connection", (ws, req) => {
           break;
         }
         case "community_sync": {
-          send(ws, { type: "friends_list", friends: [...getFriends(client.userId)].map(fid => {
-            const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
+          const friendIds = [...getFriends(client.userId)];
+          const friendList = await Promise.all(friendIds.map(async fid => {
+            let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
+            if (!fa) { try { fa = await redisAccounts.get(fid); } catch {} }
             return fa ? { id: fa.id, username: fa.username } : null;
-          }).filter(Boolean) });
+          }));
+          send(ws, { type: "friends_list", friends: friendList.filter(Boolean) });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
           send(ws, { type: "online_users", users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username, role: c.role })) });
           send(ws, { type: "groups_list", groups: [...groups.values()].filter(g => g.members.has(client.userId)).map(publicGroup) });
