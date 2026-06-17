@@ -1063,11 +1063,12 @@ function userPartyIds(uid) {
   return userParties.get(uid);
 }
 
-function publicParty(p) {
-  const memberList = [...p.members].map(uid => {
-    const acc = [...redisAccounts._map.values()].find(a => a && a.id === uid);
+async function publicParty(p) {
+  const memberList = await Promise.all([...p.members].map(async uid => {
+    let acc = [...redisAccounts._map.values()].find(a => a && a.id === uid);
+    if (!acc) { try { acc = JSON.parse(await redisAccounts.get(uid)); } catch {} }
     return { id: uid, username: acc?.username || uid };
-  });
+  }));
   return { id: p.id, name: p.name, leaderId: p.leaderId, members: memberList, createdAt: p.createdAt };
 }
 
@@ -1078,8 +1079,8 @@ function disbandParty(partyId) {
   parties.delete(partyId);
 }
 
-function userPartiesList(uid) {
-  return [...userPartyIds(uid)].map(id => parties.get(id)).filter(Boolean).map(publicParty);
+async function userPartiesList(uid) {
+  return Promise.all([...userPartyIds(uid)].map(id => parties.get(id)).filter(Boolean).map(publicParty));
 }
 
 
@@ -1376,21 +1377,27 @@ function clanLevelInfo(g) {
   };
 }
 
-function publicGroup(g) {
+async function publicGroup(g) {
   const memberNames = {};
   for (const mid of g.members) {
-    const acc = [...redisAccounts._map.values()].find(a => a && a.id === mid);
-    if (acc) memberNames[mid] = acc.username;
+    let acc = [...redisAccounts._map.values()].find(a => a && a.id === mid);
+    if (!acc) {
+      try { acc = await redisAccounts.get(mid); } catch {}
+      if (acc && !acc.username) acc.username = acc.telegram || mid;
+    }
+    memberNames[mid] = acc?.username || acc?.telegram || "";
   }
   const li = clanLevelInfo(g);
   return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, memberNames, createdAt: g.createdAt, levelInfo: li };
 }
 
-app.get("/api/groups", requireAuth, (req, res) => {
-  res.json({ groups: [...groups.values()].filter(g => g.members.has(req.userId)).map(publicGroup) });
+app.get("/api/groups", requireAuth, async (req, res) => {
+  const myGroups = [...groups.values()].filter(g => g.members.has(req.userId));
+  const pubGroups = await Promise.all(myGroups.map(publicGroup));
+  res.json({ groups: pubGroups });
 });
 
-app.post("/api/groups", requireAuth, (req, res) => {
+app.post("/api/groups", requireAuth, async (req, res) => {
   const name = sanitize(req.body.name || "", 40);
   if (name.length < 2 || name.length > 40) return res.status(400).json({ message: "Название: 2–40 символов" });
   const description = sanitize(req.body.description || "", 200);
@@ -1401,7 +1408,7 @@ app.post("/api/groups", requireAuth, (req, res) => {
   const g = { id, name, description, ownerId: req.userId, members: new Set([req.userId]), memberRoles: {}, closed: false, playHours: {}, createdAt: Date.now() };
   groups.set(id, g); groupMessages.set(id, []);
   saveGroup(g);
-  res.json({ ok: true, group: publicGroup(g) });
+  res.json({ ok: true, group: await publicGroup(g) });
 });
 
 app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
@@ -1424,7 +1431,7 @@ app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
+app.post("/api/groups/:id/respond", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
@@ -1436,12 +1443,13 @@ app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
       return res.status(400).json({ message: "Ты уже состоишь в другом клане" });
     }
     g.members.add(req.userId);
-    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+    const pub = await publicGroup(g);
+    for (const m of g.members) sendToUser(m, { type: "group_update", group: pub });
   }
-  res.json({ ok: true, group: publicGroup(g) });
+  res.json({ ok: true, group: await publicGroup(g) });
 });
 
-app.post("/api/groups/:id/leave", requireAuth, (req, res) => {
+app.post("/api/groups/:id/leave", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Клан не найден" });
@@ -1452,7 +1460,8 @@ app.post("/api/groups/:id/leave", requireAuth, (req, res) => {
   } else {
     if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value;
     saveGroup(g);
-    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+    const pub = await publicGroup(g);
+    for (const m of g.members) sendToUser(m, { type: "group_update", group: pub });
   }
   res.json({ ok: true });
 });
@@ -1472,10 +1481,11 @@ app.get("/api/groups/invites", requireAuth, (req, res) => {
 
 // ─── Clan browse + join requests ──────────────────────────────────────────────
 // Public clan directory: safe public fields only, no membership required.
-app.get("/api/groups/browse", requireAuth, (req, res) => {
-  const out = [...groups.values()].map(g => {
-    const pub = publicGroup(g);
-    return {
+app.get("/api/groups/browse", requireAuth, async (req, res) => {
+  const out = [];
+  for (const g of groups.values()) {
+    const pub = await publicGroup(g);
+    out.push({
       id: pub.id,
       name: pub.name,
       description: pub.description,
@@ -1488,8 +1498,9 @@ app.get("/api/groups/browse", requireAuth, (req, res) => {
       memberCount: pub.members.length,
       ownerId: pub.ownerId,
       ownerName: pub.memberNames?.[pub.ownerId] || "",
-    };
-  }).sort((a, b) => (b.levelInfo?.level || 1) - (a.levelInfo?.level || 1) || b.memberCount - a.memberCount);
+    });
+  }
+  out.sort((a, b) => (b.levelInfo?.level || 1) - (a.levelInfo?.level || 1) || b.memberCount - a.memberCount);
   res.json({ groups: out });
 });
 
@@ -1526,7 +1537,7 @@ app.get("/api/groups/:id/requests", requireAuth, (req, res) => {
 });
 
 // Owner/leader/elder approves or rejects an applicant.
-app.post("/api/groups/:id/requests/:userId", requireAuth, (req, res) => {
+app.post("/api/groups/:id/requests/:userId", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const applicantId = sanitize(req.params.userId, 64);
   const g = groups.get(gid);
@@ -1544,7 +1555,8 @@ app.post("/api/groups/:id/requests/:userId", requireAuth, (req, res) => {
     }
     g.members.add(applicantId);
     saveGroup(g);
-    for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: publicGroup(g) });
+    const pub = await publicGroup(g);
+    for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: pub });
     sendToUser(applicantId, { type: "group_join_accepted", groupId: gid, groupName: g.name });
   } else {
     sendToUser(applicantId, { type: "group_join_rejected", groupId: gid, groupName: g.name });
@@ -1553,30 +1565,32 @@ app.post("/api/groups/:id/requests/:userId", requireAuth, (req, res) => {
 });
 
 // ─── Group settings (owner/leader can edit) ────────────────────────────────
-app.put("/api/groups/:id/description", requireAuth, (req, res) => {
+app.put("/api/groups/:id/description", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
   if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
   g.description = sanitize(req.body.description || "", 200);
   saveGroup(g);
-  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  res.json({ ok: true, group: publicGroup(g) });
+  const pub = await publicGroup(g);
+  for (const m of g.members) sendToUser(m, { type: "group_update", group: pub });
+  res.json({ ok: true, group: pub });
 });
 
-app.put("/api/groups/:id/avatar", requireAuth, (req, res) => {
+app.put("/api/groups/:id/avatar", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
   if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
   g.avatar = sanitize(req.body.avatar || "", 500);
   saveGroup(g);
-  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  res.json({ ok: true, group: publicGroup(g) });
+  const pub = await publicGroup(g);
+  for (const m of g.members) sendToUser(m, { type: "group_update", group: pub });
+  res.json({ ok: true, group: pub });
 });
 
 // Owner assigns a role to a member
-app.put("/api/groups/:id/role", requireAuth, (req, res) => {
+app.put("/api/groups/:id/role", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
@@ -1594,20 +1608,22 @@ app.put("/api/groups/:id/role", requireAuth, (req, res) => {
     g.memberRoles[targetId] = role;
   }
   saveGroup(g);
-  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  res.json({ ok: true, group: publicGroup(g) });
+  const pub = await publicGroup(g);
+  for (const m of g.members) sendToUser(m, { type: "group_update", group: pub });
+  res.json({ ok: true, group: pub });
 });
 
 // Owner toggles closed (private) mode — no one can apply, only invited
-app.put("/api/groups/:id/closed", requireAuth, (req, res) => {
+app.put("/api/groups/:id/closed", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
   if (g.ownerId !== req.userId) return res.status(403).json({ message: "Только владелец может закрыть клан" });
   g.closed = !!req.body.closed;
   saveGroup(g);
-  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  res.json({ ok: true, group: publicGroup(g) });
+  const pub = await publicGroup(g);
+  for (const m of g.members) sendToUser(m, { type: "group_update", group: pub });
+  res.json({ ok: true, group: pub });
 });
 
 app.get("/online", (_, res) => {
@@ -1697,7 +1713,7 @@ wss.on("connection", (ws, req) => {
           }
           send(ws, { type: "friends_list", friends: myFriends });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
+          send(ws, { type: "parties_list", parties: await userPartiesList(client.userId) });
           send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
           break;
@@ -1873,9 +1889,9 @@ wss.on("connection", (ws, req) => {
         case "group_send": {
           const gid = sanitize(msg.groupId || "", 32);
           const g = groups.get(gid);
-          if (!g || !g.members.has(client.userId)) return;
+          if (!g || !g.members.has(client.userId)) { send(ws, { type: "group_error", text: "Ты не в этом клане" }); break; }
           const gtext = sanitize(msg.text || "", 1000);
-          if (!gtext) return;
+          if (!gtext) { send(ws, { type: "group_error", text: "Пустое сообщение" }); break; }
           const m = { id: uuidv4(), fromId: client.userId, fromUsername: client.username || "Player", text: gtext, time: Date.now() };
           const list = groupMessages.get(gid) || [];
           list.push(m);
@@ -1891,13 +1907,14 @@ wss.on("connection", (ws, req) => {
           const targetUserId = sanitize(msg.userId || "", 64);
           const g = groups.get(gid);
           if (!g || !canKick(g, client.userId) || !g.members.has(targetUserId) || targetUserId === client.userId) break;
-          if (getMemberRole(g, targetUserId) === ROLE_OWNER) break;
-          if (!canKick(g, client.userId) && getMemberRole(g, targetUserId) === ROLE_LEADER) break;
+          const targetRole = getMemberRole(g, targetUserId);
+          if (targetRole === ROLE_OWNER) break; // владельца кикнуть нельзя никогда
+          if (targetRole === ROLE_LEADER && getMemberRole(g, client.userId) !== ROLE_OWNER) break; // лидера снимает только владелец
           delete g.memberRoles[targetUserId];
           g.members.delete(targetUserId);
           sendToUser(targetUserId, { type: "group_kicked", groupId: gid, groupName: g.name });
           if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid); }
-          else { saveGroup(g); for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: publicGroup(g) }); }
+          else { saveGroup(g); const pub = await publicGroup(g); for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: pub }); }
           break;
         }
         // ─── DM Calls ────────────────────────────────────────────────────────────
@@ -1984,7 +2001,7 @@ wss.on("connection", (ws, req) => {
           const p = { id, name: pname, leaderId: client.userId, members: new Set([client.userId]), createdAt: Date.now() };
           parties.set(id, p);
           userPartyIds(client.userId).add(id);
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
+          send(ws, { type: "parties_list", parties: await userPartiesList(client.userId) });
           break;
         }
         case "party_invite": {
@@ -2007,7 +2024,7 @@ wss.on("connection", (ws, req) => {
             if (p && p.members.size < 8) {
               p.members.add(client.userId);
               userPartyIds(client.userId).add(partyId);
-              for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
+              for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
             }
           }
           send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
@@ -2023,9 +2040,9 @@ wss.on("connection", (ws, req) => {
           if (p.members.size === 0) { disbandParty(partyId); }
           else {
             if (p.leaderId === client.userId) p.leaderId = p.members.values().next().value;
-            for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
+            for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
           }
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
+          send(ws, { type: "parties_list", parties: await userPartiesList(client.userId) });
           break;
         }
         case "party_kick": {
@@ -2035,8 +2052,8 @@ wss.on("connection", (ws, req) => {
           if (!p || p.leaderId !== client.userId || targetId === client.userId) break;
           p.members.delete(targetId);
           userPartyIds(targetId).delete(partyId);
-          sendToUser(targetId, { type: "parties_list", parties: userPartiesList(targetId) });
-          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
+          sendToUser(targetId, { type: "parties_list", parties: await userPartiesList(targetId) });
+          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
           break;
         }
         case "party_rename": {
@@ -2044,7 +2061,7 @@ wss.on("connection", (ws, req) => {
           const p = parties.get(partyId);
           if (!p || p.leaderId !== client.userId) break;
           p.name = sanitize(name || "", 40) || p.name;
-          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
+          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
           break;
         }
         case "community_sync": {
@@ -2057,11 +2074,11 @@ wss.on("connection", (ws, req) => {
           send(ws, { type: "friends_list", friends: friendList.filter(Boolean) });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
           send(ws, { type: "online_users", users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username, role: c.role })) });
-          send(ws, { type: "groups_list", groups: [...groups.values()].filter(g => g.members.has(client.userId)).map(publicGroup) });
+          send(ws, { type: "groups_list", groups: await Promise.all([...groups.values()].filter(g => g.members.has(client.userId)).map(publicGroup)) });
           const myInvites = [];
           for (const [gid, list] of groupInvites.entries()) for (const inv of list) if (inv.toId === client.userId) myInvites.push({ ...inv, groupId: gid });
           send(ws, { type: "group_invites_list", invites: myInvites });
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
+          send(ws, { type: "parties_list", parties: await userPartiesList(client.userId) });
           send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           break;
         }
@@ -2126,22 +2143,23 @@ setInterval(() => {
 // Every 60s, increment playHours for each active clan member by 1/60 (1 minute).
 // A user is "active" if they sent any WS message in the last 120s.
 const PLAY_HOURS_TICK_MS = 60_000; // check every 60s
-const PLAY_HOURS活性_THRESHOLD = 120_000; // considered active if last message < 120s ago
+const PLAY_HOURS_ACTIVE_THRESHOLD = 120_000; // considered active if last message < 120s ago
 const PLAY_HOURS_INCREMENT = 1 / 60; // each tick = 1 minute = 1/60 hour
 
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
   const activeUserIds = new Set();
   for (const [, client] of wsClients.entries()) {
-    if (client.userId && client.lastActive && (now - client.lastActive) < PLAY_HOURS活性_THRESHOLD) {
+    if (client.userId && client.lastActive && (now - client.lastActive) < PLAY_HOURS_ACTIVE_THRESHOLD) {
       activeUserIds.add(client.userId);
     }
   }
   if (activeUserIds.size === 0) return;
 
-  let anyUpdate = false;
+  const leveledUp = []; // кланы, у которых реально сменился уровень
   for (const [, g] of groups.entries()) {
     let groupUpdated = false;
+    const oldLvl = calcClanLevel(g); // уровень ДО начисления часов
     for (const mid of g.members) {
       if (!activeUserIds.has(mid)) continue;
       if (!g.playHours) g.playHours = {};
@@ -2149,15 +2167,21 @@ setInterval(() => {
       groupUpdated = true;
     }
     if (groupUpdated) {
-      anyUpdate = true;
-      // Check level change and broadcast if needed
-      const oldLvl = calcClanLevel(g);
-      // already updated above
+      const newLvl = calcClanLevel(g); // уровень ПОСЛЕ
+      if (newLvl !== oldLvl) leveledUp.push({ g, oldLvl, newLvl });
     }
   }
-  if (anyUpdate) {
-    // Broadcast level updates to affected clans (throttled — only every 10 ticks = 10 min)
-    // For now, just save — level is computed dynamically in publicGroup
+
+  // Рассылаем обновления только тем кланам, у которых сменился уровень
+  for (const { g, oldLvl, newLvl } of leveledUp) {
+    saveGroup(g); // сразу персистим, чтобы уровень не потерялся до планового сохранения
+    const pub = await publicGroup(g);
+    for (const memberId of g.members) {
+      sendToUser(memberId, { type: "group_update", group: pub });
+      if (newLvl > oldLvl) {
+        sendToUser(memberId, { type: "clan_levelup", groupId: g.id, level: newLvl });
+      }
+    }
   }
 }, PLAY_HOURS_TICK_MS);
 
@@ -2596,18 +2620,29 @@ bot.on("callback_query", async (q) => {
     const parts    = q.data.split("_");
     const ticketId = parseInt(parts[2], 10);
     const userId   = parts[3];
-    const amount   = parseInt(parts[4], 10);
-    const acc      = await redisAccounts.get(userId);
     const ticket   = tickets.get(ticketId);
-    if (acc && amount > 0) {
-      acc.balance = (acc.balance || 0) + amount;
-      await redisAccounts.set(userId, acc);
-      if (ticket) { ticket.status = "closed"; ticket.messages.push({ id: uuidv4(), from: "system", text: `Оплата подтверждена. Зачислено ${amount} СБТ.`, time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
-      try { await bot.sendMessage(userId, `Оплата подтверждена.\n+*${amount} СБТ* зачислено. Баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
-      sendToUser(userId, { type: "balance_update", balance: acc.balance });
-      bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
-      bot.answerCallbackQuery(q.id, { text: `+${amount} СБТ зачислено`, show_alert: true });
-    } else { bot.answerCallbackQuery(q.id, { text: "Аккаунт не найден.", show_alert: true }); }
+    // Сумма: надёжный источник — тикет (paymentAmount), callback_data — запасной вариант.
+    let amount = Number(ticket?.paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      const fromCb = parseInt(parts[4], 10); // в callback_data могло прилететь "?" → NaN
+      amount = Number.isFinite(fromCb) ? fromCb : NaN;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      bot.answerCallbackQuery(q.id, { text: "Не удалось определить сумму пополнения. Зачислите вручную.", show_alert: true });
+      return;
+    }
+    const acc = await redisAccounts.get(userId);
+    if (!acc) {
+      bot.answerCallbackQuery(q.id, { text: "Аккаунт не найден.", show_alert: true });
+      return;
+    }
+    acc.balance = (acc.balance || 0) + amount;
+    await redisAccounts.set(userId, acc);
+    if (ticket) { ticket.status = "closed"; ticket.messages.push({ id: uuidv4(), from: "system", text: `Оплата подтверждена. Зачислено ${amount} СБТ.`, time: Date.now() }); saveTicket(ticket); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+    try { await bot.sendMessage(userId, `Оплата подтверждена.\n+*${amount} СБТ* зачислено. Баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+    sendToUser(userId, { type: "balance_update", balance: acc.balance });
+    bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
+    bot.answerCallbackQuery(q.id, { text: `+${amount} СБТ зачислено`, show_alert: true });
     return;
   }
 

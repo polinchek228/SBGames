@@ -141,6 +141,12 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         setGroups(prev => prev.map(g => g.id === msg.group.id ? msg.group : g));
         if (activeGroupRef.current?.id === msg.group.id) setActiveGroup(msg.group);
         break;
+      case "clan_levelup":
+        pushNotif?.("Новый уровень клана", `Ваш клан достиг уровня ${msg.level}!`, "group");
+        break;
+      case "group_error":
+        pushNotif?.("Ошибка клана", msg.text || "Не удалось отправить", "group");
+        break;
       case "group_invite":
         setGroupInvites(prev => [...prev, msg.invite]);
         pushNotif?.("Приглашение в группу", `${msg.invite.fromUsername} зовёт в "${msg.invite.groupName}"`, "group");
@@ -1509,7 +1515,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
               const li = g.levelInfo || {};
               return (
                 <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="mb-2">
-                  <button onClick={() => onOpenGroup(g)}
+                  <button onClick={() => setViewingGroup(g)}
                     className="w-full text-left px-3 py-3 rounded-xl transition-all"
                     onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -1544,6 +1550,13 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                         </div>
                       </div>
                     </div>
+                  </button>
+                  <button onClick={() => onOpenGroup(g)}
+                    className="w-full mt-2 py-2.5 rounded-xl text-[11px] font-bold text-white flex items-center justify-center gap-2 transition-all"
+                    style={{ background: "rgba(168,85,247,0.3)", border: "1px solid rgba(168,85,247,0.25)" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.5)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.3)"}>
+                    <ChatCircle size={14} /> Открыть чат клана
                   </button>
                 </motion.div>
               );
@@ -1788,6 +1801,7 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
 
 // ─── GroupChat ───────────────────────────────────────────────────────────────
 function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, onEditDescription, onToggleClosed, groupVoiceIds = [], activeCall, onJoinCall, onHangCall }) {
+  const { push: pushNotif } = useNotifications() || {};
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [inviteNick, setInviteNick] = useState("");
@@ -1808,6 +1822,7 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
     e?.preventDefault();
     const t = input.trim();
     if (!t) return;
+    if (!isWSConnected()) { pushNotif?.("Нет соединения", "Не удалось отправить — WS отключён", "error"); return; }
     sendWS({ type: "group_send", groupId: group.id, text: t });
     setInput("");
   };
@@ -1817,7 +1832,9 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
     if (!nick || inviteBusy) return;
     setInviteBusy(true); setInviteMsg(null);
     try {
-      await authFetch(`/api/groups/${group.id}/invite`, { method: "POST", body: JSON.stringify({ username: nick }) });
+      const r = await authFetch(`/api/groups/${group.id}/invite`, { method: "POST", body: JSON.stringify({ username: nick }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setInviteMsg({ ok: false, text: d.message || "Ошибка" }); setInviteBusy(false); return; }
       setInviteNick("");
       setInviteMsg({ ok: true, text: `Приглашение отправлено @${nick}` });
     } catch (e) { setInviteMsg({ ok: false, text: e.message?.replace(/^\d+:\s*/, "") || "Ошибка" }); }
