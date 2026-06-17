@@ -1252,7 +1252,18 @@ loadFriendshipsFromRedis();
 loadFriendRequestsFromRedis();
 loadListingsFromRedis();
 loadTicketsFromRedis();
-function publicGroup(g) { return { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.members], createdAt: g.createdAt }; }
+function publicGroup(g) {
+  const msgCount = (groupMessages.get(g.id) || []).length;
+  const xp = msgCount * 5;
+  const level = Math.floor(xp / 100) + 1;
+  const xpNext = level * 100;
+  const memberNames = {};
+  for (const mid of g.members) {
+    const acc = [...redisAccounts._map.values()].find(a => a && a.id === mid);
+    if (acc) memberNames[mid] = acc.username;
+  }
+  return { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.members], memberNames, createdAt: g.createdAt, xp, level, xpNext };
+}
 
 app.get("/api/groups", requireAuth, (req, res) => {
   res.json({ groups: [...groups.values()].filter(g => g.members.has(req.userId)).map(publicGroup) });
@@ -1301,9 +1312,14 @@ app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
 app.post("/api/groups/:id/leave", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!g) return res.status(404).json({ message: "Клан не найден" });
+  // Owner can only leave if there are other members (transfer ownership first)
+  // If sole member, don't delete — just return ok (stay as owner)
+  if (g.members.size === 1 && g.ownerId === req.userId) {
+    return res.json({ ok: true, stayed: true });
+  }
   g.members.delete(req.userId);
-  if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); }
+  if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid); }
   else { if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value; saveGroup(g); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
   res.json({ ok: true });
 });

@@ -468,7 +468,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               { id: "friends",   label: "Друзья",     icon: UsersThree, badge: 0 },
               { id: "add",       label: "Добавить",   icon: UserCirclePlus, badge: 0 },
               { id: "requests",  label: "Заявки",     icon: ChatCircle, badge: totalBadge },
-              { id: "groups",    label: "Группы",      icon: Users, badge: groupInvites.length },
+              { id: "groups",    label: "Кланы",      icon: Users, badge: groupInvites.length },
             ].map(({ id, label, icon: Icon, badge }) => (
               <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
                 className="relative flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-150"
@@ -558,7 +558,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               { id: "friends",   label: "Друзья",     icon: UsersThree, badge: 0 },
               { id: "add",       label: "Добавить",   icon: UserCirclePlus, badge: 0 },
               { id: "requests",  label: "Заявки",     icon: ChatCircle, badge: totalBadge },
-              { id: "groups",    label: "Группы",      icon: Users, badge: groupInvites.length },
+              { id: "groups",    label: "Кланы",      icon: Users, badge: groupInvites.length },
             ].map(({ id, label, icon: Icon, badge }) => (
               <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
                 className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
@@ -829,6 +829,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 groupVoiceIds={groupVoiceIds}
                 activeCall={activeCall}
                 onJoinCall={() => joinGroupCall(activeGroup.id, groupVoiceIds)}
+                onBack={() => { setActiveGroup(null); setGroupMessages([]); }}
                 onLeave={async () => {
                   if (activeCall?.type === "group" && activeCall.groupId === activeGroup.id) hangUp();
                   try { await authFetch(`/api/groups/${activeGroup.id}/leave`, { method: "POST" }); } catch {}
@@ -1059,12 +1060,12 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           style={{ background: "rgba(99,102,241,0.15)", border: "1px dashed rgba(99,102,241,0.3)" }}
           onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,0.25)"}
           onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,0.15)"}>
-          <Plus size={14} /> Создать группу
+          <Plus size={14} /> Создать клан
         </button>
       ) : (
         <div className="mb-4 rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
           <input value={name} onChange={e => setName(e.target.value)} maxLength={40} autoFocus
-            placeholder="Название команды..."
+            placeholder="Название клана..."
             onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
             className="w-full rounded-xl px-4 py-3 text-[12px] outline-none"
             style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
@@ -1082,19 +1083,23 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 
       <p className="text-[10px] uppercase tracking-widest px-2 py-2"
         style={{ color: "rgba(255,255,255,0.35)" }}>
-        Группы &middot; {groups.length}
+        Кланы &middot; {groups.length}
       </p>
       {groups.length === 0 ? (
         <div className="flex flex-col items-center py-10 gap-3">
           <Users size={28} weight="thin" style={{ color: "rgba(255,255,255,0.15)" }} />
           <p className="text-[12px] text-center" style={{ color: "rgba(255,255,255,0.3)" }}>
-            Нет групп. Создай или войди по приглашению.
+            Нет кланов. Создай свой или прими приглашение.
           </p>
         </div>
       ) : (
         groups.map((g, idx) => {
           const onlineCount = g.members.filter(m => onlineIds.has(m)).length;
           const isOwner = g.ownerId === user?.id;
+          const lvl = g.level || 1;
+          const xp = g.xp || 0;
+          const xpNext = g.xpNext || 100;
+          const xpPct = Math.min(100, Math.round((xp % 100) / 1 * 1));
           return (
             <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.03 }} className="mb-2">
@@ -1103,9 +1108,15 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                 onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff", fontWeight: 700, fontSize: 15 }}>
-                    {g.name.slice(0, 1).toUpperCase()}
+                  <div className="relative flex-shrink-0">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 15 }}>
+                      {g.name.slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black"
+                      style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
+                      {lvl}
+                    </div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -1115,20 +1126,12 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                           style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>OWNER</span>
                       )}
                     </div>
-                    <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {g.members.length} &middot; {onlineCount > 0 ? `${onlineCount} в сети` : "никого нет"}
+                    <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                      {g.members.length} чел &middot; {onlineCount > 0 ? `${onlineCount} онлайн` : "никого"}
                     </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {g.members.slice(0, 3).map(m => (
-                      <div key={m} className="w-6 h-6 rounded-lg flex items-center justify-center text-[8px] font-bold"
-                        style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)" }}>
-                        {(g.memberNames?.[m] || m).slice(0, 2).toUpperCase()}
-                      </div>
-                    ))}
-                    {g.members.length > 3 && (
-                      <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>+{g.members.length - 3}</span>
-                    )}
+                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${xpPct}%`, background: "linear-gradient(90deg, #2563eb, #3b82f6)" }} />
+                    </div>
                   </div>
                 </div>
               </button>
@@ -1141,7 +1144,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 }
 
 // ─── GroupChat ───────────────────────────────────────────────────────────────
-function GroupChat({ group, user, messages, onLeave, onKick, groupVoiceIds = [], activeCall, onJoinCall }) {
+function GroupChat({ group, user, messages, onLeave, onBack, onKick, groupVoiceIds = [], activeCall, onJoinCall }) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [inviteNick, setInviteNick] = useState("");
@@ -1175,14 +1178,22 @@ function GroupChat({ group, user, messages, onLeave, onKick, groupVoiceIds = [],
     <>
       <div className="flex items-center gap-3 px-5 py-3.5 flex-shrink-0"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-        <button onClick={onLeave} className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+        <button onClick={onBack || onLeave} className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
           style={{ color: "rgba(255,255,255,0.4)" }}
           onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
           onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
           <CaretLeft size={16} weight="bold" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-bold text-white truncate">{group.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[13px] font-bold text-white truncate">{group.name}</p>
+            {group.level && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md flex-shrink-0"
+                style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.25)" }}>
+                LVL {group.level}
+              </span>
+            )}
+          </div>
           <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
             {group.members.length} участников
             {groupVoiceIds.length > 0 && <span style={{ color: "#4ade80" }}> &middot; {groupVoiceIds.length} в голосе</span>}
@@ -1213,7 +1224,7 @@ function GroupChat({ group, user, messages, onLeave, onKick, groupVoiceIds = [],
             style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
             <div className="px-5 py-3 max-h-56 overflow-y-auto">
               <p className="text-[10px] uppercase tracking-widest mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
-                Участники &middot; {group.members.length}
+                Участники клана &middot; {group.members.length}
               </p>
               {group.members.map(mid => {
                 const memberName = group.memberNames?.[mid] || mid;
@@ -1244,16 +1255,22 @@ function GroupChat({ group, user, messages, onLeave, onKick, groupVoiceIds = [],
               })}
               <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                 <input value={inviteNick} onChange={e => setInviteNick(e.target.value)}
-                  placeholder="Ник игрока..." maxLength={16}
+                  placeholder="Пригласить в клан..." maxLength={16}
                   onKeyDown={e => { if (e.key === "Enter") invite(); }}
                   className="flex-1 rounded-lg px-3 py-2 text-[11px] outline-none"
                   style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
                 <button onClick={invite} disabled={!inviteNick.trim() || inviteBusy}
                   className="px-3 py-2 rounded-lg text-[11px] font-bold text-white disabled:opacity-40"
-                  style={{ background: "rgba(99,102,241,0.4)" }}>
+                  style={{ background: "rgba(37,99,235,0.4)" }}>
                   <UserPlus size={13} />
                 </button>
               </div>
+              <button onClick={onLeave} className="w-full mt-2 py-2 rounded-lg text-[10px] font-semibold transition-all"
+                style={{ background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.6)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.18)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}>
+                Покинуть клан
+              </button>
               {inviteMsg && (
                 <p className="text-[10px] mt-1" style={{ color: inviteMsg.ok ? "#4ade80" : "#fca5a5" }}>
                   {inviteMsg.text}
