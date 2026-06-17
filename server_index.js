@@ -1302,6 +1302,9 @@ app.get("/api/groups", requireAuth, (req, res) => {
 app.post("/api/groups", requireAuth, (req, res) => {
   const name = sanitize(req.body.name || "", 40);
   if (name.length < 2 || name.length > 40) return res.status(400).json({ message: "Название: 2–40 символов" });
+  if ([...groups.values()].some(g => g.members.has(req.userId))) {
+    return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы создать новый" });
+  }
   const id = String(++groupCounter);
   const g = { id, name, ownerId: req.userId, members: new Set([req.userId]), createdAt: Date.now() };
   groups.set(id, g); groupMessages.set(id, []);
@@ -1335,7 +1338,14 @@ app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
   const accept = !!req.body.accept;
   groupInvites.set(gid, (groupInvites.get(gid) || []).filter(i => i.toId !== req.userId));
-  if (accept) { if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "Полная" }); g.members.add(req.userId); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
+  if (accept) {
+    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "Полная" });
+    if ([...groups.values()].some(other => other.id !== gid && other.members.has(req.userId))) {
+      return res.status(400).json({ message: "Ты уже состоишь в другом клане" });
+    }
+    g.members.add(req.userId);
+    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+  }
   res.json({ ok: true, group: publicGroup(g) });
 });
 
