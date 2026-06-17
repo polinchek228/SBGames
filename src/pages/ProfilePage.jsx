@@ -396,7 +396,7 @@ function ProfileTab({ user, equip }) {
 
         {/* Comments */}
         <motion.div variants={itemVariants}>
-          <ProfileComments userId={user?.id} />
+          <ProfileComments targetId={user?.id} viewer={user} />
         </motion.div>
       </div>
 
