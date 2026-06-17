@@ -436,7 +436,7 @@ app.get("/auth/google/callback", async (req, res) => {
 
     // New user — need nickname
     googlePending.set(state, { step: "need_nick", googleId, email, name, avatar, expiresAt: Date.now() + 300_000 });
-    return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#60a5fa;margin-bottom:8px">Аккаунт привязан!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Придумай игровой ник в лаунчере</p></div></body></html>`);
+    return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#60a5fa;margin-bottom:8px">Google-аккаунт подтверждён!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Можешь закрыть эту вкладку и придумать ник</p></div></body></html>`);
   } catch (e) {
     console.error("[Google OAuth] callback error:", e.message);
     return res.status(500).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="color:#f87171;font-size:18px;font-weight:700">Ошибка сервера</p></div></body></html>`);
