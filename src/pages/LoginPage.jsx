@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2 } from "lucide-react";
-import { TelegramLogo } from "@phosphor-icons/react";
+import { TelegramLogo, GoogleLogo } from "@phosphor-icons/react";
 import QRCodeLib from "qrcode";
 import Titlebar from "../components/Titlebar.jsx";
 import { API_URL } from "../lib/api.js";
@@ -41,6 +41,7 @@ export default function LoginPage({ onLogin }) {
   const [activeMethod, setActiveMethod] = useState("qr");
   const [code, setCode] = useState(null);
   const [tgUser, setTgUser] = useState(null);
+  const [googleState, setGoogleState] = useState(null);
   const [nick, setNick] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -145,7 +146,48 @@ export default function LoginPage({ onLogin }) {
     setError("");
     stopPolling();
     if (m === "qr") handleQRAuth();
-    else handleCodeAuth();
+    else if (m === "bot") handleCodeAuth();
+    else if (m === "google") handleGoogleAuth();
+  };
+
+  const startGooglePolling = (state) => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/auth/google/check?state=${state}`);
+        const data = await res.json();
+        if (data.status === "done" && data.token) {
+          clearInterval(pollRef.current);
+          setStep("success");
+          setTimeout(() => onLogin({ user: data.user, token: data.token }), 700);
+        } else if (data.status === "need_nick") {
+          clearInterval(pollRef.current);
+          setGoogleState(state);
+          setStep("google-nick");
+        } else if (data.status === "expired") {
+          clearInterval(pollRef.current);
+          setError("Ссылка устарела, попробуй снова");
+        }
+      } catch {}
+    }, 2000);
+  };
+
+  const handleGoogleAuth = async () => {
+    stopPolling();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/auth/google/init`);
+      const data = await res.json();
+      setGoogleState(data.state);
+      setLoading(false);
+      await openURL(data.url);
+      startGooglePolling(data.state);
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : String(e);
+      setError("ERR:" + msg);
+      setLoading(false);
+    }
   };
 
   // Auto-init on mount
@@ -169,6 +211,33 @@ export default function LoginPage({ onLogin }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tgUser, username: clean }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Ошибка");
+      setStep("success");
+      setTimeout(() => onLogin(data), 900);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleNickSubmit = async (e) => {
+    e.preventDefault();
+    const clean = nick.trim().replace(/^@/, "");
+    if (!clean) return;
+    if (!/^[a-zA-Z0-9_]{3,16}$/.test(clean)) {
+      setError("Ник: 3–16 символов, только буквы/цифры/_");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/google/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: googleState, username: clean }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Ошибка");
@@ -227,6 +296,7 @@ export default function LoginPage({ onLogin }) {
                 {[
                   { id: "qr", label: "QR-код" },
                   { id: "bot", label: "Открыть бот" },
+                  { id: "google", label: "Google" },
                 ].map(({ id, label }) => {
                   const active = activeMethod === id;
                   return (
@@ -331,6 +401,47 @@ export default function LoginPage({ onLogin }) {
                     </div>
                   </motion.div>
                 )}
+
+                {activeMethod === "google" && (
+                  <motion.div
+                    key="google-content"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.15 }}
+                    className="flex flex-col items-center gap-4"
+                  >
+                    {loading ? (
+                      <div className="w-[180px] h-[120px] flex items-center justify-center">
+                        <Loader2 size={24} className="animate-spin" style={{ color: "rgba(255,255,255,0.25)" }} />
+                      </div>
+                    ) : (
+                      <div
+                        className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl"
+                        style={PILL_STYLE}
+                      >
+                        <GoogleLogo size={36} weight="bold" style={{ color: "#fff" }} />
+                        <div className="text-center">
+                          <p className="text-[13px] font-semibold text-white">Google открыт</p>
+                          <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>
+                            Войди в аккаунт Google в браузере
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {googleState && !loading && (
+                      <div
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+                        style={PILL_STYLE}
+                      >
+                        <Loader2 size={12} className="animate-spin flex-shrink-0" style={{ color: "rgba(255,255,255,0.3)" }} />
+                        <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                          Ожидаем подтверждение...
+                        </span>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
               </AnimatePresence>
 
               {error && (
@@ -420,6 +531,59 @@ export default function LoginPage({ onLogin }) {
                   ) : (
                     "Войти →"
                   )}
+                </button>
+              </form>
+            </motion.div>
+          )}
+
+          {step === "google-nick" && (
+            <motion.div
+              key="google-nick"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col items-center gap-5"
+            >
+              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl" style={PILL_STYLE}>
+                <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0">
+                  <img src="/logo.jpg" alt="SB Games" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex flex-col leading-tight">
+                  <span className="text-[13px] font-bold text-white tracking-wide">SB GAMES</span>
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    Google-аккаунт привязан!
+                  </span>
+                </div>
+              </div>
+              <form onSubmit={handleGoogleNickSubmit} className="flex flex-col gap-3 w-[280px]">
+                <p className="text-[12px] text-center" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  Придумай игровой ник
+                </p>
+                <input
+                  value={nick}
+                  onChange={(e) => { setNick(e.target.value); setError(""); }}
+                  placeholder="Ник (3–16 символов)"
+                  autoFocus
+                  className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-all"
+                  style={{
+                    background: "rgba(18,18,18,0.95)",
+                    border: error ? "1px solid rgba(239,68,68,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                    color: "#fff",
+                    caretColor: "#60a5fa",
+                    backdropFilter: "blur(20px)",
+                  }}
+                />
+                {error && (
+                  <motion.p initial={{ opacity: 0, y: -2 }} animate={{ opacity: 1, y: 0 }}
+                    className="text-[11px] px-1" style={{ color: "rgba(239,68,68,0.9)" }}>
+                    {error}
+                  </motion.p>
+                )}
+                <button type="submit" disabled={loading || !nick.trim()}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-medium tracking-wide transition-all duration-150 disabled:opacity-40"
+                  style={{ color: "#fff", background: "rgba(37,99,235,0.7)", border: "1px solid rgba(37,99,235,0.4)" }}>
+                  {loading ? <><Loader2 size={12} className="animate-spin" />Загрузка...</> : "Войти"}
                 </button>
               </form>
             </motion.div>

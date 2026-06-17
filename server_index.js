@@ -13,13 +13,21 @@ const Redis        = require("ioredis");
 const { WebSocketServer, WebSocket } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
-const BOT_TOKEN       = process.env.BOT_TOKEN       || "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
-const ADMIN_TG_IDS    = (process.env.ADMIN_TG_IDS   || "8092106401").split(",");
-const ADMIN_USERNAMES = (process.env.ADMIN_USERNAMES || "efseea").split(",");
+const { OAuth2Client } = require("google-auth-library");
+
+const BOT_TOKEN           = process.env.BOT_TOKEN           || "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
+const ADMIN_TG_IDS        = (process.env.ADMIN_TG_IDS       || "8092106401").split(",");
+const ADMIN_USERNAMES     = (process.env.ADMIN_USERNAMES     || "efseea").split(",");
 let JWT_SECRET = crypto.randomBytes(48).toString("hex");
-const PORT            = parseInt(process.env.PORT     || "3000", 10);
-const PORT_SSL        = parseInt(process.env.PORT_SSL || "3443", 10);
-const BOT_USERNAME    = process.env.BOT_USERNAME || "sbgamescbot";
+const PORT                = parseInt(process.env.PORT        || "3000", 10);
+const PORT_SSL            = parseInt(process.env.PORT_SSL    || "3443", 10);
+const BOT_USERNAME        = process.env.BOT_USERNAME        || "sbgamescbot";
+const GOOGLE_CLIENT_ID    = process.env.GOOGLE_CLIENT_ID    || "";
+const GOOGLE_CLIENT_SECRET= process.env.GOOGLE_CLIENT_SECRET|| "";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://api.hyperionsearch.xyz/auth/google/callback";
+
+const googleOAuth = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+const googlePending = new Map(); // state -> { googleId, email, name, avatar, expiresAt }
 
 const SSL_KEY  = "/etc/ssl/private/sbgames.key";
 const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
@@ -309,6 +317,17 @@ function sendToUser(userId, data) {
 // ΓöÇΓöÇΓöÇ REST ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 // Вход через Telegram Widget (с верификацией хэша)
+function verifyTelegramAuth(data) {
+  const { hash, ...fields } = data;
+  if (!hash) return false;
+  const checkString = Object.keys(fields).sort().map(k => `${k}=${fields[k]}`).join("\n");
+  const secretKey = crypto.createHash("sha256").update(BOT_TOKEN).digest();
+  const hmac = crypto.createHmac("sha256", secretKey).update(checkString).digest("hex");
+  if (hmac !== hash) return false;
+  if (data.auth_date && Date.now() / 1000 - Number(data.auth_date) > 86400) return false;
+  return true;
+}
+
 app.post("/auth/widget-login", async (req, res) => {
   const tgData = req.body;
   if (!tgData || !tgData.hash) return res.status(400).json({ message: "Нет данных" });
@@ -368,6 +387,100 @@ app.post("/auth/tg-login", async (req, res) => {
   account = { id: tgId, username: cleanNick, telegram: tgUser.username || null, firstName: sanitize(tgUser.first_name || "", 64), balance: 0, role: adminRole, createdAt: Date.now() };
   await redisAccounts.set(tgId, account);
   res.json({ user: account, token: signToken(tgId) });
+});
+
+// ─── Google OAuth ─────────────────────────────────────────────────────────────
+// Step 1: Get Google auth URL (client calls this, opens URL in browser)
+app.get("/auth/google/init", (req, res) => {
+  const state = crypto.randomBytes(16).toString("hex");
+  const url = googleOAuth.generateAuthUrl({
+    access_type: "offline",
+    scope: ["openid", "email", "profile"],
+    state,
+    prompt: "select_account",
+  });
+  // Store state temporarily (5 min) so callback can find it
+  googlePending.set(state, { step: "waiting", expiresAt: Date.now() + 300_000 });
+  res.json({ url, state });
+});
+
+// Step 2: Google redirects here after login
+app.get("/auth/google/callback", async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error || !code || !state) {
+    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Ошибка входа через Google</p><p style="color:rgba(255,255,255,0.5);font-size:14px">${error || "Нет кода авторизации"}</p></div></body></html>`);
+  }
+
+  const pending = googlePending.get(state);
+  if (!pending) {
+    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Устаревшая ссылка</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Попробуй войти заново</p></div></body></html>`);
+  }
+
+  try {
+    const { tokens } = await googleOAuth.getToken(code);
+    googleOAuth.setCredentials(tokens);
+    const ticket = await googleOAuth.verifyIdToken({ idToken: tokens.id_token, audience: GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    const googleId = `g_${payload.sub}`;
+    const email    = payload.email || "";
+    const name     = payload.name || payload.given_name || "Player";
+    const avatar   = payload.picture || null;
+
+    // Check if account already exists (returning user)
+    let account = await redisAccounts.get(googleId);
+    if (account) {
+      const token = signToken(googleId);
+      googlePending.set(state, { step: "done", token, user: account });
+      return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#4ade80;margin-bottom:8px">Вход выполнен!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Можешь закрыть эту вкладку</p></div></body></html>`);
+    }
+
+    // New user — need nickname
+    googlePending.set(state, { step: "need_nick", googleId, email, name, avatar, expiresAt: Date.now() + 300_000 });
+    return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#60a5fa;margin-bottom:8px">Аккаунт привязан!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Придумай игровой ник в лаунчере</p></div></body></html>`);
+  } catch (e) {
+    console.error("[Google OAuth] callback error:", e.message);
+    return res.status(500).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="color:#f87171;font-size:18px;font-weight:700">Ошибка сервера</p></div></body></html>`);
+  }
+});
+
+// Step 3: Client polls this to check status
+app.get("/auth/google/check", (req, res) => {
+  const { state } = req.query;
+  if (!state) return res.status(400).json({ status: "error" });
+  const pending = googlePending.get(state);
+  if (!pending || Date.now() > (pending.expiresAt || 0)) {
+    googlePending.delete(state);
+    return res.json({ status: "expired" });
+  }
+  res.json({ status: pending.step, token: pending.token || null, user: pending.user || null });
+});
+
+// Step 4: Register nickname for new Google user
+app.post("/auth/google/register", authLimiter, async (req, res) => {
+  const { state, username } = req.body;
+  if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
+  const pending = googlePending.get(state);
+  if (!pending || pending.step !== "need_nick") return res.status(400).json({ message: "Недействительный запрос" });
+
+  const cleanNick = sanitize(username).replace(/^@/, "");
+  if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) {
+    return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
+  }
+
+  // Check nick taken
+  const taken = [...redisAccounts._map.values()].find(a => a.username?.toLowerCase() === cleanNick.toLowerCase());
+  if (taken) return res.status(400).json({ message: "Ник уже занят" });
+
+  const { googleId, email, name, avatar } = pending;
+  const account = {
+    id: googleId, username: cleanNick, email, displayName: sanitize(name, 64),
+    avatar: avatar || null, balance: 0, role: "user", createdAt: Date.now(),
+    authProvider: "google",
+  };
+  await redisAccounts.set(googleId, account);
+  const token = signToken(googleId);
+  googlePending.set(state, { step: "done", token, user: account });
+  res.json({ user: account, token });
 });
 
 // Прокси скина чтобы обойти CSP

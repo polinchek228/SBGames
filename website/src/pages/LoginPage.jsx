@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { TelegramLogo, ArrowLeft, Check, Copy } from "@phosphor-icons/react";
+import { TelegramLogo, ArrowLeft, Check, Copy, GoogleLogo } from "@phosphor-icons/react";
 import { API_URL } from "../lib/api.js";
 
 export default function LoginPage({ onLogin }) {
@@ -12,7 +12,9 @@ export default function LoginPage({ onLogin }) {
   const [loginCode, setLoginCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [widgetReady, setWidgetReady] = useState(false);
+  const [googleState, setGoogleState] = useState(null);
   const widgetRef = useRef(null);
+  const googlePollRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -86,6 +88,61 @@ export default function LoginPage({ onLogin }) {
     } catch (e) {
       setError(e.message);
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/auth/google/init`);
+      const data = await res.json();
+      setGoogleState(data.state);
+      window.open(data.url, "_blank", "noopener");
+      setStep("google-wait");
+      setLoading(false);
+      clearInterval(googlePollRef.current);
+      googlePollRef.current = setInterval(async () => {
+        try {
+          const r = await fetch(`${API_URL}/auth/google/check?state=${data.state}`);
+          const d = await r.json();
+          if (d.status === "done" && d.token) {
+            clearInterval(googlePollRef.current);
+            finishLogin(d.user, d.token);
+          } else if (d.status === "need_nick") {
+            clearInterval(googlePollRef.current);
+            setStep("google-nick");
+          } else if (d.status === "expired") {
+            clearInterval(googlePollRef.current);
+            setError("Ссылка устарела, попробуй снова");
+            setStep("choose");
+          }
+        } catch {}
+      }, 2000);
+    } catch (e) {
+      setError(e.message);
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleNick = async (e) => {
+    e.preventDefault();
+    const clean = nick.trim().replace(/^@/, "");
+    if (!/^[a-zA-Z0-9_]{3,16}$/.test(clean)) { setError("Ник: 3–16 символов, буквы/цифры/_"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/auth/google/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: googleState, username: clean }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      finishLogin(data.user, data.token);
+    } catch (err) {
+      setError(err.message);
       setLoading(false);
     }
   };
@@ -177,9 +234,45 @@ export default function LoginPage({ onLogin }) {
             Вход в аккаунт
           </h1>
           <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: 0 }}>
-            Через Telegram
+            Выбери способ входа
           </p>
         </div>
+
+        {step === "google-wait" && (
+          <div style={{ padding: "32px 24px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, textAlign: "center" }}>
+            <GoogleLogo size={36} weight="bold" color="#fff" style={{ marginBottom: 12 }} />
+            <p style={{ color: "#fff", fontWeight: 600, marginBottom: 6 }}>Google открыт</p>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, marginBottom: 16 }}>Войди в Google-аккаунт в открытой вкладке</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "rgba(255,255,255,0.35)", fontSize: 12 }}>
+              <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#60a5fa", animation: "pulse 1.5s infinite" }} />
+              Ожидаем подтверждение...
+            </div>
+            {error && <p style={{ color: "#fca5a5", fontSize: 12, marginTop: 12 }}>{error}</p>}
+            <button onClick={() => { clearInterval(googlePollRef.current); setStep("choose"); }}
+              style={{ marginTop: 16, background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <ArrowLeft size={12} /> Назад
+            </button>
+          </div>
+        )}
+
+        {step === "google-nick" && (
+          <div>
+            <p style={{ color: "#fff", fontWeight: 600, marginBottom: 4 }}>Google-аккаунт привязан!</p>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginBottom: 16 }}>Придумай игровой ник</p>
+            <form onSubmit={handleGoogleNick}>
+              <input type="text" value={nick}
+                onChange={(e) => { setNick(e.target.value.replace(/[^a-zA-Z0-9_]/g, "")); setError(""); }}
+                placeholder="ник" autoFocus maxLength={16}
+                style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", background: "rgba(255,255,255,0.05)", border: error ? "1px solid rgba(239,68,68,0.5)" : "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#fff", fontSize: 14, fontFamily: "inherit", marginBottom: 8 }} />
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 12 }}>3–16 символов, буквы/цифры/подчёркивание</p>
+              {error && <p style={{ color: "#fca5a5", fontSize: 12, marginBottom: 12 }}>{error}</p>}
+              <button type="submit" disabled={loading || nick.length < 3}
+                style={{ width: "100%", padding: "12px", background: nick.length < 3 ? "rgba(59,130,246,0.4)" : "#3b82f6", color: "#fff", fontSize: 14, fontWeight: 600, border: "none", borderRadius: 10, cursor: nick.length < 3 ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                {loading ? "..." : "Готово"}
+              </button>
+            </form>
+          </div>
+        )}
 
         {step === "choose" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -239,6 +332,38 @@ export default function LoginPage({ onLogin }) {
                 <div>Получить код</div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2, fontWeight: 400 }}>
                   Отправь код боту в Telegram
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              style={{
+                width: "100%", padding: "14px 16px", textAlign: "left",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 10, cursor: loading ? "not-allowed" : "pointer", color: "#fff",
+                fontSize: 14, fontWeight: 500, fontFamily: "inherit",
+                display: "flex", alignItems: "center", gap: 14,
+                transition: "background 0.15s, border-color 0.15s",
+                opacity: loading ? 0.6 : 1,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.4)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+            >
+              <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: "rgba(37,99,235,0.12)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}>
+                <GoogleLogo size={22} weight="bold" color="#60a5fa" />
+              </div>
+              <div>
+                <div>Войти через Google</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2, fontWeight: 400 }}>
+                  Откроется браузер с Google OAuth
                 </div>
               </div>
             </button>
