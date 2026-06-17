@@ -925,6 +925,13 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                     if (d.group) { setGroups(prev => prev.map(x => x.id === d.group.id ? d.group : x)); setActiveGroup(d.group); }
                   } catch {}
                 }}
+                onToggleClosed={async (closed) => {
+                  try {
+                    const r = await authFetch(`/api/groups/${activeGroup.id}/closed`, { method: "PUT", body: JSON.stringify({ closed }) });
+                    const d = await r.json();
+                    if (d.group) { setGroups(prev => prev.map(x => x.id === d.group.id ? d.group : x)); setActiveGroup(d.group); }
+                  } catch {}
+                }}
               />
             </motion.div>
           )}
@@ -1179,6 +1186,12 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                   style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
                   Ур. {lvl}
                 </span>
+                {g.closed && (
+                  <span className="text-[8px] px-1.5 py-0.5 rounded-md font-black tracking-wider"
+                    style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", color: "rgba(239,68,68,0.8)" }}>
+                    ЗАКРЫТ
+                  </span>
+                )}
               </div>
               <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
                 {members.length} чел &middot; {onlineCount > 0 ? `${onlineCount} онлайн` : "никого"}
@@ -1230,7 +1243,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             })}
           </div>
 
-          {!isMember && (
+          {!isMember && !g.closed && (
             <button onClick={() => apply(g.id)} disabled={applyingId === g.id || isApplied || inAnyClan}
               className="w-full py-3 rounded-xl text-[12px] font-bold text-white transition-all disabled:opacity-40"
               style={{ background: isApplied ? "rgba(34,197,94,0.3)" : inAnyClan ? "rgba(255,255,255,0.05)" : "rgba(168,85,247,0.45)" }}
@@ -1238,6 +1251,12 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
               onMouseLeave={e => { if (!isApplied && !inAnyClan) e.currentTarget.style.background = "rgba(168,85,247,0.45)"; }}>
               {isApplied ? "Заявка отправлена" : inAnyClan ? "Вы уже в клане" : "Подать заявку"}
             </button>
+          )}
+          {!isMember && g.closed && (
+            <div className="w-full py-3 rounded-xl text-[11px] font-semibold text-center"
+              style={{ background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.6)", border: "1px solid rgba(239,68,68,0.15)" }}>
+              Клан закрыт &mdash; только по приглашению
+            </div>
           )}
         </div>
       </div>
@@ -1698,7 +1717,7 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
 }
 
 // ─── GroupChat ───────────────────────────────────────────────────────────────
-function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, onEditDescription, groupVoiceIds = [], activeCall, onJoinCall }) {
+function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, onEditDescription, onToggleClosed, groupVoiceIds = [], activeCall, onJoinCall }) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [inviteNick, setInviteNick] = useState("");
@@ -1901,6 +1920,24 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
                           className="flex-1 py-1.5 rounded-lg text-[10px] font-bold text-white"
                           style={{ background: "rgba(96,165,250,0.4)" }}>Сохранить</button>
                       </div>
+                    </div>
+                  )}
+                  {isOwner && (
+                    <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      <button onClick={() => onToggleClosed?.(!group.closed)}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-[10px] transition-all"
+                        style={{ background: group.closed ? "rgba(239,68,68,0.1)" : "rgba(255,255,255,0.03)", color: group.closed ? "rgba(239,68,68,0.7)" : "rgba(255,255,255,0.5)" }}
+                        onMouseEnter={e => e.currentTarget.style.background = group.closed ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.06)"}
+                        onMouseLeave={e => e.currentTarget.style.background = group.closed ? "rgba(239,68,68,0.1)" : "rgba(255,255,255,0.03)"}>
+                        <span>{group.closed ? "Клан закрыт" : "Клан открыт"}</span>
+                        <span className="text-[8px] px-2 py-0.5 rounded-full font-bold"
+                          style={{ background: group.closed ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.2)", color: group.closed ? "rgba(239,68,68,0.8)" : "rgba(34,197,94,0.8)" }}>
+                          {group.closed ? "CLOSED" : "OPEN"}
+                        </span>
+                      </button>
+                      <p className="text-[8px] mt-1 px-1" style={{ color: "rgba(255,255,255,0.2)" }}>
+                        {group.closed ? "Только по приглашению" : "Любой может подать заявку"}
+                      </p>
                     </div>
                   )}
                 </div>

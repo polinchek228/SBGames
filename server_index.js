@@ -1086,7 +1086,7 @@ function userPartiesList(uid) {
 // ─── Redis persistence for groups ─────────────────────────────────────────────
 async function saveGroup(g) {
   try {
-    const data = { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, createdAt: g.createdAt };
+    const data = { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, createdAt: g.createdAt };
     await redis.set(`sbgames:group:` + g.id, JSON.stringify(data));
     await redis.sadd("sbgames:group_ids", g.id);
   } catch {}
@@ -1101,7 +1101,7 @@ async function loadGroupsFromRedis() {
       const raw = await redis.get(`sbgames:group:` + id);
       if (!raw) continue;
       const d = JSON.parse(raw);
-      const g = { id: d.id, name: d.name, description: d.description || "", avatar: d.avatar || "", ownerId: d.ownerId, members: new Set(d.members), memberRoles: d.memberRoles || {}, createdAt: d.createdAt };
+      const g = { id: d.id, name: d.name, description: d.description || "", avatar: d.avatar || "", ownerId: d.ownerId, members: new Set(d.members), memberRoles: d.memberRoles || {}, closed: !!d.closed, createdAt: d.createdAt };
       groups.set(id, g); groupMessages.set(id, []);
       const numId = parseInt(id, 10);
       if (!isNaN(numId) && numId >= groupCounter) groupCounter = numId + 1;
@@ -1342,7 +1342,7 @@ function publicGroup(g) {
     const acc = [...redisAccounts._map.values()].find(a => a && a.id === mid);
     if (acc) memberNames[mid] = acc.username;
   }
-  return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, memberNames, createdAt: g.createdAt, xp, level, xpNext };
+  return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, memberNames, createdAt: g.createdAt, xp, level, xpNext };
 }
 
 app.get("/api/groups", requireAuth, (req, res) => {
@@ -1357,7 +1357,7 @@ app.post("/api/groups", requireAuth, (req, res) => {
     return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы создать новый" });
   }
   const id = String(++groupCounter);
-  const g = { id, name, description, ownerId: req.userId, members: new Set([req.userId]), memberRoles: {}, createdAt: Date.now() };
+  const g = { id, name, description, ownerId: req.userId, members: new Set([req.userId]), memberRoles: {}, closed: false, createdAt: Date.now() };
   groups.set(id, g); groupMessages.set(id, []);
   saveGroup(g);
   res.json({ ok: true, group: publicGroup(g) });
@@ -1445,6 +1445,7 @@ app.get("/api/groups/browse", requireAuth, (req, res) => {
       members: pub.members,
       memberNames: pub.memberNames,
       memberRoles: pub.memberRoles,
+      closed: pub.closed,
       memberCount: pub.members.length,
       ownerId: pub.ownerId,
       ownerName: pub.memberNames?.[pub.ownerId] || "",
@@ -1462,6 +1463,7 @@ app.post("/api/groups/:id/apply", requireAuth, (req, res) => {
   if ([...groups.values()].some(other => other.members.has(req.userId))) {
     return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы вступить в другой" });
   }
+  if (g.closed) return res.status(400).json({ message: "Клан закрыт. Вступление только по приглашению" });
   if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Клан заполнен (максимум ${GROUP_MAX})` });
   const list = groupJoinRequests.get(gid) || [];
   if (list.find(r => r.userId === req.userId)) return res.status(400).json({ message: "Заявка уже отправлена" });
@@ -1552,6 +1554,18 @@ app.put("/api/groups/:id/role", requireAuth, (req, res) => {
   } else {
     g.memberRoles[targetId] = role;
   }
+  saveGroup(g);
+  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+  res.json({ ok: true, group: publicGroup(g) });
+});
+
+// Owner toggles closed (private) mode — no one can apply, only invited
+app.put("/api/groups/:id/closed", requireAuth, (req, res) => {
+  const gid = sanitize(req.params.id, 32);
+  const g = groups.get(gid);
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (g.ownerId !== req.userId) return res.status(403).json({ message: "Только владелец может закрыть клан" });
+  g.closed = !!req.body.closed;
   saveGroup(g);
   for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
   res.json({ ok: true, group: publicGroup(g) });
