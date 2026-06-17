@@ -240,6 +240,23 @@ function ProfileTab({ user, equip }) {
       <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto w-full px-8 pt-8 pb-6 gap-6">
         {/* ═══ HEADER ═══ */}
         <div className="relative flex-shrink-0 px-6 pt-8 pb-6">
+          {/* SBT + LVL — правый верхний угол */}
+          <div className="absolute top-6 right-6 flex items-center gap-2">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
+              style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
+              <img src="/money.png" alt="" className="w-5 h-5 object-contain"
+                onError={(e) => { e.currentTarget.style.display = "none"; }} />
+              <span className="text-[20px] font-black text-white tabular-nums leading-none">
+                {(user?.balance ?? 0).toLocaleString("ru-RU")}
+              </span>
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
+              style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)" }}>
+              <span className="text-[20px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(96,165,250,0.6)" }}>LVL</span>
+            </div>
+          </div>
           <div className="flex items-end gap-5">
             {/* Avatar — larger */}
             <div className="relative cursor-pointer group flex-shrink-0" onClick={() => setShowAvatarPicker(true)}>
@@ -353,24 +370,6 @@ function ProfileTab({ user, equip }) {
                 )}
               </div>
 
-              {/* Row 4: SBT + LVL — крупно */}
-              <div className="flex items-center gap-2.5 mt-3">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
-                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <img src="/money.png" alt="" className="w-5 h-5 object-contain"
-                    onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                  <span className="text-[20px] font-black text-white tabular-nums leading-none">
-                    {(user?.balance ?? 0).toLocaleString("ru-RU")}
-                  </span>
-                  <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
-                </div>
-                <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
-                  style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)" }}>
-                  <Zap size={15} style={{ color: "#60a5fa" }} />
-                  <span className="text-[20px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
-                  <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(96,165,250,0.6)" }}>LVL</span>
-                </div>
-              </div>
             </div>
           </div>
 
