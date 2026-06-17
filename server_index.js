@@ -1353,14 +1353,15 @@ app.post("/api/groups/:id/leave", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Клан не найден" });
-  // Owner can only leave if there are other members (transfer ownership first)
-  // If sole member, don't delete — just return ok (stay as owner)
-  if (g.members.size === 1 && g.ownerId === req.userId) {
-    return res.json({ ok: true, stayed: true });
-  }
+  if (!g.members.has(req.userId)) return res.status(403).json({ message: "Ты не в клане" });
   g.members.delete(req.userId);
-  if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid); }
-  else { if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value; saveGroup(g); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
+  if (g.members.size === 0) {
+    groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid);
+  } else {
+    if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value;
+    saveGroup(g);
+    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
+  }
   res.json({ ok: true });
 });
 
@@ -1384,7 +1385,7 @@ app.get("/online", (_, res) => {
 // ΓöÇΓöÇΓöÇ WebSocket ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const WS_MAX_PER_IP    = 5;    // макс соединений с одного IP
 const WS_AUTH_TIMEOUT  = 10_000; // 10с на авторизацию
-const WS_MSG_LIMIT     = 30;   // сообщений в минуту
+const WS_MSG_LIMIT     = 120;  // сообщений в минуту
 const WS_MSG_WINDOW    = 60_000;
 const wsIPCount        = new Map(); // ip ΓåÆ count
 
