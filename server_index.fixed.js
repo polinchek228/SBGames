@@ -1,4 +1,4 @@
-﻿const fetch        = require("node-fetch");
+const fetch        = require("node-fetch");
 const express      = require("express");
 const cors         = require("cors");
 const crypto       = require("crypto");
@@ -13,21 +13,13 @@ const Redis        = require("ioredis");
 const { WebSocketServer, WebSocket } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
-const { OAuth2Client } = require("google-auth-library");
-
-const BOT_TOKEN           = process.env.BOT_TOKEN           || "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
-const ADMIN_TG_IDS        = (process.env.ADMIN_TG_IDS       || "8092106401").split(",");
-const ADMIN_USERNAMES     = (process.env.ADMIN_USERNAMES     || "efseea").split(",");
+const BOT_TOKEN       = process.env.BOT_TOKEN       || "8703318210:AAEG9Zj12W7i6hfPnIqLXeedcZrDwH-2Os8";
+const ADMIN_TG_IDS    = (process.env.ADMIN_TG_IDS   || "8092106401").split(",");
+const ADMIN_USERNAMES = (process.env.ADMIN_USERNAMES || "efseea").split(",");
 let JWT_SECRET = crypto.randomBytes(48).toString("hex");
-const PORT                = parseInt(process.env.PORT        || "3000", 10);
-const PORT_SSL            = parseInt(process.env.PORT_SSL    || "3443", 10);
-const BOT_USERNAME        = process.env.BOT_USERNAME        || "sbgamescbot";
-const GOOGLE_CLIENT_ID    = process.env.GOOGLE_CLIENT_ID    || "";
-const GOOGLE_CLIENT_SECRET= process.env.GOOGLE_CLIENT_SECRET|| "";
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://api.hyperionsearch.xyz/auth/google/callback";
-
-const googleOAuth = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
-const googlePending = new Map(); // state -> { googleId, email, name, avatar, expiresAt }
+const PORT            = parseInt(process.env.PORT     || "3000", 10);
+const PORT_SSL        = parseInt(process.env.PORT_SSL || "3443", 10);
+const BOT_USERNAME    = process.env.BOT_USERNAME || "sbgamescbot";
 
 const SSL_KEY  = "/etc/ssl/private/sbgames.key";
 const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
@@ -36,7 +28,7 @@ const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
 const redis = new Redis({ host: "127.0.0.1", port: 6379, lazyConnect: true });
 redis.connect().catch(() => console.warn("[redis] not available, using memory"));
 
-// Загружаем или генерируем персистентный JWT_SECRET
+// ╨ù╨░╨│╤Ç╤â╨╢╨░╨╡╨╝ ╨╕╨╗╨╕ ╨│╨╡╨╜╨╡╤Ç╨╕╤Ç╤â╨╡╨╝ ╨┐╨╡╤Ç╤ü╨╕╤ü╤é╨╡╨╜╤é╨╜╤ï╨╣ JWT_SECRET
 async function loadJwtSecret() {
   try {
     const stored = await redis.get("sbgames:jwt_secret");
@@ -54,7 +46,7 @@ const redisAccounts = { _map: new Map(),
   async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
   async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
   values()        { return this._map.values(); },
-  // Поиск по всем аккаунтам в Redis + memory
+  // ╨ƒ╨╛╨╕╤ü╨║ ╨┐╨╛ ╨▓╤ü╨╡╨╝ ╨░╨║╨║╨░╤â╨╜╤é╨░╨╝ ╨▓ Redis + memory
   async search(q, limit = 30) {
     if (!q || q.length < 2) return [];
     const ql = q.toLowerCase();
@@ -63,7 +55,7 @@ const redisAccounts = { _map: new Map(),
     for (const acc of this._map.values()) {
       if (acc.username?.toLowerCase().includes(ql)) results.push(acc);
     }
-    // Redis scan (на случай если в memory нет, а в redis есть)
+    // Redis scan (╨╜╨░ ╤ü╨╗╤â╤ç╨░╨╣ ╨╡╤ü╨╗╨╕ ╨▓ memory ╨╜╨╡╤é, ╨░ ╨▓ redis ╨╡╤ü╤é╤î)
     if (results.length < limit) {
       try {
         const stream = redis.scanStream({ match: "acc:*", count: 200 });
@@ -153,9 +145,9 @@ app.use(express.json({ limit: "16kb" }));
 // ΓöÇΓöÇΓöÇ IP blocklist (Redis-backed, in-memory fallback) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const blockedIPs     = new Map(); // ip ΓåÆ unblock timestamp
 const failedAttempts = new Map(); // ip ΓåÆ { count, firstAt }
-const BLOCK_AFTER    = 8;         // неудачных попыток
-const BLOCK_TTL      = 15 * 60 * 1000; // 15 минут
-const ATTEMPT_WINDOW = 10 * 60 * 1000; // окно подсчёта
+const BLOCK_AFTER    = 8;         // ╨╜╨╡╤â╨┤╨░╤ç╨╜╤ï╤à ╨┐╨╛╨┐╤ï╤é╨╛╨║
+const BLOCK_TTL      = 15 * 60 * 1000; // 15 ╨╝╨╕╨╜╤â╤é
+const ATTEMPT_WINDOW = 10 * 60 * 1000; // ╨╛╨║╨╜╨╛ ╨┐╨╛╨┤╤ü╤ç╤æ╤é╨░
 
 function getIP(req) {
   const forwarded = req.headers && req.headers["x-forwarded-for"];
@@ -195,27 +187,27 @@ function recordFailure(ip) {
 
 function blockMiddleware(req, res, next) {
   const ip = getIP(req);
-  if (isBlocked(ip)) return res.status(429).json({ message: "Слишком много попыток. Попробуйте позже." });
+  if (isBlocked(ip)) return res.status(429).json({ message: "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨╝╨╜╨╛╨│╨╛ ╨┐╨╛╨┐╤ï╤é╨╛╨║. ╨ƒ╨╛╨┐╤Ç╨╛╨▒╤â╨╣╤é╨╡ ╨┐╨╛╨╖╨╢╨╡." });
   next();
 }
 
 // ΓöÇΓöÇΓöÇ Rate limiters ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const makeLimit = (windowMs, max, msg) => rateLimit({
   windowMs, max,
-  message:        { message: msg || "Слишком много запросов" },
+  message:        { message: msg || "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨╝╨╜╨╛╨│╨╛ ╨╖╨░╨┐╤Ç╨╛╤ü╨╛╨▓" },
   standardHeaders: true,
   legacyHeaders:  false,
   keyGenerator:   req => getIP(req),
   skip:           req => isAdmin(req.body?.username) || isAdminId(String(req.body?.tgUser?.id || "")),
 });
 
-const authLimiter      = makeLimit(60_000, 30,  "Слишком много попыток входа");
-const apiLimiter       = makeLimit(60_000, 100, "Слишком много запросов");
-const strictLimiter    = makeLimit(60_000, 3,   "Превышен лимит запросов");
+const authLimiter      = makeLimit(60_000, 30,  "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨╝╨╜╨╛╨│╨╛ ╨┐╨╛╨┐╤ï╤é╨╛╨║ ╨▓╤à╨╛╨┤╨░");
+const apiLimiter       = makeLimit(60_000, 100, "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨╝╨╜╨╛╨│╨╛ ╨╖╨░╨┐╤Ç╨╛╤ü╨╛╨▓");
+const strictLimiter    = makeLimit(60_000, 3,   "╨ƒ╤Ç╨╡╨▓╤ï╤ê╨╡╨╜ ╨╗╨╕╨╝╨╕╤é ╨╖╨░╨┐╤Ç╨╛╤ü╨╛╨▓");
 
 app.use("/auth/tg-login",    blockMiddleware, authLimiter);
 app.use("/auth/widget-login", blockMiddleware, authLimiter);
-// create-code и check-code — без лимитов, это безобидные операции
+// create-code ╨╕ check-code ΓÇö ╨▒╨╡╨╖ ╨╗╨╕╨╝╨╕╤é╨╛╨▓, ╤ì╤é╨╛ ╨▒╨╡╨╖╨╛╨▒╨╕╨┤╨╜╤ï╨╡ ╨╛╨┐╨╡╤Ç╨░╤å╨╕╨╕
 app.use("/payments",         blockMiddleware, strictLimiter);
 app.use("/admin",            blockMiddleware);
 app.use("/api",              apiLimiter);
@@ -316,30 +308,19 @@ function sendToUser(userId, data) {
 
 // ΓöÇΓöÇΓöÇ REST ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-// Вход через Telegram Widget (с верификацией хэша)
-function verifyTelegramAuth(data) {
-  const { hash, ...fields } = data;
-  if (!hash) return false;
-  const checkString = Object.keys(fields).sort().map(k => `${k}=${fields[k]}`).join("\n");
-  const secretKey = crypto.createHash("sha256").update(BOT_TOKEN).digest();
-  const hmac = crypto.createHmac("sha256", secretKey).update(checkString).digest("hex");
-  if (hmac !== hash) return false;
-  if (data.auth_date && Date.now() / 1000 - Number(data.auth_date) > 86400) return false;
-  return true;
-}
-
+// ╨Æ╤à╨╛╨┤ ╤ç╨╡╤Ç╨╡╨╖ Telegram Widget (╤ü ╨▓╨╡╤Ç╨╕╤ä╨╕╨║╨░╤å╨╕╨╡╨╣ ╤à╤ì╤ê╨░)
 app.post("/auth/widget-login", async (req, res) => {
   const tgData = req.body;
-  if (!tgData || !tgData.hash) return res.status(400).json({ message: "Нет данных" });
+  if (!tgData || !tgData.hash) return res.status(400).json({ message: "╨¥╨╡╤é ╨┤╨░╨╜╨╜╤ï╤à" });
 
-  if (!verifyTelegramAuth(tgData)) return res.status(401).json({ message: "Неверная подпись Telegram" });
+  if (!verifyTelegramAuth(tgData)) return res.status(401).json({ message: "╨¥╨╡╨▓╨╡╤Ç╨╜╨░╤Å ╨┐╨╛╨┤╨┐╨╕╤ü╤î Telegram" });
 
   const tgId = String(tgData.id);
   let account = await redisAccounts.get(tgId);
   const adminRole = isAdmin(tgData.username || "") || isAdminId(tgId) ? "admin" : "user";
 
   if (!account) {
-    // Новый пользователь — нужен ник
+    // ╨¥╨╛╨▓╤ï╨╣ ╨┐╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î ΓÇö ╨╜╤â╨╢╨╡╨╜ ╨╜╨╕╨║
     return res.json({ needNick: true, tgUser: tgData });
   }
 
@@ -350,21 +331,21 @@ app.post("/auth/widget-login", async (req, res) => {
   res.json({ user: account, token: signToken(tgId) });
 });
 
-// Завершение регистрации (ник) — поддерживает desktop flow
+// ╨ù╨░╨▓╨╡╤Ç╤ê╨╡╨╜╨╕╨╡ ╤Ç╨╡╨│╨╕╤ü╤é╤Ç╨░╤å╨╕╨╕ (╨╜╨╕╨║) ΓÇö ╨┐╨╛╨┤╨┤╨╡╤Ç╨╢╨╕╨▓╨░╨╡╤é desktop flow
 app.post("/auth/tg-login", async (req, res) => {
   const ip = getIP(req);
   const { tgUser, username } = req.body;
   if (!tgUser) {
     recordFailure(ip);
-    return res.status(400).json({ message: "Обязательные поля отсутствуют" });
+    return res.status(400).json({ message: "╨₧╨▒╤Å╨╖╨░╤é╨╡╨╗╤î╨╜╤ï╨╡ ╨┐╨╛╨╗╤Å ╨╛╤é╤ü╤â╤é╤ü╤é╨▓╤â╤Ä╤é" });
   }
   const tgId = String(tgUser.id);
   if (!tgUser.id || tgUser.id <= 0) {
     recordFailure(ip);
-    return res.status(401).json({ message: "Невалидный пользователь" });
+    return res.status(401).json({ message: "╨¥╨╡╨▓╨░╨╗╨╕╨┤╨╜╤ï╨╣ ╨┐╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î" });
   }
 
-  // Desktop flow: если аккаунт уже есть — просто логиним без запроса ника
+  // Desktop flow: ╨╡╤ü╨╗╨╕ ╨░╨║╨║╨░╤â╨╜╤é ╤â╨╢╨╡ ╨╡╤ü╤é╤î ΓÇö ╨┐╤Ç╨╛╤ü╤é╨╛ ╨╗╨╛╨│╨╕╨╜╨╕╨╝ ╨▒╨╡╨╖ ╨╖╨░╨┐╤Ç╨╛╤ü╨░ ╨╜╨╕╨║╨░
   let account = await redisAccounts.get(tgId);
   if (account) {
     account.telegram = tgUser.username || account.telegram;
@@ -373,14 +354,14 @@ app.post("/auth/tg-login", async (req, res) => {
     return res.json({ user: account, token: signToken(tgId) });
   }
 
-  // Новый пользователь — ник обязателен
+  // ╨¥╨╛╨▓╤ï╨╣ ╨┐╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î ΓÇö ╨╜╨╕╨║ ╨╛╨▒╤Å╨╖╨░╤é╨╡╨╗╨╡╨╜
   if (!username) {
-    return res.status(400).json({ needNick: true, message: "Придумай игровой ник" });
+    return res.status(400).json({ needNick: true, message: "╨ƒ╤Ç╨╕╨┤╤â╨╝╨░╨╣ ╨╕╨│╤Ç╨╛╨▓╨╛╨╣ ╨╜╨╕╨║" });
   }
   const cleanNick = sanitize(username).replace(/^@/, "");
   if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) {
     recordFailure(ip);
-    return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
+    return res.status(400).json({ message: "╨¥╨╕╨║: 3ΓÇô16 ╤ü╨╕╨╝╨▓╨╛╨╗╨╛╨▓, ╨▒╤â╨║╨▓╤ï/╤å╨╕╤ä╤Ç╤ï/_" });
   }
 
   const adminRole = isAdmin(tgUser.username || cleanNick) || isAdminId(tgId) ? "admin" : "user";
@@ -389,102 +370,7 @@ app.post("/auth/tg-login", async (req, res) => {
   res.json({ user: account, token: signToken(tgId) });
 });
 
-// ─── Google OAuth ─────────────────────────────────────────────────────────────
-// Step 1: Get Google auth URL (client calls this, opens URL in browser)
-app.get("/auth/google/init", (req, res) => {
-  const state = crypto.randomBytes(16).toString("hex");
-  const url = googleOAuth.generateAuthUrl({
-    access_type: "offline",
-    scope: ["openid", "email", "profile"],
-    state,
-    prompt: "select_account",
-  });
-  // Store state temporarily (5 min) so callback can find it
-  googlePending.set(state, { step: "waiting", expiresAt: Date.now() + 300_000 });
-  res.json({ url, state });
-});
-
-// Step 2: Google redirects here after login
-app.get("/auth/google/callback", async (req, res) => {
-  const { code, state, error } = req.query;
-  if (error || !code || !state) {
-    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Ошибка входа через Google</p><p style="color:rgba(255,255,255,0.5);font-size:14px">${error || "Нет кода авторизации"}</p></div></body></html>`);
-  }
-
-  const pending = googlePending.get(state);
-  if (!pending) {
-    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Устаревшая ссылка</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Попробуй войти заново</p></div></body></html>`);
-  }
-
-  try {
-    const { tokens } = await googleOAuth.getToken(code);
-    googleOAuth.setCredentials(tokens);
-    const ticket = await googleOAuth.verifyIdToken({ idToken: tokens.id_token, audience: GOOGLE_CLIENT_ID });
-    const payload = ticket.getPayload();
-    const googleId = `g_${payload.sub}`;
-    const email    = payload.email || "";
-    const name     = payload.name || payload.given_name || "Player";
-    const avatar   = payload.picture || null;
-
-    // Check if account already exists (returning user)
-    let account = await redisAccounts.get(googleId);
-    if (account) {
-      const token = signToken(googleId);
-      googlePending.set(state, { step: "done", token, user: account });
-      return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#4ade80;margin-bottom:8px">Вход выполнен!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Можешь закрыть эту вкладку</p></div></body></html>`);
-    }
-
-    // New user — need nickname
-    googlePending.set(state, { step: "need_nick", googleId, email, name, avatar, expiresAt: Date.now() + 300_000 });
-    return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#60a5fa;margin-bottom:8px">Google-аккаунт подтверждён!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Можешь закрыть эту вкладку и придумать ник</p></div></body></html>`);
-  } catch (e) {
-    console.error("[Google OAuth] callback error:", e.message);
-    return res.status(500).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="color:#f87171;font-size:18px;font-weight:700">Ошибка сервера</p></div></body></html>`);
-  }
-});
-
-// Step 3: Client polls this to check status
-app.get("/auth/google/check", (req, res) => {
-  const { state } = req.query;
-  if (!state) return res.status(400).json({ status: "error" });
-  const pending = googlePending.get(state);
-  if (!pending) return res.json({ status: "expired" });
-  if (pending.step !== "done" && Date.now() > (pending.expiresAt || 0)) {
-    googlePending.delete(state);
-    return res.json({ status: "expired" });
-  }
-  res.json({ status: pending.step, token: pending.token || null, user: pending.user || null });
-});
-
-// Step 4: Register nickname for new Google user
-app.post("/auth/google/register", authLimiter, async (req, res) => {
-  const { state, username } = req.body;
-  if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
-  const pending = googlePending.get(state);
-  if (!pending || pending.step !== "need_nick") return res.status(400).json({ message: "Недействительный запрос" });
-
-  const cleanNick = sanitize(username).replace(/^@/, "");
-  if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) {
-    return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
-  }
-
-  // Check nick taken
-  const taken = [...redisAccounts._map.values()].find(a => a.username?.toLowerCase() === cleanNick.toLowerCase());
-  if (taken) return res.status(400).json({ message: "Ник уже занят" });
-
-  const { googleId, email, name, avatar } = pending;
-  const account = {
-    id: googleId, username: cleanNick, email, displayName: sanitize(name, 64),
-    avatar: avatar || null, balance: 0, role: "user", createdAt: Date.now(),
-    authProvider: "google",
-  };
-  await redisAccounts.set(googleId, account);
-  const token = signToken(googleId);
-  googlePending.set(state, { step: "done", token, user: account });
-  res.json({ user: account, token });
-});
-
-// Прокси скина чтобы обойти CSP
+// ╨ƒ╤Ç╨╛╨║╤ü╨╕ ╤ü╨║╨╕╨╜╨░ ╤ç╤é╨╛╨▒╤ï ╨╛╨▒╨╛╨╣╤é╨╕ CSP
 app.get("/skin-proxy/:username", async (req, res) => {
   try {
     const r = await fetch(`https://minotar.net/skin/${encodeURIComponent(req.params.username)}`);
@@ -504,7 +390,7 @@ app.get("/auth/me", async (req, res) => {
   if (!payload) return res.status(401).json({ message: "Unauthorized" });
   const acc = await redisAccounts.get(payload.sub);
   if (!acc) return res.status(404).json({ message: "Not found" });
-  // Принудительно проверяем роль
+  // ╨ƒ╤Ç╨╕╨╜╤â╨┤╨╕╤é╨╡╨╗╤î╨╜╨╛ ╨┐╤Ç╨╛╨▓╨╡╤Ç╤Å╨╡╨╝ ╤Ç╨╛╨╗╤î
   if (isAdminId(payload.sub) && acc.role !== "admin") {
     acc.role = "admin";
     await redisAccounts.set(payload.sub, acc);
@@ -512,7 +398,7 @@ app.get("/auth/me", async (req, res) => {
   res.json({ user: acc });
 });
 
-// Поиск игроков по нику — работает по всем зарегистрированным (не только онлайн)
+// ╨ƒ╨╛╨╕╤ü╨║ ╨╕╨│╤Ç╨╛╨║╨╛╨▓ ╨┐╨╛ ╨╜╨╕╨║╤â ΓÇö ╤Ç╨░╨▒╨╛╤é╨░╨╡╤é ╨┐╨╛ ╨▓╤ü╨╡╨╝ ╨╖╨░╤Ç╨╡╨│╨╕╤ü╤é╤Ç╨╕╤Ç╨╛╨▓╨░╨╜╨╜╤ï╨╝ (╨╜╨╡ ╤é╨╛╨╗╤î╨║╨╛ ╨╛╨╜╨╗╨░╨╣╨╜)
 app.get("/auth/search", async (req, res) => {
   const q = (req.query.q || "").trim();
   if (q.length < 2) return res.json({ users: [] });
@@ -563,7 +449,7 @@ app.get("/support/tickets", (req, res) => {
 
 app.get("/support/ticket/:id", (req, res) => {
   const t = tickets.get(Number(req.params.id));
-  if (!t) return res.status(404).json({ message: "Тикет не найден" });
+  if (!t) return res.status(404).json({ message: "╨ó╨╕╨║╨╡╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   res.json(t);
 });
 
@@ -573,10 +459,10 @@ app.post("/support/ticket", (req, res) => {
   const rawUsername = sanitize(req.body.username || "Player", 32);
   const userId      = sanitize(req.body.userId || "anon", 64);
   if (!rawCategory || !rawMessage || rawMessage.length < 5)
-    return res.status(400).json({ message: "Заполните все поля (минимум 5 символов)" });
+    return res.status(400).json({ message: "╨ù╨░╨┐╨╛╨╗╨╜╨╕╤é╨╡ ╨▓╤ü╨╡ ╨┐╨╛╨╗╤Å (╨╝╨╕╨╜╨╕╨╝╤â╨╝ 5 ╤ü╨╕╨╝╨▓╨╛╨╗╨╛╨▓)" });
   const ticketId = ++ticketCounter;
   const ticket = { id: ticketId, userId, username: rawUsername, category: rawCategory, preview: rawMessage.slice(0, 60), status: "open", unread: 0, createdAt: Date.now(), messages: [
-    { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан.`, time: Date.now() },
+    { id: uuidv4(), from: "system", text: `╨ó╨╕╨║╨╡╤é #${ticketId} ╤ü╨╛╨╖╨┤╨░╨╜.`, time: Date.now() },
     { id: uuidv4(), from: userId, username: rawUsername, text: rawMessage, time: Date.now() },
   ]};
   tickets.set(ticketId, ticket);
@@ -587,7 +473,7 @@ app.post("/support/ticket", (req, res) => {
 
 // ΓöÇΓöÇΓöÇ Admin API ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-// При старте принудительно ставим роль admin всем из ADMIN_TG_IDS
+// ╨ƒ╤Ç╨╕ ╤ü╤é╨░╤Ç╤é╨╡ ╨┐╤Ç╨╕╨╜╤â╨┤╨╕╤é╨╡╨╗╤î╨╜╨╛ ╤ü╤é╨░╨▓╨╕╨╝ ╤Ç╨╛╨╗╤î admin ╨▓╤ü╨╡╨╝ ╨╕╨╖ ADMIN_TG_IDS
 async function syncAdminRoles() {
   for (const tgId of ADMIN_TG_IDS) {
     const acc = await redisAccounts.get(tgId);
@@ -605,9 +491,9 @@ async function requireAdmin(req, res) {
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ message: "Unauthorized" }); return null; }
   const tgId = payload.sub;
-  // Жёстко вшитые ID всегда пропускаем
+  // ╨û╤æ╤ü╤é╨║╨╛ ╨▓╤ê╨╕╤é╤ï╨╡ ID ╨▓╤ü╨╡╨│╨┤╨░ ╨┐╤Ç╨╛╨┐╤â╤ü╨║╨░╨╡╨╝
   if (isAdminId(tgId)) return tgId;
-  // Иначе проверяем роль в Redis
+  // ╨ÿ╨╜╨░╤ç╨╡ ╨┐╤Ç╨╛╨▓╨╡╤Ç╤Å╨╡╨╝ ╤Ç╨╛╨╗╤î ╨▓ Redis
   const acc = await redisAccounts.get(tgId);
   if (!acc || acc.role !== "admin") { res.status(403).json({ message: "Forbidden" }); return null; }
   return tgId;
@@ -662,14 +548,14 @@ app.post("/admin/ticket/:id/status", async (req, res) => {
   const { status } = req.body;
   if (!["open", "in_progress", "answered", "closed"].includes(status)) return res.status(400).json({ message: "Bad status" });
   t.status = status;
-  t.messages.push({ id: uuidv4(), from: "system", text: `Статус изменён: ${STATUS_LABELS[status] || status}`, time: Date.now() });
+  t.messages.push({ id: uuidv4(), from: "system", text: `╨í╤é╨░╤é╤â╤ü ╨╕╨╖╨╝╨╡╨╜╤æ╨╜: ${STATUS_LABELS[status] || status}`, time: Date.now() });
   broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(t) });
   broadcastToTicket(t.id, null, { type: "ticket_update", ticket: ticketSummary(t) });
   if (status === "closed") broadcastToTicket(t.id, null, { type: "ticket_closed", ticketId: t.id });
   res.json({ ok: true });
 });
 
-const STATUS_LABELS = { open: "Открыт", in_progress: "В работе", answered: "Ответили", closed: "Закрыт" };
+const STATUS_LABELS = { open: "╨₧╤é╨║╤Ç╤ï╤é", in_progress: "╨Æ ╤Ç╨░╨▒╨╛╤é╨╡", answered: "╨₧╤é╨▓╨╡╤é╨╕╨╗╨╕", closed: "╨ù╨░╨║╤Ç╤ï╤é" };
 
 app.post("/admin/ticket/:id/close", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
@@ -683,13 +569,13 @@ app.post("/admin/ticket/:id/close", async (req, res) => {
 
 // ΓöÇΓöÇΓöÇ Payments ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-const METHOD_NAMES = { card_ru: "Карта МИР", card_ua: "Карта Master/Visa", crypto: "Криптовалюта", sbp: "СБП" };
+const METHOD_NAMES = { card_ru: "╨Ü╨░╤Ç╤é╨░ ╨£╨ÿ╨á", card_ua: "╨Ü╨░╤Ç╤é╨░ Master/Visa", crypto: "╨Ü╤Ç╨╕╨┐╤é╨╛╨▓╨░╨╗╤Ä╤é╨░", sbp: "╨í╨æ╨ƒ" };
 
 app.post("/payments/create", async (req, res) => {
   const token  = (req.headers.authorization || "").replace("Bearer ", "");
   const amount = parseInt(req.body.amount, 10);
   const method = req.body.method || "card_ru";
-  if (!amount || amount < 50) return res.status(400).json({ message: "Минимальная сумма — 50 СБТ" });
+  if (!amount || amount < 50) return res.status(400).json({ message: "╨£╨╕╨╜╨╕╨╝╨░╨╗╤î╨╜╨░╤Å ╤ü╤â╨╝╨╝╨░ ΓÇö 50 ╨í╨æ╨ó" });
   let userId = null;
   if (token) { const p = verifyToken(token); if (p) userId = p.sub; }
   const invoiceId = invoiceCounter++;
@@ -706,7 +592,7 @@ function optionalAuth(req, _res, next) {
 }
 function requireAuth(req, res, next) {
   optionalAuth(req, res, () => {
-    if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
+    if (!req.userId) return res.status(401).json({ message: "╨¥╨╡╨╛╨▒╤à╨╛╨┤╨╕╨╝╨░ ╨░╨▓╤é╨╛╤Ç╨╕╨╖╨░╤å╨╕╤Å" });
     next();
   });
 }
@@ -714,13 +600,13 @@ function requireAuth(req, res, next) {
 // ΓöÇΓöÇΓöÇ Shop Catalog ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const SHOP_CATALOG = [
   { id: "frame_basic_gray",  type: "frame",    name: "Torn",                  price: 0,    preview: "#6b7280" },
-  { id: "badge_heart",       type: "badge",    name: "Сердце",                price: 0,    preview: "#f43f5e" },
+  { id: "badge_heart",       type: "badge",    name: "╨í╨╡╤Ç╨┤╤å╨╡",                price: 0,    preview: "#f43f5e" },
   { id: "frame_basic_blue",  type: "frame",    name: "Sketched Memory",      price: 200,  preview: "#3b82f6" },
   { id: "frame_neon",        type: "frame",    name: "Bewitching Frame",     price: 500,  preview: "#a855f7" },
   { id: "frame_gold",        type: "frame",    name: "oil",                  price: 1500, preview: "#facc15" },
-  { id: "frame_galaxy",      type: "frame",    name: "Элли у окна",          price: 3000, preview: "linear-gradient(135deg,#6366f1,#a855f7,#ec4899)" },
+  { id: "frame_galaxy",      type: "frame",    name: "╨¡╨╗╨╗╨╕ ╤â ╨╛╨║╨╜╨░",          price: 3000, preview: "linear-gradient(135deg,#6366f1,#a855f7,#ec4899)" },
   { id: "frame_fire",        type: "frame",    name: "Husk Frame",           price: 2000, preview: "linear-gradient(135deg,#dc2626,#f97316,#facc15)" },
-  { id: "frame_ice",         type: "frame",    name: "Ледяная",              price: 2000, preview: "linear-gradient(135deg,#0ea5e9,#38bdf8,#e0f2fe)" },
+  { id: "frame_ice",         type: "frame",    name: "╨¢╨╡╨┤╤Å╨╜╨░╤Å",              price: 2000, preview: "linear-gradient(135deg,#0ea5e9,#38bdf8,#e0f2fe)" },
   { id: "bg_fon1",           type: "background", name: "Lilywhite & Lilyblack", price: 0,  preview: "#3b82f6" },
   { id: "bg_fon2",           type: "background", name: "Miss Neko 2",        price: 500,  preview: "#8b5cf6" },
   { id: "bg_fon3",           type: "background", name: "Muse Dash",          price: 800,  preview: "#ec4899" },
@@ -728,31 +614,31 @@ const SHOP_CATALOG = [
   { id: "bg_fon5",           type: "background", name: "Circle of Hell",     price: 1500, preview: "#eab308" },
   { id: "bg_fon6",           type: "background", name: "Black Hole",         price: 2000, preview: "#22c55e" },
   { id: "bg_fon7",           type: "background", name: "noir-anime2",        price: 2500, preview: "#06b6d4" },
-  { id: "anim_pulse",        type: "avatar_animated", name: "Импульс",     price: 1200, preview: "#60a5fa" },
-  { id: "anim_flame",        type: "avatar_animated", name: "Пламя",       price: 1200, preview: "#f97316" },
-  { id: "anim_neon",         type: "avatar_animated", name: "Неон",        price: 1500, preview: "#a855f7" },
-  { id: "badge_diamond",     type: "badge",    name: "Бриллиант",           price: 800,  preview: "#38bdf8" },
-  { id: "badge_flame",       type: "badge",    name: "Пламя",               price: 600,  preview: "#f97316" },
-  { id: "badge_star",        type: "badge",    name: "Звезда",              price: 500,  preview: "#facc15" },
-  { id: "badge_skull",       type: "badge",    name: "Череп",               price: 1000, preview: "#ef4444" },
+  { id: "anim_pulse",        type: "avatar_animated", name: "╨ÿ╨╝╨┐╤â╨╗╤î╤ü",     price: 1200, preview: "#60a5fa" },
+  { id: "anim_flame",        type: "avatar_animated", name: "╨ƒ╨╗╨░╨╝╤Å",       price: 1200, preview: "#f97316" },
+  { id: "anim_neon",         type: "avatar_animated", name: "╨¥╨╡╨╛╨╜",        price: 1500, preview: "#a855f7" },
+  { id: "badge_diamond",     type: "badge",    name: "╨æ╤Ç╨╕╨╗╨╗╨╕╨░╨╜╤é",           price: 800,  preview: "#38bdf8" },
+  { id: "badge_flame",       type: "badge",    name: "╨ƒ╨╗╨░╨╝╤Å",               price: 600,  preview: "#f97316" },
+  { id: "badge_star",        type: "badge",    name: "╨ù╨▓╨╡╨╖╨┤╨░",              price: 500,  preview: "#facc15" },
+  { id: "badge_skull",       type: "badge",    name: "╨º╨╡╤Ç╨╡╨┐",               price: 1000, preview: "#ef4444" },
 ];
 
 const MARKET_CATALOG = [
-  { id: "m_cosmic_chest",   type: "chest",      name: "Космический кейс",  preview: "linear-gradient(135deg,#1e1b4b,#7c3aed,#ec4899)" },
-  { id: "m_saber_relic",    type: "relic",      name: "Реликвия Силы",     preview: "linear-gradient(135deg,#0c4a6e,#0ea5e9,#22d3ee)" },
-  { id: "m_dragon_scale",   type: "material",   name: "Драконья чешуя",    preview: "linear-gradient(135deg,#7f1d1d,#dc2626,#fb923c)" },
-  { id: "m_ghost_cape",     type: "skin",       name: "Призрачный плащ",   preview: "linear-gradient(135deg,#1e293b,#475569,#94a3b8)" },
-  { id: "m_ember_token",    type: "token",      name: "Угольный жетон",    preview: "linear-gradient(135deg,#7f1d1d,#ea580c)" },
-  { id: "m_neon_disc",      type: "disc",       name: "Неоновый диск",     preview: "linear-gradient(135deg,#581c87,#a855f7,#22d3ee)" },
-  { id: "m_void_pearl",     type: "pearl",      name: "Жемчужина Бездны",  preview: "linear-gradient(135deg,#020617,#1e1b4b,#0ea5e9)" },
-  { id: "m_aurora_shard",   type: "shard",      name: "Осколок Авроры",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
+  { id: "m_cosmic_chest",   type: "chest",      name: "╨Ü╨╛╤ü╨╝╨╕╤ç╨╡╤ü╨║╨╕╨╣ ╨║╨╡╨╣╤ü",  preview: "linear-gradient(135deg,#1e1b4b,#7c3aed,#ec4899)" },
+  { id: "m_saber_relic",    type: "relic",      name: "╨á╨╡╨╗╨╕╨║╨▓╨╕╤Å ╨í╨╕╨╗╤ï",     preview: "linear-gradient(135deg,#0c4a6e,#0ea5e9,#22d3ee)" },
+  { id: "m_dragon_scale",   type: "material",   name: "╨ö╤Ç╨░╨║╨╛╨╜╤î╤Å ╤ç╨╡╤ê╤â╤Å",    preview: "linear-gradient(135deg,#7f1d1d,#dc2626,#fb923c)" },
+  { id: "m_ghost_cape",     type: "skin",       name: "╨ƒ╤Ç╨╕╨╖╤Ç╨░╤ç╨╜╤ï╨╣ ╨┐╨╗╨░╤ë",   preview: "linear-gradient(135deg,#1e293b,#475569,#94a3b8)" },
+  { id: "m_ember_token",    type: "token",      name: "╨ú╨│╨╛╨╗╤î╨╜╤ï╨╣ ╨╢╨╡╤é╨╛╨╜",    preview: "linear-gradient(135deg,#7f1d1d,#ea580c)" },
+  { id: "m_neon_disc",      type: "disc",       name: "╨¥╨╡╨╛╨╜╨╛╨▓╤ï╨╣ ╨┤╨╕╤ü╨║",     preview: "linear-gradient(135deg,#581c87,#a855f7,#22d3ee)" },
+  { id: "m_void_pearl",     type: "pearl",      name: "╨û╨╡╨╝╤ç╤â╨╢╨╕╨╜╨░ ╨æ╨╡╨╖╨┤╨╜╤ï",  preview: "linear-gradient(135deg,#020617,#1e1b4b,#0ea5e9)" },
+  { id: "m_aurora_shard",   type: "shard",      name: "╨₧╤ü╨║╨╛╨╗╨╛╨║ ╨É╨▓╤Ç╨╛╤Ç╤ï",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
 ];
 
 // ΓöÇΓöÇΓöÇ Public profile ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.get("/api/user/:id", async (req, res) => {
   const id = sanitize(req.params.id, 64);
   const acc = await redisAccounts.get(id);
-  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
+  if (!acc) return res.status(404).json({ message: "╨ÿ╨│╤Ç╨╛╨║ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   const online = [...wsClients.values()].some(c => c.userId === id);
   const friendCount = getFriends(id).size;
   res.json({
@@ -798,14 +684,14 @@ app.get("/api/user/:id/comments", (req, res) => {
 
 app.post("/api/user/:id/comments", requireAuth, (req, res) => {
   const id = sanitize(req.params.id, 64);
-  if (id === req.userId) return res.status(400).json({ message: "Нельзя комментировать свой профиль" });
+  if (id === req.userId) return res.status(400).json({ message: "╨¥╨╡╨╗╤î╨╖╤Å ╨║╨╛╨╝╨╝╨╡╨╜╤é╨╕╤Ç╨╛╨▓╨░╤é╤î ╤ü╨▓╨╛╨╣ ╨┐╤Ç╨╛╤ä╨╕╨╗╤î" });
   const text = sanitize(req.body.text || "", 200);
-  if (text.length < 2) return res.status(400).json({ message: "Слишком короткий комментарий" });
+  if (text.length < 2) return res.status(400).json({ message: "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨║╨╛╤Ç╨╛╤é╨║╨╕╨╣ ╨║╨╛╨╝╨╝╨╡╨╜╤é╨░╤Ç╨╕╨╣" });
   const now = Date.now();
   const last = lastCommentAt.get(req.userId) || 0;
-  if (now - last < 10_000) return res.status(429).json({ message: "Подожди 10 секунд" });
+  if (now - last < 10_000) return res.status(429).json({ message: "╨ƒ╨╛╨┤╨╛╨╢╨┤╨╕ 10 ╤ü╨╡╨║╤â╨╜╨┤" });
   const hourly = (commentHourly.get(req.userId) || []).filter(t => now - t < 3600_000);
-  if (hourly.length >= 5) return res.status(429).json({ message: "Слишком много комментариев" });
+  if (hourly.length >= 5) return res.status(429).json({ message: "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨╝╨╜╨╛╨│╨╛ ╨║╨╛╨╝╨╝╨╡╨╜╤é╨░╤Ç╨╕╨╡╨▓" });
   lastCommentAt.set(req.userId, now);
   commentHourly.set(req.userId, [...hourly, now]);
   let fromUsername = "Player";
@@ -821,7 +707,7 @@ app.post("/api/user/:id/comments", requireAuth, (req, res) => {
   res.json({ ok: true, comment: c });
 });
 
-app.delete("/api/user/:id/comments/:cid", requireAuth, async (req, res) => {
+app.delete("/api/user/:id/comments/:cid", requireAuth, (req, res) => {
   const targetId = sanitize(req.params.id, 64);
   const cid = sanitize(req.params.cid, 64);
   const list = profileComments.get(targetId) || [];
@@ -831,7 +717,7 @@ app.delete("/api/user/:id/comments/:cid", requireAuth, async (req, res) => {
   if (c.fromId !== req.userId) return res.status(403).json({ message: "Not your comment" });
   list.splice(idx, 1);
   profileComments.set(targetId, list);
-  try { await redis.del(`sbgames:comments:` + targetId); for (const item of list) await redis.rpush(`sbgames:comments:` + targetId, JSON.stringify(item)); } catch {}
+  try { redis.del(`sbgames:comments:` + targetId); for (const item of list) redis.rpush(`sbgames:comments:` + targetId, JSON.stringify(item)); } catch {}
   res.json({ ok: true });
 });
 
@@ -844,7 +730,7 @@ app.get("/api/user/bio", requireAuth, async (req, res) => {
 app.put("/api/user/bio", requireAuth, async (req, res) => {
   const bio = sanitize(req.body.bio || "", 300);
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  if (!acc) return res.status(404).json({ message: "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   acc.bio = bio;
   await redisAccounts.set(req.userId, acc);
   res.json({ ok: true, bio: acc.bio });
@@ -864,12 +750,12 @@ app.get("/api/inventory", requireAuth, async (req, res) => {
 app.post("/api/inventory/buy", requireAuth, async (req, res) => {
   const itemId = sanitize(req.body.itemId || "", 64);
   const item = SHOP_CATALOG.find(i => i.id === itemId);
-  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  if (!item) return res.status(404).json({ message: "╨ƒ╤Ç╨╡╨┤╨╝╨╡╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  if (!acc) return res.status(404).json({ message: "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
-  if (owned.includes(itemId)) return res.status(400).json({ message: "Уже куплено" });
-  if ((acc.balance || 0) < item.price) return res.status(400).json({ message: "Недостаточно СБТ", need: item.price, have: acc.balance || 0 });
+  if (owned.includes(itemId)) return res.status(400).json({ message: "╨ú╨╢╨╡ ╨║╤â╨┐╨╗╨╡╨╜╨╛" });
+  if ((acc.balance || 0) < item.price) return res.status(400).json({ message: "╨¥╨╡╨┤╨╛╤ü╤é╨░╤é╨╛╤ç╨╜╨╛ ╨í╨æ╨ó", need: item.price, have: acc.balance || 0 });
   acc.balance = (acc.balance || 0) - item.price;
   acc.inventory = [...owned, itemId];
   await redisAccounts.set(req.userId, acc);
@@ -879,11 +765,11 @@ app.post("/api/inventory/buy", requireAuth, async (req, res) => {
 app.post("/api/inventory/equip", requireAuth, async (req, res) => {
   const itemId = sanitize(req.body.itemId || "", 64);
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  if (!acc) return res.status(404).json({ message: "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
-  if (!owned.includes(itemId)) return res.status(400).json({ message: "Сначала купи предмет" });
+  if (!owned.includes(itemId)) return res.status(400).json({ message: "╨í╨╜╨░╤ç╨░╨╗╨░ ╨║╤â╨┐╨╕ ╨┐╤Ç╨╡╨┤╨╝╨╡╤é" });
   const item = SHOP_CATALOG.find(i => i.id === itemId);
-  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  if (!item) return res.status(404).json({ message: "╨ƒ╤Ç╨╡╨┤╨╝╨╡╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   acc.equip = { ...(acc.equip || {}), [item.type]: itemId };
   await redisAccounts.set(req.userId, acc);
   res.json({ ok: true, equip: acc.equip });
@@ -891,9 +777,9 @@ app.post("/api/inventory/equip", requireAuth, async (req, res) => {
 
 app.post("/api/inventory/unequip", requireAuth, async (req, res) => {
   const type = sanitize(req.body.type || "", 32);
-  if (!["frame","background","avatar_animated","badge"].includes(type)) return res.status(400).json({ message: "Неверный тип" });
+  if (!["frame","background","avatar_animated","badge"].includes(type)) return res.status(400).json({ message: "╨¥╨╡╨▓╨╡╤Ç╨╜╤ï╨╣ ╤é╨╕╨┐" });
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  if (!acc) return res.status(404).json({ message: "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   acc.equip = { ...(acc.equip || {}) };
   delete acc.equip[type];
   await redisAccounts.set(req.userId, acc);
@@ -905,7 +791,7 @@ const activityStore = new Map();
 
 app.post("/api/activity", requireAuth, (req, res) => {
   const { serverId, startedAt, endedAt, durationSec } = req.body || {};
-  if (!serverId || typeof startedAt !== "number" || typeof endedAt !== "number") return res.status(400).json({ message: "Неверные поля" });
+  if (!serverId || typeof startedAt !== "number" || typeof endedAt !== "number") return res.status(400).json({ message: "╨¥╨╡╨▓╨╡╤Ç╨╜╤ï╨╡ ╨┐╨╛╨╗╤Å" });
   const dur = Math.max(0, Math.min(86400, Math.floor(durationSec || (endedAt - startedAt) / 1000)));
   const list = activityStore.get(req.userId) || [];
   list.push({ serverId: sanitize(serverId, 32), startedAt, endedAt, durationSec: dur });
@@ -948,13 +834,13 @@ app.get("/api/market/catalog", (_req, res) => res.json({ items: MARKET_CATALOG }
 
 app.post("/api/market/grant", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
-  if (!acc || acc.role !== "admin") return res.status(403).json({ message: "Только админ" });
+  if (!acc || acc.role !== "admin") return res.status(403).json({ message: "╨ó╨╛╨╗╤î╨║╨╛ ╨░╨┤╨╝╨╕╨╜" });
   const targetId = sanitize(req.body.userId || "", 64);
   const itemId = sanitize(req.body.itemId || "", 64);
   const target = await redisAccounts.get(targetId);
-  if (!target) return res.status(404).json({ message: "Игрок не найден" });
+  if (!target) return res.status(404).json({ message: "╨ÿ╨│╤Ç╨╛╨║ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   const item = MARKET_CATALOG.find(i => i.id === itemId);
-  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  if (!item) return res.status(404).json({ message: "╨ƒ╤Ç╨╡╨┤╨╝╨╡╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   target.market_inventory = Array.isArray(target.market_inventory) ? [...target.market_inventory, itemId] : [itemId];
   await redisAccounts.set(targetId, target);
   res.json({ ok: true, market: target.market_inventory });
@@ -964,16 +850,16 @@ app.post("/api/market/sell", requireAuth, async (req, res) => {
   const { itemId, price } = req.body || {};
   const cleanId = sanitize(String(itemId || ""), 64);
   const priceNum = parseInt(price, 10);
-  if (!cleanId) return res.status(400).json({ message: "Не указан предмет" });
-  if (!Number.isFinite(priceNum) || priceNum < 10 || priceNum > 100000) return res.status(400).json({ message: "Цена: 10–100000 СБТ" });
+  if (!cleanId) return res.status(400).json({ message: "╨¥╨╡ ╤â╨║╨░╨╖╨░╨╜ ╨┐╤Ç╨╡╨┤╨╝╨╡╤é" });
+  if (!Number.isFinite(priceNum) || priceNum < 10 || priceNum > 100000) return res.status(400).json({ message: "╨ª╨╡╨╜╨░: 10ΓÇô100000 ╨í╨æ╨ó" });
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "Аккаунт не найден" });
+  if (!acc) return res.status(404).json({ message: "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   const marketOwn = Array.isArray(acc.market_inventory) ? acc.market_inventory : [];
-  if (!marketOwn.includes(cleanId)) return res.status(400).json({ message: "Нет этого предмета" });
+  if (!marketOwn.includes(cleanId)) return res.status(400).json({ message: "╨¥╨╡╤é ╤ì╤é╨╛╨│╨╛ ╨┐╤Ç╨╡╨┤╨╝╨╡╤é╨░" });
   const item = MARKET_CATALOG.find(i => i.id === cleanId);
-  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  if (!item) return res.status(404).json({ message: "╨ƒ╤Ç╨╡╨┤╨╝╨╡╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   const hasActive = [...listings.values()].some(l => l.status === "active" && l.sellerId === req.userId && l.itemId === cleanId);
-  if (hasActive) return res.status(400).json({ message: "Уже выставлен" });
+  if (hasActive) return res.status(400).json({ message: "╨ú╨╢╨╡ ╨▓╤ï╤ü╤é╨░╨▓╨╗╨╡╨╜" });
   acc.market_inventory = marketOwn.filter(x => x !== cleanId);
   await redisAccounts.set(req.userId, acc);
   const id = String(++listingCounter);
@@ -986,14 +872,14 @@ app.post("/api/market/sell", requireAuth, async (req, res) => {
 app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
   const id = sanitize(req.params.id, 32);
   const listing = listings.get(id);
-  if (!listing) return res.status(404).json({ message: "Листинг не найден" });
-  if (listing.status !== "active") return res.status(400).json({ message: "Уже завершён" });
-  if (listing.sellerId === req.userId) return res.status(400).json({ message: "Нельзя купить свой" });
+  if (!listing) return res.status(404).json({ message: "╨¢╨╕╤ü╤é╨╕╨╜╨│ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
+  if (listing.status !== "active") return res.status(400).json({ message: "╨ú╨╢╨╡ ╨╖╨░╨▓╨╡╤Ç╤ê╤æ╨╜" });
+  if (listing.sellerId === req.userId) return res.status(400).json({ message: "╨¥╨╡╨╗╤î╨╖╤Å ╨║╤â╨┐╨╕╤é╤î ╤ü╨▓╨╛╨╣" });
   const buyer = await redisAccounts.get(req.userId);
-  if (!buyer) return res.status(404).json({ message: "Аккаунт не найден" });
-  if ((buyer.balance || 0) < listing.price) return res.status(400).json({ message: "Недостаточно СБТ" });
+  if (!buyer) return res.status(404).json({ message: "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
+  if ((buyer.balance || 0) < listing.price) return res.status(400).json({ message: "╨¥╨╡╨┤╨╛╤ü╤é╨░╤é╨╛╤ç╨╜╨╛ ╨í╨æ╨ó" });
   const seller = await redisAccounts.get(listing.sellerId);
-  if (!seller) return res.status(404).json({ message: "Продавец не найден" });
+  if (!seller) return res.status(404).json({ message: "╨ƒ╤Ç╨╛╨┤╨░╨▓╨╡╤å ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
   buyer.balance = (buyer.balance || 0) - listing.price;
   seller.balance = (seller.balance || 0) + listing.price;
   buyer.market_inventory = Array.isArray(buyer.market_inventory) ? [...buyer.market_inventory, listing.itemId] : [listing.itemId];
@@ -1010,9 +896,9 @@ app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
 app.delete("/api/market/:id", requireAuth, async (req, res) => {
   const id = sanitize(req.params.id, 32);
   const listing = listings.get(id);
-  if (!listing) return res.status(404).json({ message: "Листинг не найден" });
-  if (listing.sellerId !== req.userId) return res.status(403).json({ message: "Не твой" });
-  if (listing.status !== "active") return res.status(400).json({ message: "Уже завершён" });
+  if (!listing) return res.status(404).json({ message: "╨¢╨╕╤ü╤é╨╕╨╜╨│ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
+  if (listing.sellerId !== req.userId) return res.status(403).json({ message: "╨¥╨╡ ╤é╨▓╨╛╨╣" });
+  if (listing.status !== "active") return res.status(400).json({ message: "╨ú╨╢╨╡ ╨╖╨░╨▓╨╡╤Ç╤ê╤æ╨╜" });
   const acc = await redisAccounts.get(req.userId);
   if (acc) { acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId]; await redisAccounts.set(req.userId, acc); }
   listing.status = "cancelled";
@@ -1023,70 +909,14 @@ app.delete("/api/market/:id", requireAuth, async (req, res) => {
 
 // ΓöÇΓöÇΓöÇ Groups ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const groups = new Map(), groupMessages = new Map(), groupInvites = new Map();
-const groupJoinRequests = new Map(); // groupId -> [{ userId, username, time }]
 let groupCounter = 0;
 const GROUP_MAX = 8;
-const groupVoice = new Map(); // groupId -> Set<userId>
-
-// ─── Clan roles ─────────────────────────────────────────────────────────────
-// memberRoles: { [userId]: "owner" | "leader" | "elder" | "member" }
-const ROLE_OWNER  = "owner";
-const ROLE_LEADER = "leader";
-const ROLE_ELDER  = "elder";
-const ROLE_MEMBER = "member";
-
-function getMemberRole(g, uid) {
-  if (uid === g.ownerId) return ROLE_OWNER;
-  return g.memberRoles?.[uid] || ROLE_MEMBER;
-}
-function canKick(g, uid) {
-  const r = getMemberRole(g, uid);
-  return r === ROLE_OWNER || r === ROLE_LEADER;
-}
-function canManageRequests(g, uid) {
-  const r = getMemberRole(g, uid);
-  return r === ROLE_OWNER || r === ROLE_LEADER || r === ROLE_ELDER;
-}
-function canEditGroup(g, uid) {
-  const r = getMemberRole(g, uid);
-  return r === ROLE_OWNER || r === ROLE_LEADER;
-}
-
-// ─── Parties (temporary play sessions) ─────────────────────────────────────
-const parties      = new Map(); // partyId -> { id, name, leaderId, members: Set<userId>, createdAt }
-const userParties  = new Map(); // userId -> Set<partyId>
-const partyInvites = new Map(); // userId (invitee) -> [{ partyId, partyName, fromId, fromUsername }]
-let partyCounter = 0;
-
-function userPartyIds(uid) {
-  if (!userParties.has(uid)) userParties.set(uid, new Set());
-  return userParties.get(uid);
-}
-
-function publicParty(p) {
-  const memberList = [...p.members].map(uid => {
-    const acc = [...redisAccounts._map.values()].find(a => a && a.id === uid);
-    return { id: uid, username: acc?.username || uid };
-  });
-  return { id: p.id, name: p.name, leaderId: p.leaderId, members: memberList, createdAt: p.createdAt };
-}
-
-function disbandParty(partyId) {
-  const p = parties.get(partyId);
-  if (!p) return;
-  for (const uid of p.members) userPartyIds(uid).delete(partyId);
-  parties.delete(partyId);
-}
-
-function userPartiesList(uid) {
-  return [...userPartyIds(uid)].map(id => parties.get(id)).filter(Boolean).map(publicParty);
-}
 
 
 // ─── Redis persistence for groups ─────────────────────────────────────────────
 async function saveGroup(g) {
   try {
-    const data = { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, createdAt: g.createdAt };
+    const data = { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.members], createdAt: g.createdAt };
     await redis.set(`sbgames:group:` + g.id, JSON.stringify(data));
     await redis.sadd("sbgames:group_ids", g.id);
   } catch {}
@@ -1101,7 +931,7 @@ async function loadGroupsFromRedis() {
       const raw = await redis.get(`sbgames:group:` + id);
       if (!raw) continue;
       const d = JSON.parse(raw);
-      const g = { id: d.id, name: d.name, description: d.description || "", avatar: d.avatar || "", ownerId: d.ownerId, members: new Set(d.members), memberRoles: d.memberRoles || {}, createdAt: d.createdAt };
+      const g = { id: d.id, name: d.name, ownerId: d.ownerId, members: new Set(d.members), createdAt: d.createdAt };
       groups.set(id, g); groupMessages.set(id, []);
       const numId = parseInt(id, 10);
       if (!isNaN(numId) && numId >= groupCounter) groupCounter = numId + 1;
@@ -1113,7 +943,7 @@ async function loadGroupsFromRedis() {
 // ─── Redis persistence for comments ───────────────────────────────────────────
 async function saveComment(targetId, c) {
   try {
-    const key = `sbgames:comments:${targetId}`;
+    const key = sbgames:comments: + targetId;
     await redis.rpush(key, JSON.stringify(c));
     await redis.ltrim(key, -200, -1);
   } catch {}
@@ -1129,6 +959,7 @@ async function loadCommentsFromRedis() {
           const arr = JSON.parse(jsonVal);
           if (Array.isArray(arr) && arr.length) {
             profileComments.set(userId, arr);
+            await redis.del("sbgames:comments");
             for (const c of arr) await redis.rpush(`sbgames:comments:` + userId, JSON.stringify(c));
           }
         } catch {}
@@ -1143,6 +974,20 @@ async function loadCommentsFromRedis() {
       const targetId = key.replace("sbgames:comments:", "");
       if (!targetId) continue;
       const t = await redis.type(key);
+      if (t === "string") {
+        try {
+          const raw = await redis.get(key);
+          if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr) && arr.length) {
+              profileComments.set(targetId, arr);
+              await redis.del(key);
+              for (const c of arr) await redis.rpush(key, JSON.stringify(c));
+            }
+          }
+        } catch {}
+        continue;
+      }
       if (t !== "list") continue;
       const list = await redis.lrange(key, 0, -1);
       if (list.length) profileComments.set(targetId, list.map(JSON.parse));
@@ -1297,53 +1142,17 @@ async function loadGroupInvitesFromRedis() {
   } catch (e) { console.warn("[groupInvites] failed to load:", e.message); }
 }
 
-async function saveGroupJoinRequests(gid) {
-  try {
-    const reqs = groupJoinRequests.get(gid);
-    if (reqs && reqs.length > 0) {
-      await redis.set(`sbgames:groupreq:` + gid, JSON.stringify(reqs));
-    } else {
-      await redis.del(`sbgames:groupreq:` + gid);
-    }
-  } catch {}
-}
-async function loadGroupJoinRequestsFromRedis() {
-  try {
-    const stream = redis.scanStream({ match: "sbgames:groupreq:*", count: 100 });
-    const keys = [];
-    for await (const k of stream) keys.push(...k);
-    for (const key of keys) {
-      const gid = key.replace("sbgames:groupreq:", "");
-      const raw = await redis.get(key);
-      if (raw && groups.has(gid)) groupJoinRequests.set(gid, JSON.parse(raw));
-    }
-    console.log(`[groupJoinRequests] loaded from Redis`);
-  } catch (e) { console.warn("[groupJoinRequests] failed to load:", e.message); }
-}
-
 // Load on startup
 loadGroupsFromRedis();
 loadGroupMessagesFromRedis();
 loadGroupInvitesFromRedis();
-loadGroupJoinRequestsFromRedis();
 loadCommentsFromRedis();
 loadDMsFromRedis();
 loadFriendshipsFromRedis();
 loadFriendRequestsFromRedis();
 loadListingsFromRedis();
 loadTicketsFromRedis();
-function publicGroup(g) {
-  const msgCount = (groupMessages.get(g.id) || []).length;
-  const xp = msgCount * 5;
-  const level = Math.floor(xp / 100) + 1;
-  const xpNext = level * 100;
-  const memberNames = {};
-  for (const mid of g.members) {
-    const acc = [...redisAccounts._map.values()].find(a => a && a.id === mid);
-    if (acc) memberNames[mid] = acc.username;
-  }
-  return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, memberNames, createdAt: g.createdAt, xp, level, xpNext };
-}
+function publicGroup(g) { return { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.members], createdAt: g.createdAt }; }
 
 app.get("/api/groups", requireAuth, (req, res) => {
   res.json({ groups: [...groups.values()].filter(g => g.members.has(req.userId)).map(publicGroup) });
@@ -1351,13 +1160,9 @@ app.get("/api/groups", requireAuth, (req, res) => {
 
 app.post("/api/groups", requireAuth, (req, res) => {
   const name = sanitize(req.body.name || "", 40);
-  if (name.length < 2 || name.length > 40) return res.status(400).json({ message: "Название: 2–40 символов" });
-  const description = sanitize(req.body.description || "", 200);
-  if ([...groups.values()].some(g => g.members.has(req.userId))) {
-    return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы создать новый" });
-  }
+  if (name.length < 2 || name.length > 40) return res.status(400).json({ message: "╨¥╨░╨╖╨▓╨░╨╜╨╕╨╡: 2ΓÇô40 ╤ü╨╕╨╝╨▓╨╛╨╗╨╛╨▓" });
   const id = String(++groupCounter);
-  const g = { id, name, description, ownerId: req.userId, members: new Set([req.userId]), memberRoles: {}, createdAt: Date.now() };
+  const g = { id, name, ownerId: req.userId, members: new Set([req.userId]), createdAt: Date.now() };
   groups.set(id, g); groupMessages.set(id, []);
   saveGroup(g);
   res.json({ ok: true, group: publicGroup(g) });
@@ -1366,15 +1171,15 @@ app.post("/api/groups", requireAuth, (req, res) => {
 app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
-  if (!g.members.has(req.userId)) return res.status(403).json({ message: "Ты не в группе" });
-  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Максимум ${GROUP_MAX}` });
+  if (!g) return res.status(404).json({ message: "╨ô╤Ç╤â╨┐╨┐╨░ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨░" });
+  if (!g.members.has(req.userId)) return res.status(403).json({ message: "╨ó╤ï ╨╜╨╡ ╨▓ ╨│╤Ç╤â╨┐╨┐╨╡" });
+  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `╨£╨░╨║╤ü╨╕╨╝╤â╨╝ ${GROUP_MAX}` });
   const targetNick = sanitize(req.body.username || "", 32).toLowerCase();
   const target = [...redisAccounts._map.values()].find(a => (a.username || "").toLowerCase() === targetNick);
-  if (!target) return res.status(404).json({ message: "Игрок не найден" });
-  if (g.members.has(target.id)) return res.status(400).json({ message: "Уже в группе" });
+  if (!target) return res.status(404).json({ message: "╨ÿ╨│╤Ç╨╛╨║ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" });
+  if (g.members.has(target.id)) return res.status(400).json({ message: "╨ú╨╢╨╡ ╨▓ ╨│╤Ç╤â╨┐╨┐╨╡" });
   const list = groupInvites.get(gid) || [];
-  if (list.find(i => i.toId === target.id)) return res.status(400).json({ message: "Уже приглашён" });
+  if (list.find(i => i.toId === target.id)) return res.status(400).json({ message: "╨ú╨╢╨╡ ╨┐╤Ç╨╕╨│╨╗╨░╤ê╤æ╨╜" });
   const from = wsClientsByUserId(req.userId);
   const invite = { toId: target.id, fromId: req.userId, fromUsername: from?.username || "Player", groupId: gid, groupName: g.name, time: Date.now() };
   list.push(invite); groupInvites.set(gid, list);
@@ -1386,40 +1191,27 @@ app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
 app.post("/api/groups/:id/respond", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!g) return res.status(404).json({ message: "╨ô╤Ç╤â╨┐╨┐╨░ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨░" });
   const accept = !!req.body.accept;
   groupInvites.set(gid, (groupInvites.get(gid) || []).filter(i => i.toId !== req.userId));
-  if (accept) {
-    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "Полная" });
-    if ([...groups.values()].some(other => other.id !== gid && other.members.has(req.userId))) {
-      return res.status(400).json({ message: "Ты уже состоишь в другом клане" });
-    }
-    g.members.add(req.userId);
-    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  }
+  if (accept) { if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "╨ƒ╨╛╨╗╨╜╨░╤Å" }); g.members.add(req.userId); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
   res.json({ ok: true, group: publicGroup(g) });
 });
 
 app.post("/api/groups/:id/leave", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Клан не найден" });
-  if (!g.members.has(req.userId)) return res.status(403).json({ message: "Ты не в клане" });
+  if (!g) return res.status(404).json({ message: "╨ô╤Ç╤â╨┐╨┐╨░ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨░" });
   g.members.delete(req.userId);
-  if (g.members.size === 0) {
-    groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid);
-  } else {
-    if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value;
-    saveGroup(g);
-    for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  }
+  if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); }
+  else { if (g.ownerId === req.userId) g.ownerId = g.members.values().next().value; saveGroup(g); for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) }); }
   res.json({ ok: true });
 });
 
 app.get("/api/groups/:id/messages", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g || !g.members.has(req.userId)) return res.status(403).json({ message: "Нет доступа" });
+  if (!g || !g.members.has(req.userId)) return res.status(403).json({ message: "╨¥╨╡╤é ╨┤╨╛╤ü╤é╤â╨┐╨░" });
   res.json({ messages: (groupMessages.get(gid) || []).slice(-100) });
 });
 
@@ -1429,142 +1221,14 @@ app.get("/api/groups/invites", requireAuth, (req, res) => {
   res.json({ invites: out });
 });
 
-// ─── Clan browse + join requests ──────────────────────────────────────────────
-// Public clan directory: safe public fields only, no membership required.
-app.get("/api/groups/browse", requireAuth, (req, res) => {
-  const out = [...groups.values()].map(g => {
-    const pub = publicGroup(g);
-    return {
-      id: pub.id,
-      name: pub.name,
-      description: pub.description,
-      avatar: pub.avatar,
-      level: pub.level,
-      xp: pub.xp,
-      xpNext: pub.xpNext,
-      members: pub.members,
-      memberNames: pub.memberNames,
-      memberRoles: pub.memberRoles,
-      memberCount: pub.members.length,
-      ownerId: pub.ownerId,
-      ownerName: pub.memberNames?.[pub.ownerId] || "",
-    };
-  }).sort((a, b) => b.level - a.level || b.memberCount - a.memberCount);
-  res.json({ groups: out });
-});
-
-// Non-member submits a join request. Full block if already in any clan.
-app.post("/api/groups/:id/apply", requireAuth, (req, res) => {
-  const gid = sanitize(req.params.id, 32);
-  const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Клан не найден" });
-  if (g.members.has(req.userId)) return res.status(400).json({ message: "Ты уже в этом клане" });
-  if ([...groups.values()].some(other => other.members.has(req.userId))) {
-    return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы вступить в другой" });
-  }
-  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Клан заполнен (максимум ${GROUP_MAX})` });
-  const list = groupJoinRequests.get(gid) || [];
-  if (list.find(r => r.userId === req.userId)) return res.status(400).json({ message: "Заявка уже отправлена" });
-  const from = wsClientsByUserId(req.userId);
-  const acc = [...redisAccounts._map.values()].find(a => a && a.id === req.userId);
-  const username = from?.username || acc?.username || "Player";
-  const request = { userId: req.userId, username, time: Date.now() };
-  list.push(request); groupJoinRequests.set(gid, list);
-  saveGroupJoinRequests(gid);
-  sendToUser(g.ownerId, { type: "group_join_request", groupId: gid, groupName: g.name, request });
-  res.json({ ok: true });
-});
-
-// Owner/leader/elder lists pending applicants.
-app.get("/api/groups/:id/requests", requireAuth, (req, res) => {
-  const gid = sanitize(req.params.id, 32);
-  const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "???? ?? ??????" });
-  if (!canManageRequests(g, req.userId)) return res.status(403).json({ message: "?????? ????????" });
-  res.json({ requests: groupJoinRequests.get(gid) || [] });
-});
-
-// Owner/leader/elder approves or rejects an applicant.
-app.post("/api/groups/:id/requests/:userId", requireAuth, (req, res) => {
-  const gid = sanitize(req.params.id, 32);
-  const applicantId = sanitize(req.params.userId, 64);
-  const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "???? ?? ??????" });
-  if (!canManageRequests(g, req.userId)) return res.status(403).json({ message: "?????? ????????" });
-  const accept = !!req.body.accept;
-  const list = groupJoinRequests.get(gid) || [];
-  if (!list.find(r => r.userId === applicantId)) return res.status(404).json({ message: "Заявка не найдена" });
-  groupJoinRequests.set(gid, list.filter(r => r.userId !== applicantId));
-  saveGroupJoinRequests(gid);
-  if (accept) {
-    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Клан заполнен (максимум ${GROUP_MAX})` });
-    if ([...groups.values()].some(other => other.id !== gid && other.members.has(applicantId))) {
-      return res.status(400).json({ message: "Игрок уже вступил в другой клан" });
-    }
-    g.members.add(applicantId);
-    saveGroup(g);
-    for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: publicGroup(g) });
-    sendToUser(applicantId, { type: "group_join_accepted", groupId: gid, groupName: g.name });
-  } else {
-    sendToUser(applicantId, { type: "group_join_rejected", groupId: gid, groupName: g.name });
-  }
-  res.json({ ok: true });
-});
-
-// ─── Group settings (owner/leader can edit) ────────────────────────────────
-app.put("/api/groups/:id/description", requireAuth, (req, res) => {
-  const gid = sanitize(req.params.id, 32);
-  const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
-  if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
-  g.description = sanitize(req.body.description || "", 200);
-  saveGroup(g);
-  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  res.json({ ok: true, group: publicGroup(g) });
-});
-
-app.put("/api/groups/:id/avatar", requireAuth, (req, res) => {
-  const gid = sanitize(req.params.id, 32);
-  const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
-  if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
-  g.avatar = sanitize(req.body.avatar || "", 500);
-  saveGroup(g);
-  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  res.json({ ok: true, group: publicGroup(g) });
-});
-
-// Owner assigns a role to a member
-app.put("/api/groups/:id/role", requireAuth, (req, res) => {
-  const gid = sanitize(req.params.id, 32);
-  const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
-  if (g.ownerId !== req.userId) return res.status(403).json({ message: "Только владелец может назначать звания" });
-  const targetId = sanitize(req.body.userId || "", 64);
-  const role = sanitize(req.body.role || "", 16);
-  if (!g.members.has(targetId)) return res.status(400).json({ message: "Пользователь не в клане" });
-  if (targetId === g.ownerId) return res.status(400).json({ message: "Нельзя изменить роль владельца" });
-  if (![ROLE_LEADER, ROLE_ELDER, ROLE_MEMBER].includes(role)) {
-    return res.status(400).json({ message: "Неверная роль" });
-  }
-  if (role === ROLE_MEMBER) {
-    delete g.memberRoles[targetId];
-  } else {
-    g.memberRoles[targetId] = role;
-  }
-  saveGroup(g);
-  for (const m of g.members) sendToUser(m, { type: "group_update", group: publicGroup(g) });
-  res.json({ ok: true, group: publicGroup(g) });
-});
-
 app.get("/online", (_, res) => {
   res.json({ users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username })) });
 });
 
 // ΓöÇΓöÇΓöÇ WebSocket ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-const WS_MAX_PER_IP    = 5;    // макс соединений с одного IP
-const WS_AUTH_TIMEOUT  = 10_000; // 10с на авторизацию
-const WS_MSG_LIMIT     = 120;  // сообщений в минуту
+const WS_MAX_PER_IP    = 5;    // ╨╝╨░╨║╤ü ╤ü╨╛╨╡╨┤╨╕╨╜╨╡╨╜╨╕╨╣ ╤ü ╨╛╨┤╨╜╨╛╨│╨╛ IP
+const WS_AUTH_TIMEOUT  = 10_000; // 10╤ü ╨╜╨░ ╨░╨▓╤é╨╛╤Ç╨╕╨╖╨░╤å╨╕╤Ä
+const WS_MSG_LIMIT     = 30;   // ╤ü╨╛╨╛╨▒╤ë╨╡╨╜╨╕╨╣ ╨▓ ╨╝╨╕╨╜╤â╤é╤â
 const WS_MSG_WINDOW    = 60_000;
 const wsIPCount        = new Map(); // ip ΓåÆ count
 
@@ -1572,7 +1236,7 @@ wss.on("connection", (ws, req) => {
   const clientId = uuidv4();
   const ip = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
 
-  // Лимит соединений per IP
+  // ╨¢╨╕╨╝╨╕╤é ╤ü╨╛╨╡╨┤╨╕╨╜╨╡╨╜╨╕╨╣ per IP
   const ipCount = (wsIPCount.get(ip) || 0) + 1;
   wsIPCount.set(ip, ipCount);
   if (ipCount > WS_MAX_PER_IP || isBlocked(ip)) {
@@ -1589,7 +1253,7 @@ wss.on("connection", (ws, req) => {
     if (c) c.isAlive = true;
   });
 
-  // Таймаут авторизации
+  // ╨ó╨░╨╣╨╝╨░╤â╤é ╨░╨▓╤é╨╛╤Ç╨╕╨╖╨░╤å╨╕╨╕
   const authTimeout = setTimeout(() => {
     if (!wsClients.get(clientId)?.userId) {
       ws.close(1008, "Auth timeout");
@@ -1603,12 +1267,12 @@ wss.on("connection", (ws, req) => {
       const client = wsClients.get(clientId);
       if (!client) return;
 
-      // Rate limit сообщений
+      // Rate limit ╤ü╨╛╨╛╨▒╤ë╨╡╨╜╨╕╨╣
       const now = Date.now();
       if (now - client.msgWindowStart > WS_MSG_WINDOW) { client.msgCount = 0; client.msgWindowStart = now; }
       client.msgCount++;
       if (client.msgCount > WS_MSG_LIMIT) {
-        send(ws, { type: "error", text: "Слишком много сообщений" });
+        send(ws, { type: "error", text: "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨╝╨╜╨╛╨│╨╛ ╤ü╨╛╨╛╨▒╤ë╨╡╨╜╨╕╨╣" });
         return;
       }
 
@@ -1622,7 +1286,7 @@ wss.on("connection", (ws, req) => {
           }
           if (!userId) {
             recordFailure(ip);
-            send(ws, { type: "auth_error", message: "Необходима авторизация" });
+            send(ws, { type: "auth_error", message: "╨¥╨╡╨╛╨▒╤à╨╛╨┤╨╕╨╝╨░ ╨░╨▓╤é╨╛╤Ç╨╕╨╖╨░╤å╨╕╤Å" });
             setTimeout(() => {
               try { ws.close(1008, "Unauthorized"); } catch {}
             }, 100);
@@ -1633,43 +1297,25 @@ wss.on("connection", (ws, req) => {
           wsClients.set(clientId, client); broadcastOnlineUsers();
           let myFriends = [];
           try {
-            myFriends = (await Promise.all([...getFriends(client.userId)].map(async fid => {
-              let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
-              if (!fa) { try { fa = await redisAccounts.get(fid); } catch {} }
+            myFriends = [...getFriends(client.userId)].map(fid => {
+              const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
               return fa ? { id: fa.id, username: fa.username } : null;
-            }))).filter(Boolean);
+            }).filter(Boolean);
           } catch (e) {
             console.error("[WS Auth Error] Failed to retrieve friends:", e);
           }
           send(ws, { type: "friends_list", friends: myFriends });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
-          send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
           break;
         }
         case "friend_request_send": {
-          const _toNick = (msg.toUsername || "").trim().toLowerCase();
-          let target = [...redisAccounts._map.values()].find(a => a && (a.username || "").toLowerCase() === _toNick);
-          if (!target) {
-            // fallback: scan Redis for users not in memory
-            try {
-              const stream = redis.scanStream({ match: "acc:*", count: 200 });
-              outer: for await (const keys of stream) {
-                for (const k of keys) {
-                  const v = await redis.get(k);
-                  if (!v) continue;
-                  const acc = JSON.parse(v);
-                  if ((acc.username || "").toLowerCase() === _toNick) { target = acc; break outer; }
-                }
-              }
-            } catch {}
-          }
-          if (!target)                              { send(ws, { type: "friend_error", message: "Пользователь не найден" }); break; }
-          if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "Нельзя добавить себя" }); break; }
-          if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "Уже в друзьях" }); break; }
+          const target = [...redisAccounts._map.values()].find(a => a && (a.username || "").toLowerCase() === (msg.toUsername || "").trim().toLowerCase());
+          if (!target)                              { send(ws, { type: "friend_error", message: "╨ƒ╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" }); break; }
+          if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "╨¥╨╡╨╗╤î╨╖╤Å ╨┤╨╛╨▒╨░╨▓╨╕╤é╤î ╤ü╨╡╨▒╤Å" }); break; }
+          if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "╨ú╨╢╨╡ ╨▓ ╨┤╤Ç╤â╨╖╤î╤Å╤à" }); break; }
           const existing = getPendingRequests(target.id);
-          if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "Заявка уже отправлена" }); break; }
+          if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "╨ù╨░╤Å╨▓╨║╨░ ╤â╨╢╨╡ ╨╛╤é╨┐╤Ç╨░╨▓╨╗╨╡╨╜╨░" }); break; }
           const reqData = { fromId: client.userId, fromUsername: client.username, time: Date.now() };
           friendRequests.set(target.id, [...existing, reqData]);
           saveFriendRequests(target.id);
@@ -1689,11 +1335,10 @@ wss.on("connection", (ws, req) => {
             saveFriendships(fromId);
             let meFriends = [];
             try {
-              meFriends = (await Promise.all([...getFriends(client.userId)].map(async fid => {
-                let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
-                if (!fa) { try { fa = await redisAccounts.get(fid); } catch {} }
+              meFriends = [...getFriends(client.userId)].map(fid => {
+                const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
                 return fa ? { id: fa.id, username: fa.username } : null;
-              }))).filter(Boolean);
+              }).filter(Boolean);
             } catch (e) {
               console.error("[WS Friend Respond Error] Failed to get friends list:", e);
             }
@@ -1731,11 +1376,11 @@ wss.on("connection", (ws, req) => {
             ticket.unread = 0; ticket.status = "answered";
             broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
             broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
-            // Форвард в TG если пользователь из бота
+            // ╨ñ╨╛╤Ç╨▓╨░╤Ç╨┤ ╨▓ TG ╨╡╤ü╨╗╨╕ ╨┐╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î ╨╕╨╖ ╨▒╨╛╤é╨░
             if (ticket.tgChatId) {
               try {
                 await bot.sendMessage(ticket.tgChatId,
-                  `💬 *Ответ по тикету #${ticket.id}*\n\n${cleanText}`,
+                  `≡ƒÆ¼ *╨₧╤é╨▓╨╡╤é ╨┐╨╛ ╤é╨╕╨║╨╡╤é╤â #${ticket.id}*\n\n${cleanText}`,
                   { parse_mode: "Markdown", reply_markup: USER_KB }
                 );
               } catch (e) { console.error("[ws message tg forward]", e.message); }
@@ -1753,7 +1398,7 @@ wss.on("connection", (ws, req) => {
           if (ticket && client.role === "admin") { ticket.status = "closed"; broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
           break;
         }
-        // Админ отправляет реквизиты через лаунчер → форвардим в TG
+        // ╨É╨┤╨╝╨╕╨╜ ╨╛╤é╨┐╤Ç╨░╨▓╨╗╤Å╨╡╤é ╤Ç╨╡╨║╨▓╨╕╨╖╨╕╤é╤ï ╤ç╨╡╤Ç╨╡╨╖ ╨╗╨░╤â╨╜╤ç╨╡╤Ç ΓåÆ ╤ä╨╛╤Ç╨▓╨░╤Ç╨┤╨╕╨╝ ╨▓ TG
         case "send_requisites": {
           if (client.role !== "admin") break;
           const ticket = tickets.get(Number(msg.ticketId));
@@ -1763,23 +1408,23 @@ wss.on("connection", (ws, req) => {
           const message = { id: uuidv4(), from: client.userId, username: client.username, role: "admin", text: cleanText, time: Date.now() };
           ticket.messages.push(message);
           ticket.status = "answered"; ticket.unread = 0;
-          // Показываем в лаунчере
+          // ╨ƒ╨╛╨║╨░╨╖╤ï╨▓╨░╨╡╨╝ ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç╨╡
           broadcastToAdmins({ type: "message", ticketId: ticket.id, message });
           broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
           broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
-          // Отправляем в TG если tgChatId известен
+          // ╨₧╤é╨┐╤Ç╨░╨▓╨╗╤Å╨╡╨╝ ╨▓ TG ╨╡╤ü╨╗╨╕ tgChatId ╨╕╨╖╨▓╨╡╤ü╤é╨╡╨╜
           if (ticket.tgChatId) {
             try {
               await bot.sendMessage(ticket.tgChatId,
-                `💳 *Реквизиты для оплаты*\n\n${cleanText}\n\nПосле оплаты нажми кнопку и прикрепи чек.`,
-                { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "✅ Отправить чек", callback_data: `send_receipt_${ticket.id}` }]] } }
+                `≡ƒÆ│ *╨á╨╡╨║╨▓╨╕╨╖╨╕╤é╤ï ╨┤╨╗╤Å ╨╛╨┐╨╗╨░╤é╤ï*\n\n${cleanText}\n\n╨ƒ╨╛╤ü╨╗╨╡ ╨╛╨┐╨╗╨░╤é╤ï ╨╜╨░╨╢╨╝╨╕ ╨║╨╜╨╛╨┐╨║╤â ╨╕ ╨┐╤Ç╨╕╨║╤Ç╨╡╨┐╨╕ ╤ç╨╡╨║.`,
+                { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Γ£à ╨₧╤é╨┐╤Ç╨░╨▓╨╕╤é╤î ╤ç╨╡╨║", callback_data: `send_receipt_${ticket.id}` }]] } }
               );
             } catch (e) { console.error("[ws send_requisites tg]", e.message); }
           }
           send(ws, { type: "requisites_sent", ticketId: ticket.id });
           break;
         }
-        // Админ подтверждает оплату через лаунчер → выдаём баланс + закрываем
+        // ╨É╨┤╨╝╨╕╨╜ ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨░╨╡╤é ╨╛╨┐╨╗╨░╤é╤â ╤ç╨╡╤Ç╨╡╨╖ ╨╗╨░╤â╨╜╤ç╨╡╤Ç ΓåÆ ╨▓╤ï╨┤╨░╤æ╨╝ ╨▒╨░╨╗╨░╨╜╤ü + ╨╖╨░╨║╤Ç╤ï╨▓╨░╨╡╨╝
         case "confirm_payment": {
           if (client.role !== "admin") break;
           const ticket = tickets.get(Number(msg.ticketId));
@@ -1787,10 +1432,10 @@ wss.on("connection", (ws, req) => {
           const amount = parseInt(msg.amount, 10);
           if (!amount || amount <= 0) break;
           const acc = await redisAccounts.get(ticket.userId);
-          if (!acc) { send(ws, { type: "error", text: "Аккаунт игрока не найден" }); break; }
+          if (!acc) { send(ws, { type: "error", text: "╨É╨║╨║╨░╤â╨╜╤é ╨╕╨│╤Ç╨╛╨║╨░ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜" }); break; }
           acc.balance = (acc.balance || 0) + amount;
           await redisAccounts.set(ticket.userId, acc);
-          const sysMsg = { id: uuidv4(), from: "system", text: `Оплата подтверждена. +${amount} СБТ зачислено.`, time: Date.now() };
+          const sysMsg = { id: uuidv4(), from: "system", text: `╨₧╨┐╨╗╨░╤é╨░ ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨╡╨╜╨░. +${amount} ╨í╨æ╨ó ╨╖╨░╤ç╨╕╤ü╨╗╨╡╨╜╨╛.`, time: Date.now() };
           ticket.messages.push(sysMsg);
           ticket.status = "closed";
           broadcastToAdmins({ type: "message", ticketId: ticket.id, message: sysMsg });
@@ -1799,11 +1444,11 @@ wss.on("connection", (ws, req) => {
           broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id });
           sendToUser(ticket.userId, { type: "balance_update", balance: acc.balance });
           send(ws, { type: "payment_confirmed", ticketId: ticket.id, newBalance: acc.balance });
-          // Уведомление в TG
+          // ╨ú╨▓╨╡╨┤╨╛╨╝╨╗╨╡╨╜╨╕╨╡ ╨▓ TG
           if (ticket.tgChatId) {
             try {
               await bot.sendMessage(ticket.tgChatId,
-                `✅ *Оплата подтверждена!*\n\n+*${amount} СБТ* зачислено на ваш аккаунт.\nТекущий баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`,
+                `Γ£à *╨₧╨┐╨╗╨░╤é╨░ ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨╡╨╜╨░!*\n\n+*${amount} ╨í╨æ╨ó* ╨╖╨░╤ç╨╕╤ü╨╗╨╡╨╜╨╛ ╨╜╨░ ╨▓╨░╤ê ╨░╨║╨║╨░╤â╨╜╤é.\n╨ó╨╡╨║╤â╤ë╨╕╨╣ ╨▒╨░╨╗╨░╨╜╤ü: *${acc.balance.toLocaleString("ru-RU")} ╨í╨æ╨ó*`,
                 { parse_mode: "Markdown", reply_markup: USER_KB }
               );
             } catch (e) { console.error("[ws confirm_payment tg]", e.message); }
@@ -1836,216 +1481,48 @@ wss.on("connection", (ws, req) => {
           const gid = sanitize(msg.groupId || "", 32);
           const targetUserId = sanitize(msg.userId || "", 64);
           const g = groups.get(gid);
-          if (!g || !canKick(g, client.userId) || !g.members.has(targetUserId) || targetUserId === client.userId) break;
-          if (getMemberRole(g, targetUserId) === ROLE_OWNER) break;
-          if (!canKick(g, client.userId) && getMemberRole(g, targetUserId) === ROLE_LEADER) break;
-          delete g.memberRoles[targetUserId];
+          if (!g || g.ownerId !== client.userId || !g.members.has(targetUserId) || targetUserId === client.userId) break;
           g.members.delete(targetUserId);
           sendToUser(targetUserId, { type: "group_kicked", groupId: gid, groupName: g.name });
           if (g.members.size === 0) { groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid); }
           else { saveGroup(g); for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: publicGroup(g) }); }
           break;
         }
-        // ─── DM Calls ────────────────────────────────────────────────────────────
-        case "call_offer": {
-          const { toId, offer } = msg;
-          if (!toId || !offer) break;
-          sendToUser(toId, { type: "incoming_call", fromId: client.userId, fromUsername: client.username, offer, callType: "dm" });
-          break;
-        }
-        case "call_answer": {
-          const { toId, answer } = msg;
-          if (!toId || !answer) break;
-          sendToUser(toId, { type: "call_answered", fromId: client.userId, answer });
-          break;
-        }
-        case "call_ice": {
-          const { toId, candidate } = msg;
-          if (!toId || !candidate) break;
-          sendToUser(toId, { type: "call_ice_candidate", fromId: client.userId, candidate });
-          break;
-        }
-        case "call_reject": {
-          const { toId } = msg;
-          if (!toId) break;
-          sendToUser(toId, { type: "call_rejected", fromId: client.userId });
-          break;
-        }
-        case "call_end": {
-          const { toId } = msg;
-          if (!toId) break;
-          sendToUser(toId, { type: "call_ended", fromId: client.userId });
-          break;
-        }
-        // ─── Group Calls ─────────────────────────────────────────────────────────
-        case "group_call_join": {
-          const { groupId } = msg;
-          const g = groups.get(groupId);
-          if (!g || !g.members.has(client.userId)) break;
-          if (!groupVoice.has(groupId)) groupVoice.set(groupId, new Set());
-          groupVoice.get(groupId).add(client.userId);
-          const participants = [...groupVoice.get(groupId)];
-          for (const memberId of g.members) {
-            sendToUser(memberId, { type: "group_call_state", groupId, participants });
-          }
-          break;
-        }
-        case "group_call_leave": {
-          const { groupId } = msg;
-          const g = groups.get(groupId);
-          if (groupVoice.has(groupId)) {
-            groupVoice.get(groupId).delete(client.userId);
-            if (groupVoice.get(groupId).size === 0) groupVoice.delete(groupId);
-          }
-          if (g) {
-            const participants = [...(groupVoice.get(groupId) || [])];
-            for (const memberId of g.members) {
-              sendToUser(memberId, { type: "group_call_state", groupId, participants });
-            }
-          }
-          break;
-        }
-        case "group_call_offer": {
-          const { groupId, toId, offer } = msg;
-          if (!toId || !offer) break;
-          sendToUser(toId, { type: "group_call_offer", groupId, fromId: client.userId, fromUsername: client.username, offer });
-          break;
-        }
-        case "group_call_answer": {
-          const { groupId, toId, answer } = msg;
-          if (!toId || !answer) break;
-          sendToUser(toId, { type: "group_call_answer", groupId, fromId: client.userId, answer });
-          break;
-        }
-        case "group_call_ice": {
-          const { groupId, toId, candidate } = msg;
-          if (!toId || !candidate) break;
-          sendToUser(toId, { type: "group_call_ice_candidate", groupId, fromId: client.userId, candidate });
-          break;
-        }
-        // ─── Parties (temporary play sessions) ────────────────────────────────────
-        case "party_create": {
-          const pname = sanitize(msg.name || "", 40) || "Группа";
-          const id = String(++partyCounter);
-          const p = { id, name: pname, leaderId: client.userId, members: new Set([client.userId]), createdAt: Date.now() };
-          parties.set(id, p);
-          userPartyIds(client.userId).add(id);
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
-          break;
-        }
-        case "party_invite": {
-          const { toId, partyId } = msg;
-          if (!toId || !partyId) break;
-          const p = parties.get(partyId);
-          if (!p || p.leaderId !== client.userId) break;
-          if (p.members.size >= 8) break;
-          if (!areFriends(client.userId, toId)) break;
-          const invite = { partyId, partyName: p.name, fromId: client.userId, fromUsername: client.username };
-          partyInvites.set(toId, [...(partyInvites.get(toId) || []).filter(i => i.partyId !== partyId), invite]);
-          sendToUser(toId, { type: "party_invite_received", invite });
-          break;
-        }
-        case "party_invite_respond": {
-          const { partyId, accept } = msg;
-          partyInvites.set(client.userId, (partyInvites.get(client.userId) || []).filter(i => i.partyId !== partyId));
-          if (accept) {
-            const p = parties.get(partyId);
-            if (p && p.members.size < 8) {
-              p.members.add(client.userId);
-              userPartyIds(client.userId).add(partyId);
-              for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
-            }
-          }
-          send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
-          break;
-        }
-        case "party_leave": {
-          const { partyId } = msg;
-          if (!partyId) break;
-          const p = parties.get(partyId);
-          if (!p) { userPartyIds(client.userId).delete(partyId); break; }
-          p.members.delete(client.userId);
-          userPartyIds(client.userId).delete(partyId);
-          if (p.members.size === 0) { disbandParty(partyId); }
-          else {
-            if (p.leaderId === client.userId) p.leaderId = p.members.values().next().value;
-            for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
-          }
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
-          break;
-        }
-        case "party_kick": {
-          const { userId: targetId, partyId } = msg;
-          if (!partyId || !targetId) break;
-          const p = parties.get(partyId);
-          if (!p || p.leaderId !== client.userId || targetId === client.userId) break;
-          p.members.delete(targetId);
-          userPartyIds(targetId).delete(partyId);
-          sendToUser(targetId, { type: "parties_list", parties: userPartiesList(targetId) });
-          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
-          break;
-        }
-        case "party_rename": {
-          const { partyId, name } = msg;
-          const p = parties.get(partyId);
-          if (!p || p.leaderId !== client.userId) break;
-          p.name = sanitize(name || "", 40) || p.name;
-          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
-          break;
-        }
         case "community_sync": {
-          const friendIds = [...getFriends(client.userId)];
-          const friendList = await Promise.all(friendIds.map(async fid => {
-            let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
-            if (!fa) { try { fa = await redisAccounts.get(fid); } catch {} }
+          send(ws, { type: "friends_list", friends: [...getFriends(client.userId)].map(fid => {
+            const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
             return fa ? { id: fa.id, username: fa.username } : null;
-          }));
-          send(ws, { type: "friends_list", friends: friendList.filter(Boolean) });
+          }).filter(Boolean) });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
           send(ws, { type: "online_users", users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username, role: c.role })) });
           send(ws, { type: "groups_list", groups: [...groups.values()].filter(g => g.members.has(client.userId)).map(publicGroup) });
           const myInvites = [];
           for (const [gid, list] of groupInvites.entries()) for (const inv of list) if (inv.toId === client.userId) myInvites.push({ ...inv, groupId: gid });
           send(ws, { type: "group_invites_list", invites: myInvites });
-          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
-          send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           break;
         }
       }
     } catch (err) {
       console.error("[WS Message Error]:", err);
       try {
-        send(ws, { type: "error", text: "Внутренняя ошибка сервера" });
+        send(ws, { type: "error", text: "╨Æ╨╜╤â╤é╤Ç╨╡╨╜╨╜╤Å╤Å ╨╛╤ê╨╕╨▒╨║╨░ ╤ü╨╡╤Ç╨▓╨╡╤Ç╨░" });
       } catch (wsErr) {}
     }
   });
 
   ws.on("close", () => {
     clearTimeout(authTimeout);
-    const client = wsClients.get(clientId);
     wsClients.delete(clientId);
     const cnt = wsIPCount.get(ip) || 1;
     if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
-    if (client?.userId) {
-      for (const [gid, voices] of groupVoice.entries()) {
-        if (voices.has(client.userId)) {
-          voices.delete(client.userId);
-          if (voices.size === 0) groupVoice.delete(gid);
-          const g = groups.get(gid);
-          if (g) { const p = [...(groupVoice.get(gid) || [])]; for (const mid of g.members) sendToUser(mid, { type: "group_call_state", groupId: gid, participants: p }); }
-        }
-      }
-    }
     broadcastOnlineUsers();
   });
-  ws.on("error", (err) => {
-    try {
-      clearTimeout(authTimeout);
-      wsClients.delete(clientId);
-      const cnt = wsIPCount.get(ip) || 1;
-      if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
-      broadcastOnlineUsers();
-    } catch (e) { console.error("[WS error handler]:", e); }
+  ws.on("error", () => {
+    clearTimeout(authTimeout);
+    wsClients.delete(clientId);
+    const cnt = wsIPCount.get(ip) || 1;
+    if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
+    broadcastOnlineUsers();
   });
 });
 
@@ -2093,7 +1570,7 @@ async function fetchNewsPublic() {
     let match;
     while ((match = itemRegex.exec(xml)) !== null) {
       const block    = match[1];
-      const title    = ((block.match(/<title><!\[CDATA\[(.*?)\]\]>/) || [])[1] || (block.match(/<title>(.*?)<\/title>/) || [])[1] || "Новость").replace(/<[^>]+>/g, "").trim();
+      const title    = ((block.match(/<title><!\[CDATA\[(.*?)\]\]>/) || [])[1] || (block.match(/<title>(.*?)<\/title>/) || [])[1] || "╨¥╨╛╨▓╨╛╤ü╤é╤î").replace(/<[^>]+>/g, "").trim();
       const desc     = ((block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]>/) || [])[1] || "");
       const pubDate  = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1] || "";
       const photo    = (desc.match(/<img[^>]+src="([^"]+)"/) || [])[1] || null;
@@ -2117,19 +1594,19 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const botSessions = new Map(); // chatId -> { state, ... }
 
-// Клавиатуры
+// ╨Ü╨╗╨░╨▓╨╕╨░╤é╤â╤Ç╤ï
 const USER_KB = {
   keyboard: [
-    [{ text: "Профиль" },       { text: "Пополнить баланс" }],
-    [{ text: "Мои обращения" }, { text: "Новое обращение"  }],
+    [{ text: "╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î" },       { text: "╨ƒ╨╛╨┐╨╛╨╗╨╜╨╕╤é╤î ╨▒╨░╨╗╨░╨╜╤ü" }],
+    [{ text: "╨£╨╛╨╕ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å" }, { text: "╨¥╨╛╨▓╨╛╨╡ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╨╡"  }],
   ],
   resize_keyboard: true, persistent: true,
 };
 
 const ADMIN_KB = {
   keyboard: [
-    [{ text: "Тикеты" },  { text: "Профиль" }],
-    [{ text: "Баланс участника" }],
+    [{ text: "╨ó╨╕╨║╨╡╤é╤ï" },  { text: "╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î" }],
+    [{ text: "╨æ╨░╨╗╨░╨╜╤ü ╤â╤ç╨░╤ü╤é╨╜╨╕╨║╨░" }],
   ],
   resize_keyboard: true, persistent: true,
 };
@@ -2138,23 +1615,23 @@ function getKb(account) {
   return account?.role === "admin" ? ADMIN_KB : USER_KB;
 }
 
-const TICKET_STATUS_LABELS = { open: "открыт", in_progress: "в работе", answered: "ответили", closed: "закрыт" };
+const TICKET_STATUS_LABELS = { open: "╨╛╤é╨║╤Ç╤ï╤é", in_progress: "╨▓ ╤Ç╨░╨▒╨╛╤é╨╡", answered: "╨╛╤é╨▓╨╡╤é╨╕╨╗╨╕", closed: "╨╖╨░╨║╤Ç╤ï╤é" };
 
 // ΓöÇΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async function mainMenu(chatId, account) {
-  const name  = account?.username || "игрок";
+  const name  = account?.username || "╨╕╨│╤Ç╨╛╨║";
   const bal   = (account?.balance ?? 0).toLocaleString("ru-RU");
   const isAdm = account?.role === "admin";
   bot.sendMessage(chatId,
-    `Привет, *${name}*!\n\n` +
-    `Баланс: *${bal} СБТ*` +
-    (isAdm ? "\n\nРежим администратора." : ""),
+    `╨ƒ╤Ç╨╕╨▓╨╡╤é, *${name}*!\n\n` +
+    `╨æ╨░╨╗╨░╨╜╤ü: *${bal} ╨í╨æ╨ó*` +
+    (isAdm ? "\n\n╨á╨╡╨╢╨╕╨╝ ╨░╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç╨░." : ""),
     { parse_mode: "Markdown", reply_markup: getKb(account) }
   );
 }
 
-// Показать список тикетов (для админа)
+// ╨ƒ╨╛╨║╨░╨╖╨░╤é╤î ╤ü╨┐╨╕╤ü╨╛╨║ ╤é╨╕╨║╨╡╤é╨╛╨▓ (╨┤╨╗╤Å ╨░╨┤╨╝╨╕╨╜╨░)
 async function showAdminTicketList(chatId, filter = "open") {
   const FILTERS = { open: ["open", "in_progress"], answered: ["answered"], all: ["open","in_progress","answered","closed"] };
   const statuses = FILTERS[filter] || FILTERS.open;
@@ -2165,38 +1642,38 @@ async function showAdminTicketList(chatId, filter = "open") {
 
   const filterBtns = [
     [
-      { text: filter === "open"     ? "· Активные ·" : "Активные",     callback_data: "admin_filter_open"     },
-      { text: filter === "answered" ? "· Ответили ·" : "Ответили",     callback_data: "admin_filter_answered" },
-      { text: filter === "all"      ? "· Все ·"       : "Все",          callback_data: "admin_filter_all"      },
+      { text: filter === "open"     ? "┬╖ ╨É╨║╤é╨╕╨▓╨╜╤ï╨╡ ┬╖" : "╨É╨║╤é╨╕╨▓╨╜╤ï╨╡",     callback_data: "admin_filter_open"     },
+      { text: filter === "answered" ? "┬╖ ╨₧╤é╨▓╨╡╤é╨╕╨╗╨╕ ┬╖" : "╨₧╤é╨▓╨╡╤é╨╕╨╗╨╕",     callback_data: "admin_filter_answered" },
+      { text: filter === "all"      ? "┬╖ ╨Æ╤ü╨╡ ┬╖"       : "╨Æ╤ü╨╡",          callback_data: "admin_filter_all"      },
     ],
   ];
 
   if (list.length === 0) {
-    return bot.sendMessage(chatId, "Нет тикетов в этой категории.", {
+    return bot.sendMessage(chatId, "╨¥╨╡╤é ╤é╨╕╨║╨╡╤é╨╛╨▓ ╨▓ ╤ì╤é╨╛╨╣ ╨║╨░╤é╨╡╨│╨╛╤Ç╨╕╨╕.", {
       reply_markup: { inline_keyboard: filterBtns }
     });
   }
 
   const ticketBtns = list.map(t => [{
-    text: `#${t.id} [${TICKET_STATUS_LABELS[t.status] || t.status}] ${t.username} — ${t.category.slice(0, 20)}${t.unread ? ` (${t.unread} новых)` : ""}`,
+    text: `#${t.id} [${TICKET_STATUS_LABELS[t.status] || t.status}] ${t.username} ΓÇö ${t.category.slice(0, 20)}${t.unread ? ` (${t.unread} ╨╜╨╛╨▓╤ï╤à)` : ""}`,
     callback_data: `admin_ticket_${t.id}`,
   }]);
 
-  bot.sendMessage(chatId, `*Тикеты* (${list.length}):`, {
+  bot.sendMessage(chatId, `*╨ó╨╕╨║╨╡╤é╤ï* (${list.length}):`, {
     parse_mode: "Markdown",
     reply_markup: { inline_keyboard: [...filterBtns, ...ticketBtns] }
   });
 }
 
-// Показать конкретный тикет
+// ╨ƒ╨╛╨║╨░╨╖╨░╤é╤î ╨║╨╛╨╜╨║╤Ç╨╡╤é╨╜╤ï╨╣ ╤é╨╕╨║╨╡╤é
 async function showAdminTicket(chatId, ticketId) {
   const t = tickets.get(ticketId);
-  if (!t) { bot.sendMessage(chatId, "Тикет не найден."); return; }
+  if (!t) { bot.sendMessage(chatId, "╨ó╨╕╨║╨╡╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜."); return; }
 
   const lastMsgs = t.messages
     .filter(m => m.from !== "system")
     .slice(-5)
-    .map(m => `${m.role === "admin" ? "Админ" : m.username}: ${m.text.slice(0, 80)}`)
+    .map(m => `${m.role === "admin" ? "╨É╨┤╨╝╨╕╨╜" : m.username}: ${m.text.slice(0, 80)}`)
     .join("\n");
 
   const statusBtns = Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => ({
@@ -2205,18 +1682,18 @@ async function showAdminTicket(chatId, ticketId) {
   }));
 
   bot.sendMessage(chatId,
-    `*Тикет #${t.id}*\n` +
-    `Игрок: ${t.username}\n` +
-    `Категория: ${t.category}\n` +
-    `Статус: ${TICKET_STATUS_LABELS[t.status] || t.status}\n\n` +
-    (lastMsgs ? `Последние сообщения:\n${lastMsgs}\n\n` : "") +
-    (t.status !== "closed" ? "Отправь сообщение ответом (reply) на это сообщение." : "Тикет закрыт."),
+    `*╨ó╨╕╨║╨╡╤é #${t.id}*\n` +
+    `╨ÿ╨│╤Ç╨╛╨║: ${t.username}\n` +
+    `╨Ü╨░╤é╨╡╨│╨╛╤Ç╨╕╤Å: ${t.category}\n` +
+    `╨í╤é╨░╤é╤â╤ü: ${TICKET_STATUS_LABELS[t.status] || t.status}\n\n` +
+    (lastMsgs ? `╨ƒ╨╛╤ü╨╗╨╡╨┤╨╜╨╕╨╡ ╤ü╨╛╨╛╨▒╤ë╨╡╨╜╨╕╤Å:\n${lastMsgs}\n\n` : "") +
+    (t.status !== "closed" ? "╨₧╤é╨┐╤Ç╨░╨▓╤î ╤ü╨╛╨╛╨▒╤ë╨╡╨╜╨╕╨╡ ╨╛╤é╨▓╨╡╤é╨╛╨╝ (reply) ╨╜╨░ ╤ì╤é╨╛ ╤ü╨╛╨╛╨▒╤ë╨╡╨╜╨╕╨╡." : "╨ó╨╕╨║╨╡╤é ╨╖╨░╨║╤Ç╤ï╤é."),
     {
       parse_mode: "Markdown",
       reply_markup: {
         inline_keyboard: [
           statusBtns,
-          [{ text: "Назад к списку", callback_data: "admin_filter_open" }],
+          [{ text: "╨¥╨░╨╖╨░╨┤ ╨║ ╤ü╨┐╨╕╤ü╨║╤â", callback_data: "admin_filter_open" }],
         ]
       }
     }
@@ -2233,12 +1710,12 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
   if (param.startsWith("auth_")) {
     const code  = param.slice(5).toUpperCase();
     const entry = authCodes.get(code);
-    if (!entry) { bot.sendMessage(msg.chat.id, "Код недействителен или истёк. Попробуй снова в лаунчере.", { reply_markup: getKb(account) }); return; }
+    if (!entry) { bot.sendMessage(msg.chat.id, "╨Ü╨╛╨┤ ╨╜╨╡╨┤╨╡╨╣╤ü╤é╨▓╨╕╤é╨╡╨╗╨╡╨╜ ╨╕╨╗╨╕ ╨╕╤ü╤é╤æ╨║. ╨ƒ╨╛╨┐╤Ç╨╛╨▒╤â╨╣ ╤ü╨╜╨╛╨▓╨░ ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç╨╡.", { reply_markup: getKb(account) }); return; }
     entry.confirmed = true;
     entry.tgUser = { id: msg.from.id, first_name: msg.from.first_name || "", last_name: msg.from.last_name || "", username: msg.from.username || null, auth_date: Math.floor(Date.now() / 1000) };
     const msgText = account
-      ? "Авторизация подтверждена! Вернись в лаунчер."
-      : "Авторизация подтверждена! Вернись в лаунчер и придумай ник.";
+      ? "╨É╨▓╤é╨╛╤Ç╨╕╨╖╨░╤å╨╕╤Å ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨╡╨╜╨░! ╨Æ╨╡╤Ç╨╜╨╕╤ü╤î ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç."
+      : "╨É╨▓╤é╨╛╤Ç╨╕╨╖╨░╤å╨╕╤Å ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨╡╨╜╨░! ╨Æ╨╡╤Ç╨╜╨╕╤ü╤î ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç ╨╕ ╨┐╤Ç╨╕╨┤╤â╨╝╨░╨╣ ╨╜╨╕╨║.";
     bot.sendMessage(msg.chat.id, msgText, { reply_markup: getKb(account) });
     return;
   }
@@ -2258,12 +1735,12 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
     const ticket = {
       id: ticketId, userId: tgId, tgChatId: String(msg.chat.id), username,
-      category: "Пополнение баланса", preview: `${amount} СБТ · ${methodLabel}`,
+      category: "╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ╨▒╨░╨╗╨░╨╜╤ü╨░", preview: `${amount} ╨í╨æ╨ó ┬╖ ${methodLabel}`,
       paymentAmount: amount,
       status: "open", unread: 1, invoiceId, createdAt: Date.now(),
       messages: [
-        { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан при пополнении через сайт.`, time: Date.now() },
-        { id: uuidv4(), from: tgId, username, text: `Пополнение: ${amount} СБТ · ${methodLabel}`, time: Date.now() },
+        { id: uuidv4(), from: "system", text: `╨ó╨╕╨║╨╡╤é #${ticketId} ╤ü╨╛╨╖╨┤╨░╨╜ ╨┐╤Ç╨╕ ╨┐╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╕ ╤ç╨╡╤Ç╨╡╨╖ ╤ü╨░╨╣╤é.`, time: Date.now() },
+        { id: uuidv4(), from: tgId, username, text: `╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡: ${amount} ╨í╨æ╨ó ┬╖ ${methodLabel}`, time: Date.now() },
       ],
     };
     tickets.set(ticketId, ticket);
@@ -2272,15 +1749,15 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     if (inv) inv.ticketId = ticketId;
 
     bot.sendMessage(msg.chat.id,
-      `*Заявка на пополнение — тикет #${ticketId}*\n\n` +
-      `Аккаунт: \`${username}\`\n` +
-      `Сумма: *${amount} СБТ* (${amount} ₽)\n` +
-      `Способ: ${methodLabel}\n` +
-      `Дата: ${dateStr}\n\n` +
-      `Администратор ответит здесь и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
+      `*╨ù╨░╤Å╨▓╨║╨░ ╨╜╨░ ╨┐╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ΓÇö ╤é╨╕╨║╨╡╤é #${ticketId}*\n\n` +
+      `╨É╨║╨║╨░╤â╨╜╤é: \`${username}\`\n` +
+      `╨í╤â╨╝╨╝╨░: *${amount} ╨í╨æ╨ó* (${amount} Γé╜)\n` +
+      `╨í╨┐╨╛╤ü╨╛╨▒: ${methodLabel}\n` +
+      `╨ö╨░╤é╨░: ${dateStr}\n\n` +
+      `╨É╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç ╨╛╤é╨▓╨╡╤é╨╕╤é ╨╖╨┤╨╡╤ü╤î ╨╕ ╨┐╤Ç╨╕╤ê╨╗╤æ╤é ╤Ç╨╡╨║╨▓╨╕╨╖╨╕╤é╤ï. ╨ƒ╨╛╤ü╨╗╨╡ ╨╛╨┐╨╗╨░╤é╤ï ╨╜╨░╨╢╨╝╨╕ ╨║╨╜╨╛╨┐╨║╤â ╨╕ ╨┐╤Ç╨╕╨║╤Ç╨╡╨┐╨╕ ╤ü╨║╤Ç╨╕╨╜╤ê╨╛╤é ╤ç╨╡╨║╨░.`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
-        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
+        [{ text: "╨₧╤é╨┐╤Ç╨░╨▓╨╕╤é╤î ╤ç╨╡╨║",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "╨¥╨░╨┐╨╕╤ü╨░╤é╤î ╨▓ ╨┐╨╛╨┤╨┤╨╡╤Ç╨╢╨║╤â", callback_data: "new_ticket_cb"            }],
       ]}}
     );
     return;
@@ -2292,7 +1769,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     if (target) {
       target.telegramId = tgId; target.telegram = msg.from.username || null; delete target.linkCode;
       await redisAccounts.set(target.id, target);
-      bot.sendMessage(msg.chat.id, `Telegram привязан к аккаунту \`${target.username}\`.`, { parse_mode: "Markdown", reply_markup: getKb(account) });
+      bot.sendMessage(msg.chat.id, `Telegram ╨┐╤Ç╨╕╨▓╤Å╨╖╨░╨╜ ╨║ ╨░╨║╨║╨░╤â╨╜╤é╤â \`${target.username}\`.`, { parse_mode: "Markdown", reply_markup: getKb(account) });
       return;
     }
   }
@@ -2300,7 +1777,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
   mainMenu(msg.chat.id, account);
 });
 
-// ─── Текстовые кнопки панели ──────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ ╨ó╨╡╨║╤ü╤é╨╛╨▓╤ï╨╡ ╨║╨╜╨╛╨┐╨║╨╕ ╨┐╨░╨╜╨╡╨╗╨╕ ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 bot.on("text", async (msg) => {
   if (msg.text?.startsWith("/")) return;
@@ -2311,67 +1788,67 @@ bot.on("text", async (msg) => {
 
   const isAdm = account?.role === "admin" || isAdminId(tgId);
 
-  // ── АДМИН ──
+  // ΓöÇΓöÇ ╨É╨ö╨£╨ÿ╨¥ ΓöÇΓöÇ
   if (isAdm) {
-    if (msg.text === "Тикеты") {
+    if (msg.text === "╨ó╨╕╨║╨╡╤é╤ï") {
       await showAdminTicketList(chatId, "open");
       return;
     }
-    if (msg.text === "Профиль") {
+    if (msg.text === "╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î") {
       bot.sendMessage(chatId,
-        `*Профиль*\n\nНик: \`${account?.username || "—"}\`\nID: \`${tgId}\`\nРоль: администратор\nБаланс: ${(account?.balance ?? 0).toLocaleString("ru-RU")} СБТ`,
+        `*╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î*\n\n╨¥╨╕╨║: \`${account?.username || "ΓÇö"}\`\nID: \`${tgId}\`\n╨á╨╛╨╗╤î: ╨░╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç\n╨æ╨░╨╗╨░╨╜╤ü: ${(account?.balance ?? 0).toLocaleString("ru-RU")} ╨í╨æ╨ó`,
         { parse_mode: "Markdown", reply_markup: ADMIN_KB }
       );
       return;
     }
-    if (msg.text === "Баланс участника") {
+    if (msg.text === "╨æ╨░╨╗╨░╨╜╤ü ╤â╤ç╨░╤ü╤é╨╜╨╕╨║╨░") {
       botSessions.set(chatId, { state: "admin_awaiting_balance_nick" });
-      bot.sendMessage(chatId, "Введи ник или TG ID участника:");
+      bot.sendMessage(chatId, "╨Æ╨▓╨╡╨┤╨╕ ╨╜╨╕╨║ ╨╕╨╗╨╕ TG ID ╤â╤ç╨░╤ü╤é╨╜╨╕╨║╨░:");
       return;
     }
     return;
   }
 
-  // ── ПОЛЬЗОВАТЕЛЬ ──
+  // ΓöÇΓöÇ ╨ƒ╨₧╨¢╨¼╨ù╨₧╨Æ╨É╨ó╨ò╨¢╨¼ ΓöÇΓöÇ
   switch (msg.text) {
-    case "Профиль": {
-      if (!account) { bot.sendMessage(chatId, "Аккаунт не найден. Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
+    case "╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î": {
+      if (!account) { bot.sendMessage(chatId, "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜. ╨Æ╨╛╨╣╨┤╨╕ ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç ╤ç╨╡╤Ç╨╡╨╖ Telegram.", { reply_markup: USER_KB }); return; }
       const regDate = new Date(account.createdAt).toLocaleDateString("ru-RU");
       bot.sendMessage(chatId,
-        `*Профиль*\n\nНик: \`${account.username}\`\nID: \`${account.id}\`\nБаланс: *${(account.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${account.role === "admin" ? "администратор" : "пользователь"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "не привязан"}\nДата рег.: ${regDate}`,
+        `*╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î*\n\n╨¥╨╕╨║: \`${account.username}\`\nID: \`${account.id}\`\n╨æ╨░╨╗╨░╨╜╤ü: *${(account.balance ?? 0).toLocaleString("ru-RU")} ╨í╨æ╨ó*\n╨á╨╛╨╗╤î: ${account.role === "admin" ? "╨░╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç" : "╨┐╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "╨╜╨╡ ╨┐╤Ç╨╕╨▓╤Å╨╖╨░╨╜"}\n╨ö╨░╤é╨░ ╤Ç╨╡╨│.: ${regDate}`,
         { parse_mode: "Markdown", reply_markup: USER_KB }
       );
       return;
     }
-    case "Пополнить баланс": {
-      bot.sendMessage(chatId, "*Пополнение баланса*\n\nВыбери сумму:", {
+    case "╨ƒ╨╛╨┐╨╛╨╗╨╜╨╕╤é╤î ╨▒╨░╨╗╨░╨╜╤ü": {
+      bot.sendMessage(chatId, "*╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ╨▒╨░╨╗╨░╨╜╤ü╨░*\n\n╨Æ╤ï╨▒╨╡╤Ç╨╕ ╤ü╤â╨╝╨╝╤â:", {
         parse_mode: "Markdown",
         reply_markup: { inline_keyboard: [
           [{ text: "50 Γé╜",   callback_data: "topup_50"   }, { text: "100 Γé╜",  callback_data: "topup_100"  }, { text: "200 Γé╜",  callback_data: "topup_200"  }],
           [{ text: "500 Γé╜",  callback_data: "topup_500"  }, { text: "1000 Γé╜", callback_data: "topup_1000" }, { text: "2000 Γé╜", callback_data: "topup_2000" }],
-          [{ text: "Другая сумма", callback_data: "topup_custom" }],
+          [{ text: "╨ö╤Ç╤â╨│╨░╤Å ╤ü╤â╨╝╨╝╨░", callback_data: "topup_custom" }],
         ]}
       });
       return;
     }
-    case "Мои обращения": {
+    case "╨£╨╛╨╕ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å": {
       const list = [...tickets.values()].filter(t => t.userId === tgId).sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
-      if (list.length === 0) { bot.sendMessage(chatId, "*Обращения*\n\nУ тебя пока нет обращений.", { parse_mode: "Markdown", reply_markup: USER_KB }); return; }
-      const STATUS = { open: "открыт", in_progress: "в работе", answered: "ответили", closed: "закрыт" };
+      if (list.length === 0) { bot.sendMessage(chatId, "*╨₧╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å*\n\n╨ú ╤é╨╡╨▒╤Å ╨┐╨╛╨║╨░ ╨╜╨╡╤é ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╨╣.", { parse_mode: "Markdown", reply_markup: USER_KB }); return; }
+      const STATUS = { open: "╨╛╤é╨║╤Ç╤ï╤é", in_progress: "╨▓ ╤Ç╨░╨▒╨╛╤é╨╡", answered: "╨╛╤é╨▓╨╡╤é╨╕╨╗╨╕", closed: "╨╖╨░╨║╤Ç╤ï╤é" };
       const lines = list.map(t => `*#${t.id}*  [${STATUS[t.status] || t.status}]  ${t.category}\n${t.preview?.slice(0, 55)}`).join("\n\n");
-      bot.sendMessage(chatId, `*Обращения*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
+      bot.sendMessage(chatId, `*╨₧╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
       return;
     }
-    case "Новое обращение": {
+    case "╨¥╨╛╨▓╨╛╨╡ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╨╡": {
       botSessions.set(chatId, { state: "awaiting_ticket_desc", category: null });
-      bot.sendMessage(chatId, "Выбери категорию обращения:", {
+      bot.sendMessage(chatId, "╨Æ╤ï╨▒╨╡╤Ç╨╕ ╨║╨░╤é╨╡╨│╨╛╤Ç╨╕╤Ä ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å:", {
         reply_markup: { inline_keyboard: [
-          [{ text: "Технические проблемы", callback_data: "tcat_tech"    }],
-          [{ text: "Вопрос по аккаунту",   callback_data: "tcat_account" }],
-          [{ text: "Вопрос по покупке",     callback_data: "tcat_pay"     }],
-          [{ text: "Баг или ошибка",        callback_data: "tcat_bug"     }],
-          [{ text: "Жалоба на игрока",      callback_data: "tcat_report"  }],
-          [{ text: "Другое",                callback_data: "tcat_other"   }],
+          [{ text: "╨ó╨╡╤à╨╜╨╕╤ç╨╡╤ü╨║╨╕╨╡ ╨┐╤Ç╨╛╨▒╨╗╨╡╨╝╤ï", callback_data: "tcat_tech"    }],
+          [{ text: "╨Æ╨╛╨┐╤Ç╨╛╤ü ╨┐╨╛ ╨░╨║╨║╨░╤â╨╜╤é╤â",   callback_data: "tcat_account" }],
+          [{ text: "╨Æ╨╛╨┐╤Ç╨╛╤ü ╨┐╨╛ ╨┐╨╛╨║╤â╨┐╨║╨╡",     callback_data: "tcat_pay"     }],
+          [{ text: "╨æ╨░╨│ ╨╕╨╗╨╕ ╨╛╤ê╨╕╨▒╨║╨░",        callback_data: "tcat_bug"     }],
+          [{ text: "╨û╨░╨╗╨╛╨▒╨░ ╨╜╨░ ╨╕╨│╤Ç╨╛╨║╨░",      callback_data: "tcat_report"  }],
+          [{ text: "╨ö╤Ç╤â╨│╨╛╨╡",                callback_data: "tcat_other"   }],
         ]}
       });
       return;
@@ -2379,18 +1856,16 @@ bot.on("text", async (msg) => {
   }
 });
 
-// ─── Callback кнопки ──────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Callback ╨║╨╜╨╛╨┐╨║╨╕ ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 bot.on("callback_query", async (q) => {
   const tgId    = String(q.from.id);
   const chatId  = q.message.chat.id;
   const account = await redisAccounts.get(tgId);
   const isAdm   = account?.role === "admin" || isAdminId(tgId);
-  // Note: each branch below calls answerCallbackQuery itself (with alert text where useful).
-  // A bare ack for any branch that doesn't answer explicitly:
-  const ackOnce = (() => { let done = false; return (opts) => { if (done) return; done = true; try { bot.answerCallbackQuery(q.id, opts); } catch {} }; })();
+  bot.answerCallbackQuery(q.id);
 
-  // ── АДМИН: фильтр тикетов ──
+  // ΓöÇΓöÇ ╨É╨ö╨£╨ÿ╨¥: ╤ä╨╕╨╗╤î╤é╤Ç ╤é╨╕╨║╨╡╤é╨╛╨▓ ΓöÇΓöÇ
   if (q.data.startsWith("admin_filter_")) {
     if (!isAdm) return;
     const filter = q.data.replace("admin_filter_", "");
@@ -2398,7 +1873,7 @@ bot.on("callback_query", async (q) => {
     return;
   }
 
-  // ── АДМИН: открыть тикет ──
+  // ΓöÇΓöÇ ╨É╨ö╨£╨ÿ╨¥: ╨╛╤é╨║╤Ç╤ï╤é╤î ╤é╨╕╨║╨╡╤é ΓöÇΓöÇ
   if (q.data.startsWith("admin_ticket_")) {
     if (!isAdm) return;
     const ticketId = parseInt(q.data.replace("admin_ticket_", ""), 10);
@@ -2407,7 +1882,7 @@ bot.on("callback_query", async (q) => {
     return;
   }
 
-  // ── АДМИН: сменить статус ──
+  // ΓöÇΓöÇ ╨É╨ö╨£╨ÿ╨¥: ╤ü╨╝╨╡╨╜╨╕╤é╤î ╤ü╤é╨░╤é╤â╤ü ΓöÇΓöÇ
   if (q.data.startsWith("admin_setstatus_")) {
     if (!isAdm) return;
     const [, , ticketIdStr, status] = q.data.split("_");
@@ -2415,86 +1890,86 @@ bot.on("callback_query", async (q) => {
     const t = tickets.get(ticketId);
     if (t) {
       t.status = status;
-      t.messages.push({ id: uuidv4(), from: "system", text: `Статус изменён: ${TICKET_STATUS_LABELS[status] || status}`, time: Date.now() });
+      t.messages.push({ id: uuidv4(), from: "system", text: `╨í╤é╨░╤é╤â╤ü ╨╕╨╖╨╝╨╡╨╜╤æ╨╜: ${TICKET_STATUS_LABELS[status] || status}`, time: Date.now() });
       broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(t) });
       broadcastToTicket(ticketId, null, { type: "ticket_update", ticket: ticketSummary(t) });
-      // Уведомить пользователя
+      // ╨ú╨▓╨╡╨┤╨╛╨╝╨╕╤é╤î ╨┐╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤Å
       if (status === "answered") {
-        try { await bot.sendMessage(t.userId, `По твоему тикету \`#${ticketId}\` пришёл ответ. Проверь на сайте или нажми "Мои обращения".`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+        try { await bot.sendMessage(t.userId, `╨ƒ╨╛ ╤é╨▓╨╛╨╡╨╝╤â ╤é╨╕╨║╨╡╤é╤â \`#${ticketId}\` ╨┐╤Ç╨╕╤ê╤æ╨╗ ╨╛╤é╨▓╨╡╤é. ╨ƒ╤Ç╨╛╨▓╨╡╤Ç╤î ╨╜╨░ ╤ü╨░╨╣╤é╨╡ ╨╕╨╗╨╕ ╨╜╨░╨╢╨╝╨╕ "╨£╨╛╨╕ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å".`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
       }
-      bot.answerCallbackQuery(q.id, { text: `Статус: ${TICKET_STATUS_LABELS[status]}`, show_alert: false });
+      bot.answerCallbackQuery(q.id, { text: `╨í╤é╨░╤é╤â╤ü: ${TICKET_STATUS_LABELS[status]}`, show_alert: false });
       await showAdminTicket(chatId, ticketId);
     }
     return;
   }
 
-  // ── Пополнение ──
+  // ΓöÇΓöÇ ╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ΓöÇΓöÇ
   if (q.data.startsWith("topup_")) {
     const sub = q.data.split("_")[1];
     if (sub === "custom") {
       botSessions.set(chatId, { state: "awaiting_topup_amount" });
-      bot.sendMessage(chatId, "Введи сумму пополнения в рублях:", { reply_markup: { force_reply: true, input_field_placeholder: "Например: 350" } });
+      bot.sendMessage(chatId, "╨Æ╨▓╨╡╨┤╨╕ ╤ü╤â╨╝╨╝╤â ╨┐╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╤Å ╨▓ ╤Ç╤â╨▒╨╗╤Å╤à:", { reply_markup: { force_reply: true, input_field_placeholder: "╨¥╨░╨┐╤Ç╨╕╨╝╨╡╤Ç: 350" } });
       return;
     }
     const amount = parseInt(sub, 10);
-    if (!account) { bot.sendMessage(chatId, "Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
+    if (!account) { bot.sendMessage(chatId, "╨Æ╨╛╨╣╨┤╨╕ ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç ╤ç╨╡╤Ç╨╡╨╖ Telegram.", { reply_markup: USER_KB }); return; }
     const ticketId = ++ticketCounter;
     const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "Пополнение баланса", preview: `${amount} СБТ · через бота`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
-      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан через бота.`, time: Date.now() },
-      { id: uuidv4(), from: tgId, username: account.username, text: `Пополнение на ${amount} СБТ`, time: Date.now() },
+    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ╨▒╨░╨╗╨░╨╜╤ü╨░", preview: `${amount} ╨í╨æ╨ó ┬╖ ╤ç╨╡╤Ç╨╡╨╖ ╨▒╨╛╤é╨░`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `╨ó╨╕╨║╨╡╤é #${ticketId} ╤ü╨╛╨╖╨┤╨░╨╜ ╤ç╨╡╤Ç╨╡╨╖ ╨▒╨╛╤é╨░.`, time: Date.now() },
+      { id: uuidv4(), from: tgId, username: account.username, text: `╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ╨╜╨░ ${amount} ╨í╨æ╨ó`, time: Date.now() },
     ]};
     tickets.set(ticketId, t);
     saveTicket(t);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
     bot.sendMessage(chatId,
-      `*Заявка на пополнение — тикет #${ticketId}*\n\nАккаунт: \`${account.username}\`\nСумма: *${amount} СБТ* (${amount} ₽)\nДата: ${dateStr}\n\nАдминистратор ответит и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
+      `*╨ù╨░╤Å╨▓╨║╨░ ╨╜╨░ ╨┐╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ΓÇö ╤é╨╕╨║╨╡╤é #${ticketId}*\n\n╨É╨║╨║╨░╤â╨╜╤é: \`${account.username}\`\n╨í╤â╨╝╨╝╨░: *${amount} ╨í╨æ╨ó* (${amount} Γé╜)\n╨ö╨░╤é╨░: ${dateStr}\n\n╨É╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç ╨╛╤é╨▓╨╡╤é╨╕╤é ╨╕ ╨┐╤Ç╨╕╤ê╨╗╤æ╤é ╤Ç╨╡╨║╨▓╨╕╨╖╨╕╤é╤ï. ╨ƒ╨╛╤ü╨╗╨╡ ╨╛╨┐╨╗╨░╤é╤ï ╨╜╨░╨╢╨╝╨╕ ╨║╨╜╨╛╨┐╨║╤â ╨╕ ╨┐╤Ç╨╕╨║╤Ç╨╡╨┐╨╕ ╤ü╨║╤Ç╨╕╨╜╤ê╨╛╤é ╤ç╨╡╨║╨░.`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
-        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
+        [{ text: "╨₧╤é╨┐╤Ç╨░╨▓╨╕╤é╤î ╤ç╨╡╨║",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "╨¥╨░╨┐╨╕╤ü╨░╤é╤î ╨▓ ╨┐╨╛╨┤╨┤╨╡╤Ç╨╢╨║╤â", callback_data: "new_ticket_cb"            }],
       ]}}
     );
     return;
   }
 
-  // ── Новое обращение inline ──
+  // ΓöÇΓöÇ ╨¥╨╛╨▓╨╛╨╡ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╨╡ inline ΓöÇΓöÇ
   if (q.data === "new_ticket_cb") {
     botSessions.set(chatId, { state: "awaiting_ticket_desc", category: null });
-    bot.sendMessage(chatId, "Выбери категорию обращения:", {
+    bot.sendMessage(chatId, "╨Æ╤ï╨▒╨╡╤Ç╨╕ ╨║╨░╤é╨╡╨│╨╛╤Ç╨╕╤Ä ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å:", {
       reply_markup: { inline_keyboard: [
-        [{ text: "Технические проблемы", callback_data: "tcat_tech"    }],
-        [{ text: "Вопрос по аккаунту",   callback_data: "tcat_account" }],
-        [{ text: "Вопрос по покупке",     callback_data: "tcat_pay"     }],
-        [{ text: "Баг или ошибка",        callback_data: "tcat_bug"     }],
-        [{ text: "Жалоба на игрока",      callback_data: "tcat_report"  }],
-        [{ text: "Другое",                callback_data: "tcat_other"   }],
+        [{ text: "╨ó╨╡╤à╨╜╨╕╤ç╨╡╤ü╨║╨╕╨╡ ╨┐╤Ç╨╛╨▒╨╗╨╡╨╝╤ï", callback_data: "tcat_tech"    }],
+        [{ text: "╨Æ╨╛╨┐╤Ç╨╛╤ü ╨┐╨╛ ╨░╨║╨║╨░╤â╨╜╤é╤â",   callback_data: "tcat_account" }],
+        [{ text: "╨Æ╨╛╨┐╤Ç╨╛╤ü ╨┐╨╛ ╨┐╨╛╨║╤â╨┐╨║╨╡",     callback_data: "tcat_pay"     }],
+        [{ text: "╨æ╨░╨│ ╨╕╨╗╨╕ ╨╛╤ê╨╕╨▒╨║╨░",        callback_data: "tcat_bug"     }],
+        [{ text: "╨û╨░╨╗╨╛╨▒╨░ ╨╜╨░ ╨╕╨│╤Ç╨╛╨║╨░",      callback_data: "tcat_report"  }],
+        [{ text: "╨ö╤Ç╤â╨│╨╛╨╡",                callback_data: "tcat_other"   }],
       ]}
     });
     return;
   }
 
-  // ── Категория тикета ──
-  const CAT_MAP = { tcat_tech: "Технические проблемы", tcat_account: "Вопрос по аккаунту", tcat_pay: "Вопрос по покупке", tcat_bug: "Баг или ошибка", tcat_report: "Жалоба на игрока", tcat_other: "Другое" };
+  // ΓöÇΓöÇ ╨Ü╨░╤é╨╡╨│╨╛╤Ç╨╕╤Å ╤é╨╕╨║╨╡╤é╨░ ΓöÇΓöÇ
+  const CAT_MAP = { tcat_tech: "╨ó╨╡╤à╨╜╨╕╤ç╨╡╤ü╨║╨╕╨╡ ╨┐╤Ç╨╛╨▒╨╗╨╡╨╝╤ï", tcat_account: "╨Æ╨╛╨┐╤Ç╨╛╤ü ╨┐╨╛ ╨░╨║╨║╨░╤â╨╜╤é╤â", tcat_pay: "╨Æ╨╛╨┐╤Ç╨╛╤ü ╨┐╨╛ ╨┐╨╛╨║╤â╨┐╨║╨╡", tcat_bug: "╨æ╨░╨│ ╨╕╨╗╨╕ ╨╛╤ê╨╕╨▒╨║╨░", tcat_report: "╨û╨░╨╗╨╛╨▒╨░ ╨╜╨░ ╨╕╨│╤Ç╨╛╨║╨░", tcat_other: "╨ö╤Ç╤â╨│╨╛╨╡" };
   if (q.data in CAT_MAP) {
     const category = CAT_MAP[q.data];
     botSessions.set(chatId, { state: "awaiting_ticket_desc", category });
-    bot.sendMessage(chatId, `Категория: *${category}*\n\nОпиши проблему подробно:`, { parse_mode: "Markdown" });
+    bot.sendMessage(chatId, `╨Ü╨░╤é╨╡╨│╨╛╤Ç╨╕╤Å: *${category}*\n\n╨₧╨┐╨╕╤ê╨╕ ╨┐╤Ç╨╛╨▒╨╗╨╡╨╝╤â ╨┐╨╛╨┤╤Ç╨╛╨▒╨╜╨╛:`, { parse_mode: "Markdown" });
     return;
   }
 
-  // ── Отправить чек ──
+  // ΓöÇΓöÇ ╨₧╤é╨┐╤Ç╨░╨▓╨╕╤é╤î ╤ç╨╡╨║ ΓöÇΓöÇ
   if (q.data.startsWith("send_receipt_")) {
     const ticketId = parseInt(q.data.split("_")[2], 10);
     botSessions.set(chatId, { state: "awaiting_receipt", ticketId });
-    bot.sendMessage(chatId, `Тикет \`#${ticketId}\` — прикрепи скриншот или фото чека следующим сообщением.`,
-      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Отмена", callback_data: "cancel_input" }]] } }
+    bot.sendMessage(chatId, `╨ó╨╕╨║╨╡╤é \`#${ticketId}\` ΓÇö ╨┐╤Ç╨╕╨║╤Ç╨╡╨┐╨╕ ╤ü╨║╤Ç╨╕╨╜╤ê╨╛╤é ╨╕╨╗╨╕ ╤ä╨╛╤é╨╛ ╤ç╨╡╨║╨░ ╤ü╨╗╨╡╨┤╤â╤Ä╤ë╨╕╨╝ ╤ü╨╛╨╛╨▒╤ë╨╡╨╜╨╕╨╡╨╝.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "╨₧╤é╨╝╨╡╨╜╨░", callback_data: "cancel_input" }]] } }
     );
     return;
   }
 
-  // ── Подтвердить/отклонить оплату ──
+  // ΓöÇΓöÇ ╨ƒ╨╛╨┤╤é╨▓╨╡╤Ç╨┤╨╕╤é╤î/╨╛╤é╨║╨╗╨╛╨╜╨╕╤é╤î ╨╛╨┐╨╗╨░╤é╤â ΓöÇΓöÇ
   if (q.data.startsWith("confirm_pay_")) {
-    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "╨¥╨╡╤é ╨┐╤Ç╨░╨▓.", show_alert: true }); return; }
     const parts    = q.data.split("_");
     const ticketId = parseInt(parts[2], 10);
     const userId   = parts[3];
@@ -2504,25 +1979,25 @@ bot.on("callback_query", async (q) => {
     if (acc && amount > 0) {
       acc.balance = (acc.balance || 0) + amount;
       await redisAccounts.set(userId, acc);
-      if (ticket) { ticket.status = "closed"; ticket.messages.push({ id: uuidv4(), from: "system", text: `Оплата подтверждена. Зачислено ${amount} СБТ.`, time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
-      try { await bot.sendMessage(userId, `Оплата подтверждена.\n+*${amount} СБТ* зачислено. Баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+      if (ticket) { ticket.status = "closed"; ticket.messages.push({ id: uuidv4(), from: "system", text: `╨₧╨┐╨╗╨░╤é╨░ ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨╡╨╜╨░. ╨ù╨░╤ç╨╕╤ü╨╗╨╡╨╜╨╛ ${amount} ╨í╨æ╨ó.`, time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+      try { await bot.sendMessage(userId, `╨₧╨┐╨╗╨░╤é╨░ ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨╡╨╜╨░.\n+*${amount} ╨í╨æ╨ó* ╨╖╨░╤ç╨╕╤ü╨╗╨╡╨╜╨╛. ╨æ╨░╨╗╨░╨╜╤ü: *${acc.balance.toLocaleString("ru-RU")} ╨í╨æ╨ó*`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
       sendToUser(userId, { type: "balance_update", balance: acc.balance });
       bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
-      bot.answerCallbackQuery(q.id, { text: `+${amount} СБТ зачислено`, show_alert: true });
-    } else { bot.answerCallbackQuery(q.id, { text: "Аккаунт не найден.", show_alert: true }); }
+      bot.answerCallbackQuery(q.id, { text: `+${amount} ╨í╨æ╨ó ╨╖╨░╤ç╨╕╤ü╨╗╨╡╨╜╨╛`, show_alert: true });
+    } else { bot.answerCallbackQuery(q.id, { text: "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜.", show_alert: true }); }
     return;
   }
 
   if (q.data.startsWith("reject_pay_")) {
-    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "╨¥╨╡╤é ╨┐╤Ç╨░╨▓.", show_alert: true }); return; }
     const parts    = q.data.split("_");
     const ticketId = parseInt(parts[2], 10);
     const userId   = parts[3];
     const ticket   = tickets.get(ticketId);
-    if (ticket) { ticket.status = "open"; ticket.messages.push({ id: uuidv4(), from: "system", text: "Оплата отклонена.", time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
-    try { await bot.sendMessage(userId, `Оплата по тикету \`#${ticketId}\` не подтверждена. Напишите в поддержку.`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+    if (ticket) { ticket.status = "open"; ticket.messages.push({ id: uuidv4(), from: "system", text: "╨₧╨┐╨╗╨░╤é╨░ ╨╛╤é╨║╨╗╨╛╨╜╨╡╨╜╨░.", time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+    try { await bot.sendMessage(userId, `╨₧╨┐╨╗╨░╤é╨░ ╨┐╨╛ ╤é╨╕╨║╨╡╤é╤â \`#${ticketId}\` ╨╜╨╡ ╨┐╨╛╨┤╤é╨▓╨╡╤Ç╨╢╨┤╨╡╨╜╨░. ╨¥╨░╨┐╨╕╤ê╨╕╤é╨╡ ╨▓ ╨┐╨╛╨┤╨┤╨╡╤Ç╨╢╨║╤â.`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
     bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
-    bot.answerCallbackQuery(q.id, { text: "Оплата отклонена.", show_alert: true });
+    bot.answerCallbackQuery(q.id, { text: "╨₧╨┐╨╗╨░╤é╨░ ╨╛╤é╨║╨╗╨╛╨╜╨╡╨╜╨░.", show_alert: true });
     return;
   }
 
@@ -2533,7 +2008,7 @@ bot.on("callback_query", async (q) => {
   }
 });
 
-// ─── Сообщения (состояния) ────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ ╨í╨╛╨╛╨▒╤ë╨╡╨╜╨╕╤Å (╤ü╨╛╤ü╤é╨╛╤Å╨╜╨╕╤Å) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 bot.on("message", async (msg) => {
   if (msg.text?.startsWith("/")) return;
@@ -2543,10 +2018,10 @@ bot.on("message", async (msg) => {
   const session = botSessions.get(chatId);
   const isAdm   = account?.role === "admin" || isAdminId(tgId);
 
-  // ── АДМИН: reply на тикет ──
+  // ΓöÇΓöÇ ╨É╨ö╨£╨ÿ╨¥: reply ╨╜╨░ ╤é╨╕╨║╨╡╤é ΓöÇΓöÇ
   if (!session && isAdm && msg.reply_to_message) {
     const replyText = msg.reply_to_message.caption || msg.reply_to_message.text || "";
-    const match     = replyText.match(/тикет[:\s#]+(\d+)/i);
+    const match     = replyText.match(/╤é╨╕╨║╨╡╤é[:\s#]+(\d+)/i);
     if (match) {
       const ticketId = parseInt(match[1], 10);
       const ticket   = tickets.get(ticketId);
@@ -2559,109 +2034,109 @@ bot.on("message", async (msg) => {
         ticket.unread  = 0;
         broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
         broadcastToTicket(ticketId, tgId, { type: "message", ticketId, message });
-        try { await bot.sendMessage(ticket.userId, `Ответ по тикету \`#${ticketId}\`:\n\n${text}`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
-        bot.sendMessage(chatId, `Ответ отправлен в тикет \`#${ticketId}\`.`, { parse_mode: "Markdown" });
+        try { await bot.sendMessage(ticket.userId, `╨₧╤é╨▓╨╡╤é ╨┐╨╛ ╤é╨╕╨║╨╡╤é╤â \`#${ticketId}\`:\n\n${text}`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+        bot.sendMessage(chatId, `╨₧╤é╨▓╨╡╤é ╨╛╤é╨┐╤Ç╨░╨▓╨╗╨╡╨╜ ╨▓ ╤é╨╕╨║╨╡╤é \`#${ticketId}\`.`, { parse_mode: "Markdown" });
         return;
       }
     }
   }
 
-  // ── АДМИН: просмотр тикета — текст = ответ в тикет ──
+  // ΓöÇΓöÇ ╨É╨ö╨£╨ÿ╨¥: ╨┐╤Ç╨╛╤ü╨╝╨╛╤é╤Ç ╤é╨╕╨║╨╡╤é╨░ ΓÇö ╤é╨╡╨║╤ü╤é = ╨╛╤é╨▓╨╡╤é ╨▓ ╤é╨╕╨║╨╡╤é ΓöÇΓöÇ
   if (!session && isAdm) return;
 
-  // ── Клавиатурные кнопки (без сессии) ──
+  // ΓöÇΓöÇ ╨Ü╨╗╨░╨▓╨╕╨░╤é╤â╤Ç╨╜╤ï╨╡ ╨║╨╜╨╛╨┐╨║╨╕ (╨▒╨╡╨╖ ╤ü╨╡╤ü╤ü╨╕╨╕) ΓöÇΓöÇ
   if (!session && msg.text) {
     const text = msg.text.trim();
 
-    // Пользовательские кнопки
-    if (text === "Профиль") {
-      if (!account) return bot.sendMessage(chatId, "Аккаунт не найден. Войди в лаунчер через Telegram.", { reply_markup: USER_KB });
+    // ╨ƒ╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î╤ü╨║╨╕╨╡ ╨║╨╜╨╛╨┐╨║╨╕
+    if (text === "╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î") {
+      if (!account) return bot.sendMessage(chatId, "╨É╨║╨║╨░╤â╨╜╤é ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜. ╨Æ╨╛╨╣╨┤╨╕ ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç ╤ç╨╡╤Ç╨╡╨╖ Telegram.", { reply_markup: USER_KB });
       const isAdm2 = account.role === "admin";
       return bot.sendMessage(chatId,
-        `*${account.username}*\n\nID: \`${account.id}\`\nБаланс: *${(account.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${isAdm2 ? "администратор" : "игрок"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "—"}`,
+        `*${account.username}*\n\nID: \`${account.id}\`\n╨æ╨░╨╗╨░╨╜╤ü: *${(account.balance ?? 0).toLocaleString("ru-RU")} ╨í╨æ╨ó*\n╨á╨╛╨╗╤î: ${isAdm2 ? "╨░╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç" : "╨╕╨│╤Ç╨╛╨║"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "ΓÇö"}`,
         { parse_mode: "Markdown", reply_markup: getKb(account) }
       );
     }
 
-    if (text === "Пополнить баланс") {
-      return bot.sendMessage(chatId, "💰 *Пополнение баланса*\n\nВыбери сумму:", {
+    if (text === "╨ƒ╨╛╨┐╨╛╨╗╨╜╨╕╤é╤î ╨▒╨░╨╗╨░╨╜╤ü") {
+      return bot.sendMessage(chatId, "≡ƒÆ░ *╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ╨▒╨░╨╗╨░╨╜╤ü╨░*\n\n╨Æ╤ï╨▒╨╡╤Ç╨╕ ╤ü╤â╨╝╨╝╤â:", {
         parse_mode: "Markdown",
         reply_markup: { inline_keyboard: [
-          [{ text: "50 СБТ",  callback_data: "topup_50"  }, { text: "100 СБТ", callback_data: "topup_100" }],
-          [{ text: "250 СБТ", callback_data: "topup_250" }, { text: "500 СБТ", callback_data: "topup_500" }],
-          [{ text: "1000 СБТ", callback_data: "topup_1000" }],
-          [{ text: "Другая сумма", callback_data: "topup_custom" }],
+          [{ text: "50 ╨í╨æ╨ó",  callback_data: "topup_50"  }, { text: "100 ╨í╨æ╨ó", callback_data: "topup_100" }],
+          [{ text: "250 ╨í╨æ╨ó", callback_data: "topup_250" }, { text: "500 ╨í╨æ╨ó", callback_data: "topup_500" }],
+          [{ text: "1000 ╨í╨æ╨ó", callback_data: "topup_1000" }],
+          [{ text: "╨ö╤Ç╤â╨│╨░╤Å ╤ü╤â╨╝╨╝╨░", callback_data: "topup_custom" }],
         ]}
       });
     }
 
-    if (text === "Мои обращения") {
+    if (text === "╨£╨╛╨╕ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å") {
       const userTickets = [...tickets.values()]
         .filter(t => t.userId === tgId || (account && t.userId === account.id))
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 10);
       if (userTickets.length === 0) {
-        return bot.sendMessage(chatId, "🎫 Нет обращений.", { reply_markup: USER_KB });
+        return bot.sendMessage(chatId, "≡ƒÄ½ ╨¥╨╡╤é ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╨╣.", { reply_markup: USER_KB });
       }
       const lines = userTickets.map(t => {
         const emoji = { open: "≡ƒƒí", answered: "≡ƒƒó", closed: "ΓÜ½", in_progress: "≡ƒö╡" }[t.status] || "ΓÜ¬";
         return `${emoji} *#${t.id}* ΓÇö ${t.category}\nΓöö _${t.preview?.slice(0, 50)}_`;
       }).join("\n\n");
-      return bot.sendMessage(chatId, `🎫 *Твои обращения:*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
+      return bot.sendMessage(chatId, `≡ƒÄ½ *╨ó╨▓╨╛╨╕ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å:*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
     }
 
-    if (text === "Новое обращение") {
-      return bot.sendMessage(chatId, "Выбери категорию обращения:", {
+    if (text === "╨¥╨╛╨▓╨╛╨╡ ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╨╡") {
+      return bot.sendMessage(chatId, "╨Æ╤ï╨▒╨╡╤Ç╨╕ ╨║╨░╤é╨╡╨│╨╛╤Ç╨╕╤Ä ╨╛╨▒╤Ç╨░╤ë╨╡╨╜╨╕╤Å:", {
         reply_markup: { inline_keyboard: [
-          [{ text: "🔧 Тех. проблемы",  callback_data: "tcat_tech"    }],
-          [{ text: "👤 Аккаунт",         callback_data: "tcat_account" }],
-          [{ text: "💳 Покупка",         callback_data: "tcat_pay"     }],
-          [{ text: "🐛 Баг / ошибка",    callback_data: "tcat_bug"     }],
-          [{ text: "⚠️ Жалоба",          callback_data: "tcat_report"  }],
-          [{ text: "❓ Другое",           callback_data: "tcat_other"   }],
+          [{ text: "≡ƒöº ╨ó╨╡╤à. ╨┐╤Ç╨╛╨▒╨╗╨╡╨╝╤ï",  callback_data: "tcat_tech"    }],
+          [{ text: "≡ƒæñ ╨É╨║╨║╨░╤â╨╜╤é",         callback_data: "tcat_account" }],
+          [{ text: "≡ƒÆ│ ╨ƒ╨╛╨║╤â╨┐╨║╨░",         callback_data: "tcat_pay"     }],
+          [{ text: "≡ƒÉ¢ ╨æ╨░╨│ / ╨╛╤ê╨╕╨▒╨║╨░",    callback_data: "tcat_bug"     }],
+          [{ text: "ΓÜá∩╕Å ╨û╨░╨╗╨╛╨▒╨░",          callback_data: "tcat_report"  }],
+          [{ text: "Γ¥ô ╨ö╤Ç╤â╨│╨╛╨╡",           callback_data: "tcat_other"   }],
         ]}
       });
     }
 
-    // Админские кнопки
-    if (isAdm && text === "Тикеты") {
+    // ╨É╨┤╨╝╨╕╨╜╤ü╨║╨╕╨╡ ╨║╨╜╨╛╨┐╨║╨╕
+    if (isAdm && text === "╨ó╨╕╨║╨╡╤é╤ï") {
       return showAdminTicketList(chatId, "open");
     }
 
-    if (isAdm && text === "Баланс участника") {
+    if (isAdm && text === "╨æ╨░╨╗╨░╨╜╤ü ╤â╤ç╨░╤ü╤é╨╜╨╕╨║╨░") {
       botSessions.set(chatId, { state: "admin_awaiting_balance_nick" });
-      return bot.sendMessage(chatId, "Введи ник или TG ID участника:");
+      return bot.sendMessage(chatId, "╨Æ╨▓╨╡╨┤╨╕ ╨╜╨╕╨║ ╨╕╨╗╨╕ TG ID ╤â╤ç╨░╤ü╤é╨╜╨╕╨║╨░:");
     }
   }
 
   if (!session) return;
 
-  // Ввод кастомной суммы
+  // ╨Æ╨▓╨╛╨┤ ╨║╨░╤ü╤é╨╛╨╝╨╜╨╛╨╣ ╤ü╤â╨╝╨╝╤ï
   if (session.state === "awaiting_topup_amount") {
     const amount = parseInt(msg.text?.trim(), 10);
     botSessions.delete(chatId);
-    if (!amount || amount < 50 || amount > 100000) { bot.sendMessage(chatId, "Сумма должна быть от 50 до 100 000 рублей.", { reply_markup: USER_KB }); return; }
-    if (!account) { bot.sendMessage(chatId, "Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
+    if (!amount || amount < 50 || amount > 100000) { bot.sendMessage(chatId, "╨í╤â╨╝╨╝╨░ ╨┤╨╛╨╗╨╢╨╜╨░ ╨▒╤ï╤é╤î ╨╛╤é 50 ╨┤╨╛ 100 000 ╤Ç╤â╨▒╨╗╨╡╨╣.", { reply_markup: USER_KB }); return; }
+    if (!account) { bot.sendMessage(chatId, "╨Æ╨╛╨╣╨┤╨╕ ╨▓ ╨╗╨░╤â╨╜╤ç╨╡╤Ç ╤ç╨╡╤Ç╨╡╨╖ Telegram.", { reply_markup: USER_KB }); return; }
     const ticketId = ++ticketCounter;
     const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "Пополнение баланса", preview: `${amount} СБТ · через бота`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
-      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан через бота.`, time: Date.now() },
-      { id: uuidv4(), from: tgId, username: account.username, text: `Пополнение на ${amount} СБТ`, time: Date.now() },
+    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ╨▒╨░╨╗╨░╨╜╤ü╨░", preview: `${amount} ╨í╨æ╨ó ┬╖ ╤ç╨╡╤Ç╨╡╨╖ ╨▒╨╛╤é╨░`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `╨ó╨╕╨║╨╡╤é #${ticketId} ╤ü╨╛╨╖╨┤╨░╨╜ ╤ç╨╡╤Ç╨╡╨╖ ╨▒╨╛╤é╨░.`, time: Date.now() },
+      { id: uuidv4(), from: tgId, username: account.username, text: `╨ƒ╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ╨╜╨░ ${amount} ╨í╨æ╨ó`, time: Date.now() },
     ]};
     tickets.set(ticketId, t);
     saveTicket(t);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
     bot.sendMessage(chatId,
-      `*Заявка на пополнение — тикет #${ticketId}*\n\nАккаунт: \`${account.username}\`\nСумма: *${amount} СБТ* (${amount} ₽)\nДата: ${dateStr}\n\nАдминистратор ответит и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
+      `*╨ù╨░╤Å╨▓╨║╨░ ╨╜╨░ ╨┐╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡ ΓÇö ╤é╨╕╨║╨╡╤é #${ticketId}*\n\n╨É╨║╨║╨░╤â╨╜╤é: \`${account.username}\`\n╨í╤â╨╝╨╝╨░: *${amount} ╨í╨æ╨ó* (${amount} Γé╜)\n╨ö╨░╤é╨░: ${dateStr}\n\n╨É╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç ╨╛╤é╨▓╨╡╤é╨╕╤é ╨╕ ╨┐╤Ç╨╕╤ê╨╗╤æ╤é ╤Ç╨╡╨║╨▓╨╕╨╖╨╕╤é╤ï. ╨ƒ╨╛╤ü╨╗╨╡ ╨╛╨┐╨╗╨░╤é╤ï ╨╜╨░╨╢╨╝╨╕ ╨║╨╜╨╛╨┐╨║╤â ╨╕ ╨┐╤Ç╨╕╨║╤Ç╨╡╨┐╨╕ ╤ü╨║╤Ç╨╕╨╜╤ê╨╛╤é ╤ç╨╡╨║╨░.`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
-        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
+        [{ text: "╨₧╤é╨┐╤Ç╨░╨▓╨╕╤é╤î ╤ç╨╡╨║",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "╨¥╨░╨┐╨╕╤ü╨░╤é╤î ╨▓ ╨┐╨╛╨┤╨┤╨╡╤Ç╨╢╨║╤â", callback_data: "new_ticket_cb"            }],
       ]}}
     );
     return;
   }
 
-  // ── АДМИН: поиск баланса участника ──
+  // ΓöÇΓöÇ ╨É╨ö╨£╨ÿ╨¥: ╨┐╨╛╨╕╤ü╨║ ╨▒╨░╨╗╨░╨╜╤ü╨░ ╤â╤ç╨░╤ü╤é╨╜╨╕╨║╨░ ΓöÇΓöÇ
   if (session.state === "admin_awaiting_balance_nick") {
     botSessions.delete(chatId);
     const q = msg.text?.trim();
@@ -2670,29 +2145,29 @@ bot.on("message", async (msg) => {
       a.telegram?.toLowerCase() === q.replace("@","").toLowerCase() ||
       a.id === q
     );
-    if (!found) { bot.sendMessage(chatId, "Пользователь не найден.", { reply_markup: ADMIN_KB }); return; }
+    if (!found) { bot.sendMessage(chatId, "╨ƒ╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜.", { reply_markup: ADMIN_KB }); return; }
     bot.sendMessage(chatId,
-      `*${found.username}*\nID: \`${found.id}\`\nTelegram: ${found.telegram ? `@${found.telegram}` : "—"}\nБаланс: *${(found.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${found.role}`,
+      `*${found.username}*\nID: \`${found.id}\`\nTelegram: ${found.telegram ? `@${found.telegram}` : "ΓÇö"}\n╨æ╨░╨╗╨░╨╜╤ü: *${(found.balance ?? 0).toLocaleString("ru-RU")} ╨í╨æ╨ó*\n╨á╨╛╨╗╤î: ${found.role}`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "Добавить 100 СБТ",  callback_data: `bal_add_${found.id}_100`  },
-         { text: "Добавить 500 СБТ",  callback_data: `bal_add_${found.id}_500`  }],
-        [{ text: "Обнулить баланс",   callback_data: `bal_zero_${found.id}`     }],
+        [{ text: "╨ö╨╛╨▒╨░╨▓╨╕╤é╤î 100 ╨í╨æ╨ó",  callback_data: `bal_add_${found.id}_100`  },
+         { text: "╨ö╨╛╨▒╨░╨▓╨╕╤é╤î 500 ╨í╨æ╨ó",  callback_data: `bal_add_${found.id}_500`  }],
+        [{ text: "╨₧╨▒╨╜╤â╨╗╨╕╤é╤î ╨▒╨░╨╗╨░╨╜╤ü",   callback_data: `bal_zero_${found.id}`     }],
       ]}
     });
     return;
   }
 
-  // Получение чека
+  // ╨ƒ╨╛╨╗╤â╤ç╨╡╨╜╨╕╨╡ ╤ç╨╡╨║╨░
   if (session.state === "awaiting_receipt") {
     const ticketId = session.ticketId;
     const ticket   = tickets.get(ticketId);
     const hasPhoto = msg.photo?.length > 0;
     const hasDoc   = !!msg.document;
-    if (!hasPhoto && !hasDoc) { bot.sendMessage(chatId, "Пришли фото или скриншот (файл)."); return; }
+    if (!hasPhoto && !hasDoc) { bot.sendMessage(chatId, "╨ƒ╤Ç╨╕╤ê╨╗╨╕ ╤ä╨╛╤é╨╛ ╨╕╨╗╨╕ ╤ü╨║╤Ç╨╕╨╜╤ê╨╛╤é (╤ä╨░╨╣╨╗)."); return; }
     botSessions.delete(chatId);
     if (ticket) {
       const fileId = hasPhoto ? msg.photo[msg.photo.length - 1].file_id : msg.document.file_id;
-      ticket.messages.push({ id: uuidv4(), from: tgId, username: account?.username || "Telegram", text: `[чек, file_id: ${fileId}]`, time: Date.now() });
+      ticket.messages.push({ id: uuidv4(), from: tgId, username: account?.username || "Telegram", text: `[╤ç╨╡╨║, file_id: ${fileId}]`, time: Date.now() });
       ticket.unread = (ticket.unread || 0) + 1; ticket.status = "open";
       broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
     }
@@ -2702,26 +2177,26 @@ bot.on("message", async (msg) => {
         const inv       = ticket ? [...invoices.values()].find(i => i.ticketId === ticketId) : null;
         const invAmount = inv?.amount || "?";
         const invMethod = inv ? (METHOD_NAMES[inv.method] || inv.method) : "?";
-        const caption   = `Чек на пополнение\n\nИгрок: ${account?.username || tgId}\nСумма: ${invAmount} СБТ\nСпособ: ${invMethod}\nТикет: #${ticketId}`;
+        const caption   = `╨º╨╡╨║ ╨╜╨░ ╨┐╨╛╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡\n\n╨ÿ╨│╤Ç╨╛╨║: ${account?.username || tgId}\n╨í╤â╨╝╨╝╨░: ${invAmount} ╨í╨æ╨ó\n╨í╨┐╨╛╤ü╨╛╨▒: ${invMethod}\n╨ó╨╕╨║╨╡╤é: #${ticketId}`;
         const rm        = { inline_keyboard: [[
-          { text: "Подтвердить", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
-          { text: "Отклонить",   callback_data: `reject_pay_${ticketId}_${tgId}`               },
+          { text: "╨ƒ╨╛╨┤╤é╨▓╨╡╤Ç╨┤╨╕╤é╤î", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
+          { text: "╨₧╤é╨║╨╗╨╛╨╜╨╕╤é╤î",   callback_data: `reject_pay_${ticketId}_${tgId}`               },
         ]]};
         if (hasPhoto) await bot.sendPhoto(tid, msg.photo[msg.photo.length - 1].file_id, { caption, reply_markup: rm });
         else          await bot.sendDocument(tid, msg.document.file_id, { caption, reply_markup: rm });
       } catch (e) { console.error("[admin notify]", e.message); }
     }
-    bot.sendMessage(chatId, `Чек получен. Тикет \`#${ticketId}\` обновлён — администратор проверит оплату и зачислит баланс.`, { parse_mode: "Markdown", reply_markup: USER_KB });
+    bot.sendMessage(chatId, `╨º╨╡╨║ ╨┐╨╛╨╗╤â╤ç╨╡╨╜. ╨ó╨╕╨║╨╡╤é \`#${ticketId}\` ╨╛╨▒╨╜╨╛╨▓╨╗╤æ╨╜ ΓÇö ╨░╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç ╨┐╤Ç╨╛╨▓╨╡╤Ç╨╕╤é ╨╛╨┐╨╗╨░╤é╤â ╨╕ ╨╖╨░╤ç╨╕╤ü╨╗╨╕╤é ╨▒╨░╨╗╨░╨╜╤ü.`, { parse_mode: "Markdown", reply_markup: USER_KB });
     return;
   }
 
-  // Описание тикета
+  // ╨₧╨┐╨╕╤ü╨░╨╜╨╕╨╡ ╤é╨╕╨║╨╡╤é╨░
   if (session.state === "awaiting_ticket_desc") {
     const text = msg.text?.trim();
-    if (!text || text.length < 5) { bot.sendMessage(chatId, "Слишком короткое описание. Напиши подробнее."); return; }
+    if (!text || text.length < 5) { bot.sendMessage(chatId, "╨í╨╗╨╕╤ê╨║╨╛╨╝ ╨║╨╛╤Ç╨╛╤é╨║╨╛╨╡ ╨╛╨┐╨╕╤ü╨░╨╜╨╕╨╡. ╨¥╨░╨┐╨╕╤ê╨╕ ╨┐╨╛╨┤╤Ç╨╛╨▒╨╜╨╡╨╡."); return; }
     const ticketId = ++ticketCounter;
-    const ticket = { id: ticketId, userId: tgId, username: account?.username || msg.from.username || "Telegram", category: session.category || "Другое", preview: text.slice(0, 60), status: "open", unread: 1, createdAt: Date.now(), messages: [
-      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан.`, time: Date.now() },
+    const ticket = { id: ticketId, userId: tgId, username: account?.username || msg.from.username || "Telegram", category: session.category || "╨ö╤Ç╤â╨│╨╛╨╡", preview: text.slice(0, 60), status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `╨ó╨╕╨║╨╡╤é #${ticketId} ╤ü╨╛╨╖╨┤╨░╨╜.`, time: Date.now() },
       { id: uuidv4(), from: tgId, username: account?.username || "Telegram", text, time: Date.now() },
     ]};
     tickets.set(ticketId, ticket);
@@ -2729,18 +2204,18 @@ bot.on("message", async (msg) => {
     botSessions.delete(chatId);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
     bot.sendMessage(chatId,
-      `Обращение создано.\n\nТикет \`#${ticketId}\` — ${ticket.category}.\nОтветим как можно скорее.`,
+      `╨₧╨▒╤Ç╨░╤ë╨╡╨╜╨╕╨╡ ╤ü╨╛╨╖╨┤╨░╨╜╨╛.\n\n╨ó╨╕╨║╨╡╤é \`#${ticketId}\` ΓÇö ${ticket.category}.\n╨₧╤é╨▓╨╡╤é╨╕╨╝ ╨║╨░╨║ ╨╝╨╛╨╢╨╜╨╛ ╤ü╨║╨╛╤Ç╨╡╨╡.`,
       { parse_mode: "Markdown", reply_markup: USER_KB }
     );
   }
 });
 
-// ── Баланс участника (inline, для admin) ──
+// ΓöÇΓöÇ ╨æ╨░╨╗╨░╨╜╤ü ╤â╤ç╨░╤ü╤é╨╜╨╕╨║╨░ (inline, ╨┤╨╗╤Å admin) ΓöÇΓöÇ
 bot.on("callback_query", async (q) => {});
-// Дополнительный listener для bal_ коллбеков — уже обработан выше, добавим inline
-// Нужно перехватить bal_ в основном callback handler — добавим перед cancel_input
+// ╨ö╨╛╨┐╨╛╨╗╨╜╨╕╤é╨╡╨╗╤î╨╜╤ï╨╣ listener ╨┤╨╗╤Å bal_ ╨║╨╛╨╗╨╗╨▒╨╡╨║╨╛╨▓ ΓÇö ╤â╨╢╨╡ ╨╛╨▒╤Ç╨░╨▒╨╛╤é╨░╨╜ ╨▓╤ï╤ê╨╡, ╨┤╨╛╨▒╨░╨▓╨╕╨╝ inline
+// ╨¥╤â╨╢╨╜╨╛ ╨┐╨╡╤Ç╨╡╤à╨▓╨░╤é╨╕╤é╤î bal_ ╨▓ ╨╛╤ü╨╜╨╛╨▓╨╜╨╛╨╝ callback handler ΓÇö ╨┤╨╛╨▒╨░╨▓╨╕╨╝ ╨┐╨╡╤Ç╨╡╨┤ cancel_input
 
-// Патч: вешаем ещё один listener для bal_
+// ╨ƒ╨░╤é╤ç: ╨▓╨╡╤ê╨░╨╡╨╝ ╨╡╤ë╤æ ╨╛╨┤╨╕╨╜ listener ╨┤╨╗╤Å bal_
 const origListeners = bot.listeners("callback_query").slice();
 bot.removeAllListeners("callback_query");
 bot.on("callback_query", async (q) => {
@@ -2749,27 +2224,28 @@ bot.on("callback_query", async (q) => {
   const isAdm  = isAdminId(tgId) || (await redisAccounts.get(tgId))?.role === "admin";
 
   if (q.data.startsWith("bal_")) {
-    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "╨¥╨╡╤é ╨┐╤Ç╨░╨▓.", show_alert: true }); return; }
     const parts  = q.data.split("_");
     const action = parts[1]; // add | zero
     const userId = parts[2];
     const amount = parseInt(parts[3] || "0", 10);
     const acc    = await redisAccounts.get(userId);
-    if (!acc) { bot.answerCallbackQuery(q.id, { text: "Пользователь не найден.", show_alert: true }); return; }
+    if (!acc) { bot.answerCallbackQuery(q.id, { text: "╨ƒ╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜.", show_alert: true }); return; }
     if (action === "add") acc.balance = (acc.balance || 0) + amount;
     if (action === "zero") acc.balance = 0;
     await redisAccounts.set(userId, acc);
     sendToUser(userId, { type: "balance_update", balance: acc.balance });
-    bot.answerCallbackQuery(q.id, { text: `Баланс: ${acc.balance} СБТ`, show_alert: true });
+    bot.answerCallbackQuery(q.id, { text: `╨æ╨░╨╗╨░╨╜╤ü: ${acc.balance} ╨í╨æ╨ó`, show_alert: true });
     bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
     return;
   }
 
-  // Передаём остальным listeners
+  // ╨ƒ╨╡╤Ç╨╡╨┤╨░╤æ╨╝ ╨╛╤ü╤é╨░╨╗╤î╨╜╤ï╨╝ listeners
   for (const fn of origListeners) fn(q);
 });
 
 bot.on("polling_error", (err) => { if (!err.message?.includes("409")) console.error("[bot]", err.message); });
+bot.on("error", (err) => { console.error("[bot error]", err.message); });
 
 
 // ΓöÇΓöÇΓöÇ Start ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

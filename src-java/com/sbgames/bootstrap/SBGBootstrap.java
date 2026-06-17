@@ -9,9 +9,9 @@ public class SBGBootstrap {
     private static String sessionKey = null;
 
     
-    private static String $__$_IllI$$$l() {
-        byte[] enc = new byte[]{ (byte)57, (byte)-118, (byte)58, (byte)115, (byte)25, (byte)96, (byte)77, (byte)-125, (byte)124, (byte)37, (byte)56, (byte)-97, (byte)93, (byte)108, (byte)43, (byte)58, (byte)-107, (byte)74, (byte)-49, (byte)16, (byte)-127, (byte)-92, (byte)-78, (byte)126, (byte)-56, (byte)-124, (byte)17, (byte)2, (byte)40, (byte)-43, (byte)64, (byte)-55, (byte)-47, (byte)69, (byte)109, (byte)51, (byte)28, (byte)-100, (byte)119, (byte)-82, (byte)114, (byte)119, (byte)-7, (byte)126 };
-        byte[] key = new byte[]{ (byte)90, (byte)-6, (byte)77, (byte)93, (byte)116, (byte)15, (byte)41, (byte)-16, (byte)82, (byte)71, (byte)87, (byte)-16, (byte)41, (byte)31, (byte)95, (byte)72, (byte)-12, (byte)58, (byte)-93, (byte)113, (byte)-12, (byte)-54, (byte)-47, (byte)22, (byte)-83, (byte)-10, (byte)63, (byte)64, (byte)71, (byte)-70, (byte)52, (byte)-70, (byte)-91, (byte)55, (byte)12, (byte)67, (byte)80, (byte)-3, (byte)2, (byte)-64, (byte)17, (byte)31, (byte)-100, (byte)12 };
+    private static String ll$$IlII() {
+        byte[] enc = new byte[]{ (byte)-57, (byte)123, (byte)54, (byte)77, (byte)66, (byte)-56, (byte)102, (byte)64, (byte)-13, (byte)114, (byte)-93, (byte)88, (byte)70, (byte)-2, (byte)82, (byte)34, (byte)-87, (byte)66, (byte)-102, (byte)-2, (byte)-52, (byte)-71, (byte)57, (byte)-27, (byte)-88, (byte)104, (byte)63, (byte)-42, (byte)-82, (byte)-61, (byte)114, (byte)-27, (byte)-78, (byte)-30, (byte)31, (byte)-120, (byte)-2, (byte)26, (byte)42, (byte)59, (byte)-105, (byte)-21, (byte)-96, (byte)123 };
+        byte[] key = new byte[]{ (byte)-92, (byte)11, (byte)65, (byte)99, (byte)47, (byte)-89, (byte)2, (byte)51, (byte)-35, (byte)16, (byte)-52, (byte)55, (byte)50, (byte)-115, (byte)38, (byte)80, (byte)-56, (byte)50, (byte)-10, (byte)-97, (byte)-71, (byte)-41, (byte)90, (byte)-115, (byte)-51, (byte)26, (byte)17, (byte)-108, (byte)-63, (byte)-84, (byte)6, (byte)-106, (byte)-58, (byte)-112, (byte)126, (byte)-8, (byte)-78, (byte)123, (byte)95, (byte)85, (byte)-12, (byte)-125, (byte)-59, (byte)9 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -24,9 +24,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String ll$l$I() {
-        byte[] enc = new byte[]{ (byte)36, (byte)-66, (byte)-9, (byte)-67 };
-        byte[] key = new byte[]{ (byte)73, (byte)-33, (byte)-98, (byte)-45 };
+    private static String _IIlIIl$$lI__() {
+        byte[] enc = new byte[]{ (byte)-11, (byte)-116, (byte)-88, (byte)82 };
+        byte[] key = new byte[]{ (byte)-104, (byte)-19, (byte)-63, (byte)60 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -39,9 +39,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String Il_lIIlI$ll() {
-        byte[] enc = new byte[]{ (byte)-36, (byte)-113, (byte)-52, (byte)-116, (byte)16, (byte)-17, (byte)-93, (byte)-18, (byte)112, (byte)86, (byte)44, (byte)78, (byte)-23, (byte)9, (byte)-72, (byte)-95, (byte)51 };
-        byte[] key = new byte[]{ (byte)-81, (byte)-19, (byte)-85, (byte)-95, (byte)98, (byte)-102, (byte)-51, (byte)-102, (byte)25, (byte)59, (byte)73, (byte)99, (byte)-114, (byte)124, (byte)-39, (byte)-45, (byte)87 };
+    private static String I_II$I() {
+        byte[] enc = new byte[]{ (byte)-74, (byte)56, (byte)125, (byte)99, (byte)49, (byte)-55, (byte)-49, (byte)15, (byte)-10, (byte)-22, (byte)92, (byte)-51, (byte)127, (byte)10, (byte)-60, (byte)26, (byte)77 };
+        byte[] key = new byte[]{ (byte)-59, (byte)90, (byte)26, (byte)78, (byte)67, (byte)-68, (byte)-95, (byte)123, (byte)-97, (byte)-121, (byte)57, (byte)-32, (byte)24, (byte)127, (byte)-91, (byte)104, (byte)41 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -54,9 +54,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String l$IIIIll$$_$I() {
-        byte[] enc = new byte[]{ (byte)92, (byte)-78, (byte)10, (byte)-11, (byte)0, (byte)120, (byte)39, (byte)-27, (byte)90, (byte)-19, (byte)-116 };
-        byte[] key = new byte[]{ (byte)114, (byte)-33, (byte)101, (byte)-111, (byte)45, (byte)16, (byte)70, (byte)-106, (byte)50, (byte)-120, (byte)-1 };
+    private static String __ll$III$Il$_() {
+        byte[] enc = new byte[]{ (byte)41, (byte)-104, (byte)117, (byte)-85, (byte)101, (byte)39, (byte)90, (byte)122, (byte)12, (byte)-100, (byte)-54 };
+        byte[] key = new byte[]{ (byte)7, (byte)-11, (byte)26, (byte)-49, (byte)72, (byte)79, (byte)59, (byte)9, (byte)100, (byte)-7, (byte)-71 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -69,9 +69,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String l$I$Ill__$Ill() {
-        byte[] enc = new byte[]{ (byte)34, (byte)66, (byte)68, (byte)25 };
-        byte[] key = new byte[]{ (byte)79, (byte)45, (byte)32, (byte)106 };
+    private static String lIl_III_$() {
+        byte[] enc = new byte[]{ (byte)84, (byte)98, (byte)76, (byte)90 };
+        byte[] key = new byte[]{ (byte)57, (byte)13, (byte)40, (byte)41 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -84,9 +84,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String l_l__$_ll() {
-        byte[] enc = new byte[]{ (byte)21, (byte)35, (byte)16, (byte)-73, (byte)-112, (byte)86, (byte)-22, (byte)-3, (byte)-4, (byte)6 };
-        byte[] key = new byte[]{ (byte)56, (byte)73, (byte)113, (byte)-63, (byte)-15, (byte)55, (byte)-115, (byte)-104, (byte)-110, (byte)114 };
+    private static String llI$$$l_() {
+        byte[] enc = new byte[]{ (byte)42, (byte)0, (byte)-73, (byte)-81, (byte)-51, (byte)113, (byte)-116, (byte)25, (byte)22, (byte)37 };
+        byte[] key = new byte[]{ (byte)7, (byte)106, (byte)-42, (byte)-39, (byte)-84, (byte)16, (byte)-21, (byte)124, (byte)120, (byte)81 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -99,9 +99,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String l$IIl$ll$l() {
-        byte[] enc = new byte[]{ (byte)-116, (byte)-48, (byte)-80, (byte)111, (byte)-127, (byte)-73, (byte)-4, (byte)-29, (byte)84 };
-        byte[] key = new byte[]{ (byte)-95, (byte)-79, (byte)-41, (byte)10, (byte)-17, (byte)-61, (byte)-112, (byte)-118, (byte)54 };
+    private static String lIII_llI$l() {
+        byte[] enc = new byte[]{ (byte)111, (byte)-104, (byte)19, (byte)57, (byte)67, (byte)-47, (byte)19, (byte)-91, (byte)107 };
+        byte[] key = new byte[]{ (byte)66, (byte)-7, (byte)116, (byte)92, (byte)45, (byte)-91, (byte)127, (byte)-52, (byte)9 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -114,9 +114,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String _$l_I_() {
-        byte[] enc = new byte[]{ (byte)-76, (byte)-5, (byte)-119, (byte)53, (byte)-101, (byte)76, (byte)108, (byte)96, (byte)-13, (byte)-71 };
-        byte[] key = new byte[]{ (byte)-103, (byte)-102, (byte)-18, (byte)80, (byte)-11, (byte)56, (byte)28, (byte)1, (byte)-121, (byte)-47 };
+    private static String __I_I_l$$I__() {
+        byte[] enc = new byte[]{ (byte)-56, (byte)-24, (byte)126, (byte)-5, (byte)-104, (byte)5, (byte)30, (byte)-37, (byte)29, (byte)97 };
+        byte[] key = new byte[]{ (byte)-27, (byte)-119, (byte)25, (byte)-98, (byte)-10, (byte)113, (byte)110, (byte)-70, (byte)105, (byte)9 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -129,9 +129,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String ll_l$Ill___() {
-        byte[] enc = new byte[]{ (byte)-5, (byte)-16, (byte)114, (byte)120, (byte)15, (byte)126, (byte)-118 };
-        byte[] key = new byte[]{ (byte)-42, (byte)-120, (byte)22, (byte)29, (byte)109, (byte)11, (byte)-19 };
+    private static String $lI$lI___$$() {
+        byte[] enc = new byte[]{ (byte)-17, (byte)-14, (byte)47, (byte)-82, (byte)100, (byte)-51, (byte)10 };
+        byte[] key = new byte[]{ (byte)-62, (byte)-118, (byte)75, (byte)-53, (byte)6, (byte)-72, (byte)109 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -144,9 +144,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String I_I_$l() {
-        byte[] enc = new byte[]{ (byte)-94, (byte)-54, (byte)-1, (byte)-14 };
-        byte[] key = new byte[]{ (byte)-56, (byte)-82, (byte)-120, (byte)-126 };
+    private static String Il$_lIl$l$() {
+        byte[] enc = new byte[]{ (byte)-64, (byte)0, (byte)48, (byte)117 };
+        byte[] key = new byte[]{ (byte)-86, (byte)100, (byte)71, (byte)5 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -159,9 +159,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String _$$_lI_I$_I() {
-        byte[] enc = new byte[]{ (byte)44, (byte)-9, (byte)112, (byte)65, (byte)-75, (byte)-66, (byte)8, (byte)-40, (byte)84, (byte)-14, (byte)-62, (byte)-79, (byte)-105, (byte)-108, (byte)-51, (byte)12, (byte)3 };
-        byte[] key = new byte[]{ (byte)102, (byte)-74, (byte)38, (byte)0, (byte)-22, (byte)-22, (byte)71, (byte)-105, (byte)24, (byte)-83, (byte)-115, (byte)-31, (byte)-61, (byte)-35, (byte)-126, (byte)66, (byte)80 };
+    private static String $l$$I_lll_II$() {
+        byte[] enc = new byte[]{ (byte)-53, (byte)-39, (byte)10, (byte)108, (byte)53, (byte)105, (byte)17, (byte)112, (byte)30, (byte)-81, (byte)126, (byte)-101, (byte)64, (byte)8, (byte)24, (byte)-79, (byte)-102 };
+        byte[] key = new byte[]{ (byte)-127, (byte)-104, (byte)92, (byte)45, (byte)106, (byte)61, (byte)94, (byte)63, (byte)82, (byte)-16, (byte)49, (byte)-53, (byte)20, (byte)65, (byte)87, (byte)-1, (byte)-55 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -174,9 +174,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String ___llI___$$lI() {
-        byte[] enc = new byte[]{ (byte)-117, (byte)81, (byte)107, (byte)-80, (byte)65, (byte)33, (byte)-96, (byte)-22, (byte)-121, (byte)69, (byte)60, (byte)73, (byte)119 };
-        byte[] key = new byte[]{ (byte)-44, (byte)27, (byte)42, (byte)-26, (byte)0, (byte)126, (byte)-17, (byte)-70, (byte)-45, (byte)12, (byte)115, (byte)7, (byte)36 };
+    private static String $_I_l_I____l$() {
+        byte[] enc = new byte[]{ (byte)-3, (byte)75, (byte)83, (byte)-91, (byte)3, (byte)78, (byte)48, (byte)37, (byte)-113, (byte)68, (byte)-93, (byte)123, (byte)65 };
+        byte[] key = new byte[]{ (byte)-94, (byte)1, (byte)18, (byte)-13, (byte)66, (byte)17, (byte)127, (byte)117, (byte)-37, (byte)13, (byte)-20, (byte)53, (byte)18 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -189,9 +189,9 @@ public class SBGBootstrap {
     }
   
 
-    private static String I____l() {
-        byte[] enc = new byte[]{ (byte)-125, (byte)-128, (byte)53, (byte)-59, (byte)-33, (byte)-46, (byte)52, (byte)-50, (byte)-13, (byte)-110, (byte)65, (byte)-66, (byte)-42, (byte)-54, (byte)26, (byte)87 };
-        byte[] key = new byte[]{ (byte)-55, (byte)-60, (byte)126, (byte)-102, (byte)-107, (byte)-109, (byte)98, (byte)-113, (byte)-84, (byte)-35, (byte)17, (byte)-22, (byte)-97, (byte)-123, (byte)84, (byte)4 };
+    private static String Il$l_$_() {
+        byte[] enc = new byte[]{ (byte)77, (byte)-55, (byte)126, (byte)126, (byte)85, (byte)116, (byte)112, (byte)112, (byte)-45, (byte)107, (byte)43, (byte)-48, (byte)-117, (byte)1, (byte)-125, (byte)-122 };
+        byte[] key = new byte[]{ (byte)7, (byte)-115, (byte)53, (byte)33, (byte)31, (byte)53, (byte)38, (byte)49, (byte)-116, (byte)36, (byte)123, (byte)-124, (byte)-62, (byte)78, (byte)-51, (byte)-43 };
         byte[] res = new byte[enc.length];
         for (int i = 0; i < enc.length; i++) {
             res[i] = (byte) (enc[i] ^ key[i]);
@@ -228,8 +228,8 @@ public class SBGBootstrap {
             startSecurityWatchdog();
 
             // 5. Delegate to Forge BootstrapLauncher
-            Class<?> forgeEntryPoint = Class.forName($__$_IllI$$$l());
-            forgeEntryPoint.getMethod(ll$l$I(), String[].class).invoke(null, (Object) args);
+            Class<?> forgeEntryPoint = Class.forName(ll$$IlII());
+            forgeEntryPoint.getMethod(_IIlIIl$$lI__(), String[].class).invoke(null, (Object) args);
 
         } catch (Exception e) {
             System.exit(1);
@@ -241,30 +241,30 @@ public class SBGBootstrap {
         List<String> inputArgs = ManagementFactory.getRuntimeMXBean().getInputArguments();
         for (String arg : inputArgs) {
             String lower = arg.toLowerCase();
-            if (lower.contains(l_l__$_ll()) 
-                || lower.contains(l$IIl$ll$l()) 
-                || lower.contains(_$l_I_()) 
-                || lower.contains(ll_l$Ill___())
-                || lower.contains(I_I_$l())) {
+            if (lower.contains(llI$$$l_()) 
+                || lower.contains(lIII_llI$l()) 
+                || lower.contains(__I_I_l$$I__()) 
+                || lower.contains($lI$lI___$$())
+                || lower.contains(Il$_lIl$l$())) {
                 return true;
             }
         }
 
         // Check environment variables just in case
         String[] toxicVars = {
-            _$$_lI_I$_I(),
-            ___llI___$$lI(),
-            I____l()
+            $l$$I_lll_II$(),
+            $_I_l_I____l$(),
+            Il$l_$_()
         };
         for (String var : toxicVars) {
             String val = System.getenv(var);
             if (val != null) {
                 String lower = val.toLowerCase();
-                if (lower.contains(l_l__$_ll()) 
-                    || lower.contains(l$IIl$ll$l()) 
-                    || lower.contains(_$l_I_()) 
-                    || lower.contains(ll_l$Ill___())
-                    || lower.contains(I_I_$l())) {
+                if (lower.contains(llI$$$l_()) 
+                    || lower.contains(lIII_llI$l()) 
+                    || lower.contains(__I_I_l$$I__()) 
+                    || lower.contains($lI$lI___$$())
+                    || lower.contains(Il$_lIl$l$())) {
                     return true;
                 }
             }
@@ -286,13 +286,13 @@ public class SBGBootstrap {
             }
         });
         monitor.setDaemon(true);
-        monitor.setName(Il_lIIlI$ll());
+        monitor.setName(I_II$I());
         monitor.start();
     }
 
     private static boolean verifyModpackIntegrity() {
         try {
-            File hashFile = new File(l$IIIIll$$_$I());
+            File hashFile = new File(__ll$III$Il$_());
             if (!hashFile.exists()) {
                 return false;
             }
@@ -312,7 +312,7 @@ public class SBGBootstrap {
                 }
             }
 
-            File modsDir = new File(l$I$Ill__$Ill());
+            File modsDir = new File(lIl_III_$());
             if (!modsDir.exists() || !modsDir.isDirectory()) {
                 return expectedHashes.isEmpty();
             }

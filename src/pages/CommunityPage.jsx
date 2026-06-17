@@ -911,6 +911,20 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 onKick={async (userId) => {
                   sendWS({ type: "group_kick", groupId: activeGroup.id, userId });
                 }}
+                onSetRole={async (userId, role) => {
+                  try {
+                    const r = await authFetch(`/api/groups/${activeGroup.id}/role`, { method: "PUT", body: JSON.stringify({ userId, role }) });
+                    const d = await r.json();
+                    if (d.group) { setGroups(prev => prev.map(x => x.id === d.group.id ? d.group : x)); setActiveGroup(d.group); }
+                  } catch {}
+                }}
+                onEditDescription={async (description) => {
+                  try {
+                    const r = await authFetch(`/api/groups/${activeGroup.id}/description`, { method: "PUT", body: JSON.stringify({ description }) });
+                    const d = await r.json();
+                    if (d.group) { setGroups(prev => prev.map(x => x.id === d.group.id ? d.group : x)); setActiveGroup(d.group); }
+                  } catch {}
+                }}
               />
             </motion.div>
           )}
@@ -1080,150 +1094,373 @@ function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, onl
 
 // ─── GroupsPanel ─────────────────────────────────────────────────────────────
 function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCreate, onAcceptInvite, onDeclineInvite }) {
+  const [subTab, setSubTab] = useState("mine");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+
+  const [browseList, setBrowseList] = useState([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [appliedIds, setAppliedIds] = useState(new Set());
+  const [applyingId, setApplyingId] = useState(null);
+  const [viewingGroup, setViewingGroup] = useState(null);
+
+  const inAnyClan = groups.length > 0;
 
   const create = async () => {
     if (busy || name.trim().length < 2) return;
     setBusy(true); setErr(null);
     try {
-      const r = await authFetch("/api/groups", { method: "POST", body: JSON.stringify({ name: name.trim() }) });
+      const r = await authFetch("/api/groups", { method: "POST", body: JSON.stringify({ name: name.trim(), description: description.trim() }) });
       const d = await r.json();
       onCreate(d.group);
-      setName(""); setCreating(false);
+      setName(""); setDescription(""); setCreating(false);
     } catch (e) { setErr("Ошибка создания"); }
     finally { setBusy(false); }
   };
 
+  const loadBrowse = useCallback(async () => {
+    setBrowseLoading(true);
+    try {
+      const r = await authFetch("/api/groups/browse");
+      const d = await r.json();
+      setBrowseList(d.groups || []);
+    } catch { setBrowseList([]); }
+    finally { setBrowseLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (subTab === "browse") loadBrowse();
+  }, [subTab, loadBrowse]);
+
+  const apply = async (gid) => {
+    if (applyingId || inAnyClan) return;
+    setApplyingId(gid);
+    try {
+      const r = await authFetch(`/api/groups/${gid}/apply`, { method: "POST", body: JSON.stringify({}) });
+      if (r.ok) setAppliedIds(prev => new Set(prev).add(gid));
+    } catch {}
+    finally { setApplyingId(null); }
+  };
+
+  if (viewingGroup) {
+    const g = viewingGroup;
+    const members = g.members || [];
+    const memberNames = g.memberNames || {};
+    const lvl = g.level || 1;
+    const xp = g.xp || 0;
+    const xpPct = Math.min(100, Math.round((xp % 100)));
+    const isMember = members.includes(user?.id);
+    const isApplied = appliedIds.has(g.id);
+    const onlineCount = members.filter(m => onlineIds.has(m)).length;
+
+    return (
+      <div className="flex-1 overflow-y-auto px-3 pb-3">
+        <div className="mb-4">
+          <button onClick={() => setViewingGroup(null)}
+            className="flex items-center gap-1.5 text-[11px] font-semibold mb-3 transition-all"
+            style={{ color: "rgba(168,85,247,0.7)" }}
+            onMouseEnter={e => e.currentTarget.style.color = "rgba(168,85,247,1)"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgba(168,85,247,0.7)"}>
+            <CaretLeft size={12} weight="bold" /> Назад к списку
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 22 }}>
+              {g.name.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-[15px] font-bold text-white truncate">{g.name}</p>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-md font-black"
+                  style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
+                  Ур. {lvl}
+                </span>
+              </div>
+              <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                {members.length} чел &middot; {onlineCount > 0 ? `${onlineCount} онлайн` : "никого"}
+              </p>
+            </div>
+          </div>
+
+          {g.description && (
+            <div className="rounded-xl p-3.5 mb-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <p className="text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>{g.description}</p>
+            </div>
+          )}
+
+          <div className="rounded-xl p-3.5 mb-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.3)" }}>Опыт клана</p>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+              <div className="h-full rounded-full" style={{ width: `${xpPct}%`, background: "linear-gradient(90deg, #2563eb, #3b82f6)" }} />
+            </div>
+            <p className="text-[10px] mt-1.5" style={{ color: "rgba(255,255,255,0.35)" }}>{xp} XP</p>
+          </div>
+
+          <div className="rounded-xl p-3.5 mb-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-[10px] uppercase tracking-wider mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
+              Участники &middot; {members.length}
+            </p>
+            {members.slice(0, 20).map(mid => {
+              const role = mid === g.ownerId ? "owner" : (g.memberRoles?.[mid] || "member");
+              const roleLabel = { owner: "OWNER", leader: "РУКОВОДИТЕЛЬ", elder: "СТАРШИНА", member: "" }[role];
+              const roleColor = { owner: "rgba(251,191,36,0.8)", leader: "rgba(96,165,250,0.8)", elder: "rgba(168,85,247,0.8)", member: "" }[role];
+              const roleBg = { owner: "rgba(251,191,36,0.12)", leader: "rgba(96,165,250,0.12)", elder: "rgba(168,85,247,0.12)", member: "" }[role];
+              return (
+              <div key={mid} className="flex items-center gap-2.5 py-1.5">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
+                  style={{ background: "rgba(99,102,241,0.2)", color: "rgba(168,85,247,0.8)" }}>
+                  {(memberNames[mid] || "?").slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <p className="text-[12px] text-white truncate">{memberNames[mid] || mid}</p>
+                  {roleLabel && (
+                    <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider flex-shrink-0"
+                      style={{ background: roleBg, color: roleColor }}>{roleLabel}</span>
+                  )}
+                  {onlineIds.has(mid) && (
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#22c55e" }} />
+                  )}
+                </div>
+              </div>
+              );
+            })}
+          </div>
+
+          {!isMember && (
+            <button onClick={() => apply(g.id)} disabled={applyingId === g.id || isApplied || inAnyClan}
+              className="w-full py-3 rounded-xl text-[12px] font-bold text-white transition-all disabled:opacity-40"
+              style={{ background: isApplied ? "rgba(34,197,94,0.3)" : inAnyClan ? "rgba(255,255,255,0.05)" : "rgba(168,85,247,0.45)" }}
+              onMouseEnter={e => { if (!isApplied && !inAnyClan) e.currentTarget.style.background = "rgba(168,85,247,0.65)"; }}
+              onMouseLeave={e => { if (!isApplied && !inAnyClan) e.currentTarget.style.background = "rgba(168,85,247,0.45)"; }}>
+              {isApplied ? "Заявка отправлена" : inAnyClan ? "Вы уже в клане" : "Подать заявку"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 overflow-y-auto px-3 pb-3">
-      {groupInvites.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[10px] uppercase tracking-widest px-2 py-2"
-            style={{ color: "rgba(168,85,247,0.7)" }}>
-            Приглашения &middot; {groupInvites.length}
-          </p>
-          {groupInvites.map((inv, i) => (
-            <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-              className="rounded-xl p-3.5 mb-2"
-              style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.12)" }}>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff", fontWeight: 700, fontSize: 13 }}>
-                  {inv.groupName?.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-semibold text-white truncate">{inv.groupName}</p>
-                  <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>от @{inv.fromUsername}</p>
-                </div>
-              </div>
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => onAcceptInvite(inv.groupId)}
-                  className="flex-1 py-2 rounded-xl text-[11px] font-bold text-white transition-all"
-                  style={{ background: "rgba(168,85,247,0.45)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.65)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.45)"}>
-                  Принять
-                </button>
-                <button onClick={() => onDeclineInvite(inv.groupId)}
-                  className="flex-1 py-2 rounded-xl text-[11px] font-semibold transition-all"
-                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
-                  Отклонить
-                </button>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      )}
-
-      {!creating ? (
-        <button onClick={() => setCreating(true)}
-          className="w-full mb-4 py-3 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 text-white transition-all"
-          style={{ background: "rgba(99,102,241,0.15)", border: "1px dashed rgba(99,102,241,0.3)" }}
-          onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,0.25)"}
-          onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,0.15)"}>
-          <Plus size={14} /> Создать клан
+      <div className="flex gap-2 mb-4 px-1">
+        <button onClick={() => setSubTab("mine")}
+          className="flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all"
+          style={{
+            background: subTab === "mine" ? "rgba(168,85,247,0.2)" : "rgba(255,255,255,0.03)",
+            border: subTab === "mine" ? "1px solid rgba(168,85,247,0.3)" : "1px solid rgba(255,255,255,0.06)",
+            color: subTab === "mine" ? "rgba(168,85,247,0.9)" : "rgba(255,255,255,0.4)"
+          }}>
+          Мои кланы
         </button>
-      ) : (
-        <div className="mb-4 rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
-          <input value={name} onChange={e => setName(e.target.value)} maxLength={40} autoFocus
-            placeholder="Название клана..."
-            onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
-            className="w-full rounded-xl px-4 py-3 text-[12px] outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
-          <div className="flex gap-2 mt-3">
-            <button onClick={() => { setCreating(false); setName(""); setErr(null); }}
-              className="flex-1 py-2 rounded-xl text-[11px] font-semibold"
-              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>Отмена</button>
-            <button onClick={create} disabled={busy || name.trim().length < 2}
-              className="flex-1 py-2 rounded-xl text-[11px] font-bold text-white disabled:opacity-40"
-              style={{ background: "rgba(168,85,247,0.5)" }}>Создать</button>
-          </div>
-          {err && <p className="text-[11px] mt-2" style={{ color: "#fca5a5" }}>{err}</p>}
-        </div>
-      )}
+        <button onClick={() => setSubTab("browse")}
+          className="flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all"
+          style={{
+            background: subTab === "browse" ? "rgba(168,85,247,0.2)" : "rgba(255,255,255,0.03)",
+            border: subTab === "browse" ? "1px solid rgba(168,85,247,0.3)" : "1px solid rgba(255,255,255,0.06)",
+            color: subTab === "browse" ? "rgba(168,85,247,0.9)" : "rgba(255,255,255,0.4)"
+          }}>
+          Все кланы
+        </button>
+      </div>
 
-      <p className="text-[10px] uppercase tracking-widest px-2 py-2"
-        style={{ color: "rgba(255,255,255,0.35)" }}>
-        Кланы &middot; {groups.length}
-      </p>
-      {groups.length === 0 ? (
-        <div className="flex flex-col items-center py-10 gap-3">
-          <Users size={28} weight="thin" style={{ color: "rgba(255,255,255,0.15)" }} />
-          <p className="text-[12px] text-center" style={{ color: "rgba(255,255,255,0.3)" }}>
-            Нет кланов. Создай свой или прими приглашение.
-          </p>
-        </div>
-      ) : (
-        groups.filter(Boolean).map((g, idx) => {
-          const onlineCount = (g.members || []).filter(m => onlineIds.has(m)).length;
-          const isOwner = g.ownerId === user?.id;
-          const lvl = g.level || 1;
-          const xp = g.xp || 0;
-          const xpNext = g.xpNext || 100;
-          const xpPct = Math.min(100, Math.round((xp % 100) / 1 * 1));
-          return (
-            <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.03 }} className="mb-2">
-              <button onClick={() => onOpenGroup(g)}
-                className="w-full text-left px-3 py-3 rounded-xl transition-all"
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-shrink-0">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                      style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 15 }}>
-                      {g.name.slice(0, 1).toUpperCase()}
+      {subTab === "mine" ? (
+        <>
+          {groupInvites.length > 0 && (
+            <div className="mb-4">
+              <p className="text-[10px] uppercase tracking-widest px-2 py-2"
+                style={{ color: "rgba(168,85,247,0.7)" }}>
+                Приглашения &middot; {groupInvites.length}
+              </p>
+              {groupInvites.map((inv, i) => (
+                <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                  className="rounded-xl p-3.5 mb-2"
+                  style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.12)" }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff", fontWeight: 700, fontSize: 13 }}>
+                      {inv.groupName?.slice(0, 1).toUpperCase()}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black"
-                      style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
-                      {lvl}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-semibold text-white truncate">{inv.groupName}</p>
+                      <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>от @{inv.fromUsername}</p>
                     </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[13px] font-semibold text-white truncate">{g.name}</p>
-                      {isOwner && (
-                        <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
-                          style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>OWNER</span>
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => onAcceptInvite(inv.groupId)}
+                      className="flex-1 py-2 rounded-xl text-[11px] font-bold text-white transition-all"
+                      style={{ background: "rgba(168,85,247,0.45)" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.65)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.45)"}>
+                      Принять
+                    </button>
+                    <button onClick={() => onDeclineInvite(inv.groupId)}
+                      className="flex-1 py-2 rounded-xl text-[11px] font-semibold transition-all"
+                      style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
+                      Отклонить
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {!creating ? (
+            <button onClick={() => setCreating(true)}
+              className="w-full mb-4 py-3 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 text-white transition-all"
+              style={{ background: "rgba(99,102,241,0.15)", border: "1px dashed rgba(99,102,241,0.3)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,0.25)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,0.15)"}>
+              <Plus size={14} /> Создать клан
+            </button>
+          ) : (
+            <div className="mb-4 rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <input value={name} onChange={e => setName(e.target.value)} maxLength={40} autoFocus
+                placeholder="Название клана..."
+                onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
+                className="w-full rounded-xl px-4 py-3 text-[12px] outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+              <input value={description} onChange={e => setDescription(e.target.value)} maxLength={200}
+                placeholder="Описание (необязательно)..."
+                className="w-full rounded-xl px-4 py-3 text-[12px] outline-none mt-2"
+                style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => { setCreating(false); setName(""); setDescription(""); setErr(null); }}
+                  className="flex-1 py-2 rounded-xl text-[11px] font-semibold"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>Отмена</button>
+                <button onClick={create} disabled={busy || name.trim().length < 2}
+                  className="flex-1 py-2 rounded-xl text-[11px] font-bold text-white disabled:opacity-40"
+                  style={{ background: "rgba(168,85,247,0.5)" }}>Создать</button>
+              </div>
+              {err && <p className="text-[11px] mt-2" style={{ color: "#fca5a5" }}>{err}</p>}
+            </div>
+          )}
+
+          <p className="text-[10px] uppercase tracking-widest px-2 py-2"
+            style={{ color: "rgba(255,255,255,0.35)" }}>
+            Кланы &middot; {groups.length}
+          </p>
+          {groups.length === 0 ? (
+            <div className="flex flex-col items-center py-10 gap-3">
+              <Users size={28} weight="thin" style={{ color: "rgba(255,255,255,0.15)" }} />
+              <p className="text-[12px] text-center" style={{ color: "rgba(255,255,255,0.3)" }}>
+                Нет кланов. Создай свой или прими приглашение.
+              </p>
+            </div>
+          ) : (
+            groups.filter(Boolean).map((g, idx) => {
+              const onlineCount = (g.members || []).filter(m => onlineIds.has(m)).length;
+              const isOwner = g.ownerId === user?.id;
+              const lvl = g.level || 1;
+              const xp = g.xp || 0;
+              const xpPct = Math.min(100, Math.round((xp % 100)));
+              return (
+                <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.03 }} className="mb-2">
+                  <button onClick={() => onOpenGroup(g)}
+                    className="w-full text-left px-3 py-3 rounded-xl transition-all"
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex-shrink-0">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                          style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 15 }}>
+                          {g.name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black"
+                          style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
+                          {lvl}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[13px] font-semibold text-white truncate">{g.name}</p>
+                          {isOwner && (
+                            <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
+                              style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>OWNER</span>
+                          )}
+                        </div>
+                        <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                          {g.members.length} чел &middot; {onlineCount > 0 ? `${onlineCount} онлайн` : "никого"}
+                        </p>
+                        <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${xpPct}%`, background: "linear-gradient(90deg, #2563eb, #3b82f6)" }} />
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </motion.div>
+              );
+            })
+          )}
+        </>
+      ) : (
+        <>
+          {browseLoading ? (
+            <div className="flex flex-col items-center py-10 gap-3">
+              <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(168,85,247,0.2)", borderTopColor: "rgba(168,85,247,0.7)" }} />
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузка...</p>
+            </div>
+          ) : browseList.length === 0 ? (
+            <div className="flex flex-col items-center py-10 gap-3">
+              <Users size={28} weight="thin" style={{ color: "rgba(255,255,255,0.15)" }} />
+              <p className="text-[12px] text-center" style={{ color: "rgba(255,255,255,0.3)" }}>
+                Нет доступных кланов.
+              </p>
+            </div>
+          ) : (
+            browseList.map((g, idx) => {
+              const lvl = g.level || 1;
+              const isApplied = appliedIds.has(g.id);
+              const isMember = (g.members || []).includes(user?.id);
+              return (
+                <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.03 }} className="mb-2">
+                  <button onClick={() => setViewingGroup(g)}
+                    className="w-full text-left px-3 py-3 rounded-xl transition-all"
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex-shrink-0">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                          style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 15 }}>
+                          {g.name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black"
+                          style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
+                          {lvl}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold text-white truncate">{g.name}</p>
+                        <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                          {g.memberCount} чел &middot; {g.ownerName ? `@${g.ownerName}` : ""}
+                        </p>
+                      </div>
+                      {isApplied && (
+                        <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
+                          style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.8)" }}>
+                          Заявка
+                        </span>
+                      )}
+                      {isMember && (
+                        <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
+                          style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.8)" }}>
+                          Участник
+                        </span>
                       )}
                     </div>
-                    <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {g.members.length} чел &middot; {onlineCount > 0 ? `${onlineCount} онлайн` : "никого"}
-                    </p>
-                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
-                      <div className="h-full rounded-full" style={{ width: `${xpPct}%`, background: "linear-gradient(90deg, #2563eb, #3b82f6)" }} />
-                    </div>
-                  </div>
-                </div>
-              </button>
-            </motion.div>
-          );
-        })
+                  </button>
+                </motion.div>
+              );
+            })
+          )}
+        </>
       )}
     </div>
   );
@@ -1461,15 +1698,20 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
 }
 
 // ─── GroupChat ───────────────────────────────────────────────────────────────
-function GroupChat({ group, user, messages, onLeave, onBack, onKick, groupVoiceIds = [], activeCall, onJoinCall }) {
+function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, onEditDescription, groupVoiceIds = [], activeCall, onJoinCall }) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [inviteNick, setInviteNick] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteMsg, setInviteMsg] = useState(null);
+  const [editDesc, setEditDesc] = useState(false);
+  const [descVal, setDescVal] = useState(group.description || "");
   const bottomRef = useRef(null);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   const isOwner = group.ownerId === user?.id;
+  const myRole = isOwner ? "owner" : (group.memberRoles?.[user?.id] || "member");
+  const canKickMembers = isOwner || myRole === "leader";
+  const canManage = isOwner || myRole === "leader";
 
   const submit = (e) => {
     e?.preventDefault();
@@ -1545,6 +1787,10 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, groupVoiceI
               </p>
               {group.members.map(mid => {
                 const memberName = group.memberNames?.[mid] || mid;
+                const role = mid === group.ownerId ? "owner" : (group.memberRoles?.[mid] || "member");
+                const roleLabel = { owner: "OWNER", leader: "РУКОВОДИТЕЛЬ", elder: "СТАРШИНА", member: "" }[role];
+                const roleColor = { owner: "rgba(251,191,36,0.8)", leader: "rgba(96,165,250,0.8)", elder: "rgba(168,85,247,0.8)", member: "" }[role];
+                const roleBg = { owner: "rgba(251,191,36,0.12)", leader: "rgba(96,165,250,0.12)", elder: "rgba(168,85,247,0.12)", member: "" }[role];
                 return (
                 <div key={mid} className="flex items-center gap-2.5 py-2">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold"
@@ -1553,19 +1799,61 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, groupVoiceI
                   </div>
                   <span className="text-[11px] flex-1" style={{ color: "rgba(255,255,255,0.65)" }}>
                     {mid === user?.id ? "Ты" : memberName}
-                    {mid === group.ownerId && (
-                      <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded"
-                        style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>OWNER</span>
+                    {roleLabel && (
+                      <span className="ml-1.5 text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
+                        style={{ background: roleBg, color: roleColor }}>{roleLabel}</span>
                     )}
                   </span>
-                  {isOwner && mid !== user?.id && (
-                    <button onClick={() => onKick?.(mid)}
-                      className="text-[10px] px-2.5 py-1 rounded-lg transition-all"
-                      style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.6)" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
-                      Кик
-                    </button>
+                  {canKickMembers && mid !== user?.id && mid !== group.ownerId && !(isOwner && role === "leader") && (
+                    <div className="flex gap-1">
+                      {isOwner && mid !== group.ownerId && (
+                        <div className="relative group/drop">
+                          <button className="text-[9px] px-1.5 py-1 rounded-lg transition-all"
+                            style={{ background: "rgba(96,165,250,0.1)", color: "rgba(96,165,250,0.6)" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.2)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.1)"}>
+                            &#9660;
+                          </button>
+                          <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover/drop:block min-w-[140px] py-1 rounded-xl"
+                            style={{ background: "rgba(20,20,30,0.97)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(12px)" }}>
+                            {role !== "leader" && (
+                              <button onClick={() => onSetRole?.(mid, "leader")}
+                                className="w-full text-left px-3 py-2 text-[10px] transition-all"
+                                style={{ color: "rgba(96,165,250,0.8)" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.1)"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                Сделать руководителем
+                              </button>
+                            )}
+                            {role !== "elder" && (
+                              <button onClick={() => onSetRole?.(mid, "elder")}
+                                className="w-full text-left px-3 py-2 text-[10px] transition-all"
+                                style={{ color: "rgba(168,85,247,0.8)" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.1)"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                Сделать старшиной
+                              </button>
+                            )}
+                            {role !== "member" && (
+                              <button onClick={() => onSetRole?.(mid, "member")}
+                                className="w-full text-left px-3 py-2 text-[10px] transition-all"
+                                style={{ color: "rgba(255,255,255,0.4)" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                Снять звание
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <button onClick={() => onKick?.(mid)}
+                        className="text-[10px] px-2.5 py-1 rounded-lg transition-all"
+                        style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.6)" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
+                        Кик
+                      </button>
+                    </div>
                   )}
                 </div>
                 );
@@ -1588,6 +1876,35 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, groupVoiceI
                 onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}>
                 Покинуть клан
               </button>
+              {canManage && (
+                <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                  <p className="text-[9px] uppercase tracking-widest mb-1.5" style={{ color: "rgba(255,255,255,0.28)" }}>Настройки клана</p>
+                  {!editDesc ? (
+                    <button onClick={() => { setEditDesc(true); setDescVal(group.description || ""); }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-[10px] transition-all"
+                      style={{ background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.5)" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}>
+                      {group.description ? `Описание: ${group.description.slice(0, 40)}...` : "Добавить описание"}
+                    </button>
+                  ) : (
+                    <div>
+                      <input value={descVal} onChange={e => setDescVal(e.target.value)} maxLength={200} autoFocus
+                        placeholder="Описание клана..."
+                        className="w-full rounded-lg px-3 py-2 text-[11px] outline-none mb-1.5"
+                        style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+                      <div className="flex gap-1.5">
+                        <button onClick={() => setEditDesc(false)}
+                          className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold"
+                          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}>Отмена</button>
+                        <button onClick={() => { onEditDescription?.(descVal); setEditDesc(false); }}
+                          className="flex-1 py-1.5 rounded-lg text-[10px] font-bold text-white"
+                          style={{ background: "rgba(96,165,250,0.4)" }}>Сохранить</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {inviteMsg && (
                 <p className="text-[10px] mt-1" style={{ color: inviteMsg.ok ? "#4ade80" : "#fca5a5" }}>
                   {inviteMsg.text}
