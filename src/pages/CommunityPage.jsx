@@ -463,14 +463,43 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
         {/* Tabs */}
         {!(tab === "friends" && chatWith) && (
-          <div className="flex flex-col gap-1 px-3 py-3 flex-shrink-0">
+          <div className="flex flex-col px-3 py-3 gap-1 flex-shrink-0">
+
+            {/* Top row: Добавить + Заявки */}
+            <div className="flex gap-1.5 mb-1">
+              {[
+                { id: "add",      label: "Добавить", icon: UserCirclePlus, badge: 0 },
+                { id: "requests", label: "Заявки",   icon: ChatCircle,     badge: totalBadge },
+              ].map(({ id, label, icon: Icon, badge }) => (
+                <button key={id}
+                  onClick={() => setTab(id)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold transition-all duration-150 relative"
+                  style={tab === id
+                    ? { background: "rgba(255,255,255,0.10)", color: "#fff" }
+                    : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)" }
+                  }
+                >
+                  <Icon size={13} weight={tab === id ? "fill" : "regular"} />
+                  {label}
+                  {badge > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center">
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "4px 2px 6px" }} />
+
+            {/* Main nav: Друзья / Сообщество / Группы */}
             {[
-              { id: "friends",   label: "Друзья",     icon: UsersThree, badge: 0 },
-              { id: "add",       label: "Добавить",   icon: UserCirclePlus, badge: 0 },
-              { id: "requests",  label: "Заявки",     icon: ChatCircle, badge: totalBadge },
-              { id: "groups",    label: "Кланы",      icon: Users, badge: groupInvites.length },
+              { id: "friends", label: "Друзья",      icon: UsersThree, badge: 0 },
+              { id: "groups",  label: "Сообщество",  icon: Users,      badge: groupInvites.length },
             ].map(({ id, label, icon: Icon, badge }) => (
-              <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
+              <button key={id}
+                onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
                 className="relative flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-150"
                 style={tab === id
                   ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
@@ -552,29 +581,54 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
         {/* Mini-mode horizontal tabs (when sidebar hidden) */}
         {mini && !(tab === "friends" && chatWith) && (
-          <div className="flex gap-1 px-2 py-2 flex-shrink-0"
+          <div className="flex flex-col gap-1 px-2 py-2 flex-shrink-0"
             style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            {[
-              { id: "friends",   label: "Друзья",     icon: UsersThree, badge: 0 },
-              { id: "add",       label: "Добавить",   icon: UserCirclePlus, badge: 0 },
-              { id: "requests",  label: "Заявки",     icon: ChatCircle, badge: totalBadge },
-              { id: "groups",    label: "Кланы",      icon: Users, badge: groupInvites.length },
-            ].map(({ id, label, icon: Icon, badge }) => (
-              <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
-                className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
-                style={tab === id
-                  ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
-                  : { color: "rgba(255,255,255,0.5)" }
-                }>
-                <Icon size={12} weight={tab === id ? "fill" : "regular"} />
-                {label}
-                {badge > 0 && (
-                  <span className="ml-0.5 min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center">
-                    {badge}
-                  </span>
-                )}
-              </button>
-            ))}
+            {/* Top: Добавить + Заявки */}
+            <div className="flex gap-1">
+              {[
+                { id: "add",      label: "Добавить", icon: UserCirclePlus, badge: 0 },
+                { id: "requests", label: "Заявки",   icon: ChatCircle,     badge: totalBadge },
+              ].map(({ id, label, icon: Icon, badge }) => (
+                <button key={id} onClick={() => setTab(id)}
+                  className="flex-1 relative flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                  style={tab === id
+                    ? { background: "rgba(255,255,255,0.10)", color: "#fff" }
+                    : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)" }
+                  }>
+                  <Icon size={11} weight={tab === id ? "fill" : "regular"} />
+                  {label}
+                  {badge > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[14px] h-3.5 px-0.5 rounded-full bg-blue-600 text-[8px] font-black text-white flex items-center justify-center">
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            {/* Divider */}
+            <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "2px 0" }} />
+            {/* Bottom: Друзья + Сообщество */}
+            <div className="flex gap-1">
+              {[
+                { id: "friends", label: "Друзья",     icon: UsersThree, badge: 0 },
+                { id: "groups",  label: "Кланы",      icon: Users,      badge: groupInvites.length },
+              ].map(({ id, label, icon: Icon, badge }) => (
+                <button key={id} onClick={() => { setTab(id); if (id === "friends") setChatWith(null); if (id === "groups") sendWS({ type: "community_sync" }); }}
+                  className="flex-1 relative flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                  style={tab === id
+                    ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
+                    : { color: "rgba(255,255,255,0.5)" }
+                  }>
+                  <Icon size={11} weight={tab === id ? "fill" : "regular"} />
+                  {label}
+                  {badge > 0 && (
+                    <span className="ml-0.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-blue-600 text-[8px] font-black text-white flex items-center justify-center">
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
