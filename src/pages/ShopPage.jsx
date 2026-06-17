@@ -4,7 +4,7 @@ import {
   Storefront, Shield, Sword, PawPrint, Sparkle,
   ShoppingCartSimple, Crown, Star, Lightning, Ghost,
   Skull, Flame, Wind, Diamond, Gift, Info, X, Tag,
-  ArrowsLeftRight, Plus, ListChecks,
+  ArrowsLeftRight, Plus, ListChecks, CaretLeft,
 } from "@phosphor-icons/react";
 import { authedFetch } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
@@ -49,34 +49,104 @@ const RARITY = {
 };
 
 export default function ShopPage({ user, onBalanceChange }) {
-  const [mode, setMode] = useState("donate"); // "donate" | "market"
+  const [mode, setMode] = useState("choose"); // "choose" | "donate" | "market"
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}>
-      {/* Top-level tabs: Донат / Торговая площадка */}
-      <div className="flex items-center gap-1 px-6 pt-4 pb-3 flex-shrink-0">
-        <button onClick={() => setMode("donate")}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-150"
-          style={mode === "donate"
-            ? { background: "rgba(99,102,241,0.18)", color: "#c7d2fe", boxShadow: "0 0 0 1px rgba(99,102,241,0.3)" }
-            : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.65)" }
-          }>
-          <Storefront size={14} weight="fill" />Донат
-        </button>
-        <button onClick={() => setMode("market")}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-150"
-          style={mode === "market"
-            ? { background: "rgba(168,85,247,0.18)", color: "#e9d5ff", boxShadow: "0 0 0 1px rgba(168,85,247,0.3)" }
-            : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.65)" }
-          }>
-          <ArrowsLeftRight size={14} weight="fill" />Торговая площадка
-        </button>
-      </div>
-
       <AnimatePresence mode="wait">
-        {mode === "donate"
-          ? <DonateView key="donate" user={user} onBalanceChange={onBalanceChange} />
-          : <MarketplaceView key="market" />}
+
+        {/* ─── Экран выбора ─── */}
+        {mode === "choose" && (
+          <motion.div key="choose"
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ duration: 0.18 }}
+            className="flex-1 flex flex-col items-center justify-center gap-6 px-8"
+          >
+            <div className="text-center mb-2">
+              <p className="text-[22px] font-black text-white mb-1">Магазин</p>
+              <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.4)" }}>Куда хочешь перейти?</p>
+            </div>
+
+            <div className="flex gap-4 w-full max-w-[460px]">
+              {/* Донат */}
+              <button onClick={() => setMode("donate")}
+                className="flex-1 flex flex-col items-center gap-4 rounded-2xl py-10 transition-all duration-150 group"
+                style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(99,102,241,0.16)"; e.currentTarget.style.borderColor = "rgba(99,102,241,0.35)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(99,102,241,0.08)"; e.currentTarget.style.borderColor = "rgba(99,102,241,0.18)"; }}
+              >
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.25)" }}>
+                  <Storefront size={30} weight="fill" style={{ color: "#818cf8" }} />
+                </div>
+                <div className="text-center">
+                  <p className="text-[16px] font-black text-white">Донат</p>
+                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>Скины, рамки, фоны и&nbsp;привилегии</p>
+                </div>
+              </button>
+
+              {/* Торговая площадка */}
+              <button onClick={() => setMode("market")}
+                className="flex-1 flex flex-col items-center gap-4 rounded-2xl py-10 transition-all duration-150 group"
+                style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.18)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(168,85,247,0.16)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.35)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(168,85,247,0.08)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.18)"; }}
+              >
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.25)" }}>
+                  <ArrowsLeftRight size={30} weight="fill" style={{ color: "#c084fc" }} />
+                </div>
+                <div className="text-center">
+                  <p className="text-[16px] font-black text-white">Торговая площадка</p>
+                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>Покупай и&nbsp;продавай предметы</p>
+                </div>
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ─── Донат ─── */}
+        {mode === "donate" && (
+          <motion.div key="donate"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -24 }}
+            transition={{ duration: 0.18 }}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
+            <button onClick={() => setMode("choose")}
+              className="self-start flex items-center gap-1.5 mt-4 ml-6 px-3 py-1.5 rounded-xl text-[12px] font-semibold transition-all flex-shrink-0"
+              style={{ color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.05)" }}
+              onMouseEnter={e => e.currentTarget.style.color = "#fff"}
+              onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.5)"}>
+              <CaretLeft size={13} weight="bold" /> Назад
+            </button>
+            <DonateView user={user} onBalanceChange={onBalanceChange} />
+          </motion.div>
+        )}
+
+        {/* ─── Торговая площадка ─── */}
+        {mode === "market" && (
+          <motion.div key="market"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -24 }}
+            transition={{ duration: 0.18 }}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
+            <button onClick={() => setMode("choose")}
+              className="self-start flex items-center gap-1.5 mt-4 ml-6 px-3 py-1.5 rounded-xl text-[12px] font-semibold transition-all flex-shrink-0"
+              style={{ color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.05)" }}
+              onMouseEnter={e => e.currentTarget.style.color = "#fff"}
+              onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.5)"}>
+              <CaretLeft size={13} weight="bold" /> Назад
+            </button>
+            <MarketplaceView />
+          </motion.div>
+        )}
+
       </AnimatePresence>
     </div>
   );
