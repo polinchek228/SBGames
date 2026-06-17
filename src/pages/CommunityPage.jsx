@@ -47,7 +47,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   const [activeGroup,    setActiveGroup]    = useState(null);
   const [groupMessages,  setGroupMessages]  = useState([]);
 
-  const [party,         setParty]         = useState(null);  // { id, leaderId, members: [{id, username}] }
+  const [parties,       setParties]       = useState([]);    // all parties user is in
   const [partyInvites,  setPartyInvites]  = useState([]);
 
   // refs to avoid stale closures in handleEvent without re-subscribing WS
@@ -158,12 +158,12 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         break;
 
       // ─── Parties ────────────────────────────────────────────────────────────
-      case "party_update":
-        setParty(msg.party || null);
+      case "parties_list":
+        setParties(msg.parties || []);
         break;
       case "party_invite_received":
         setPartyInvites(prev => [...prev.filter(i => i.partyId !== msg.invite.partyId), msg.invite]);
-        pushNotif?.("Приглашение в группу", `${msg.invite.fromUsername} зовёт поиграть`, "group");
+        pushNotif?.("Приглашение в группу", `${msg.invite.fromUsername} зовёт в «${msg.invite.partyName || "группу"}»`, "group");
         break;
       case "party_invites_list":
         setPartyInvites(msg.invites || []);
@@ -919,11 +919,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
           {tab === "parties" && (
             <PartiesPanel
               user={user} friends={friends} onlineIds={onlineIds}
-              party={party} partyInvites={partyInvites}
-              onCreate={() => sendWS({ type: "party_create" })}
-              onInvite={(toId) => sendWS({ type: "party_invite", toId })}
-              onLeave={() => sendWS({ type: "party_leave" })}
-              onKick={(userId) => sendWS({ type: "party_kick", userId })}
+              parties={parties} partyInvites={partyInvites}
+              onCreate={(name) => sendWS({ type: "party_create", name })}
+              onInvite={(partyId, toId) => sendWS({ type: "party_invite", partyId, toId })}
+              onLeave={(partyId) => sendWS({ type: "party_leave", partyId })}
+              onKick={(partyId, userId) => sendWS({ type: "party_kick", partyId, userId })}
               onAcceptInvite={(partyId) => sendWS({ type: "party_invite_respond", partyId, accept: true })}
               onDeclineInvite={(partyId) => sendWS({ type: "party_invite_respond", partyId, accept: false })}
             />
@@ -1230,160 +1230,230 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 }
 
 // ─── PartiesPanel (временные пати для игры) ──────────────────────────────────
-function PartiesPanel({ user, friends, onlineIds, party, partyInvites, onCreate, onInvite, onLeave, onKick, onAcceptInvite, onDeclineInvite }) {
-  const [showInvite, setShowInvite] = useState(false);
-  const isLeader = party && party.leaderId === user?.id;
-  const partyMemberIds = new Set((party?.members || []).map(m => m.id));
-  const invitableFriends = friends.filter(f => !partyMemberIds.has(f.id));
+// ─── PartiesPanel (временные пати для игры) ──────────────────────────────────
+function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreate, onInvite, onLeave, onKick, onAcceptInvite, onDeclineInvite }) {
+  const [creating, setCreating] = useState(false);
+  const [newName,  setNewName]  = useState("");
+  const [activeParty, setActiveParty] = useState(null); // открытая партия
 
+  const openParty = parties.find(p => p.id === activeParty);
+
+  // если открытая партия пропала (удалили/вышли) — сбросим
+  React.useEffect(() => {
+    if (activeParty && !parties.find(p => p.id === activeParty)) setActiveParty(null);
+  }, [parties, activeParty]);
+
+  /* ── Экран конкретной партии ── */
+  if (openParty) {
+    const isLeader = openParty.leaderId === user?.id;
+    const memberIds = new Set(openParty.members.map(m => m.id));
+    const invitableFriends = friends.filter(f => !memberIds.has(f.id));
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Шапка */}
+        <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <button onClick={() => setActiveParty(null)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ color: "rgba(255,255,255,0.4)" }}>
+            <CaretLeft size={14} weight="bold" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold text-white truncate">{openParty.name}</p>
+            <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>{openParty.members.length} игроков</p>
+          </div>
+          <button onClick={() => onLeave(openParty.id)}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+            style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.7)" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
+            Покинуть
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
+          {/* Участники */}
+          {openParty.members.map(m => {
+            const online = onlineIds.has(m.id);
+            return (
+              <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
+                style={{ background: "rgba(255,255,255,0.03)" }}>
+                <div className="relative flex-shrink-0">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
+                    {m.username?.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-black"
+                    style={{ background: online ? "#4ade80" : "rgba(255,255,255,0.15)" }} />
+                </div>
+                <span className="text-[12px] flex-1" style={{ color: "rgba(255,255,255,0.8)" }}>
+                  {m.id === user?.id ? "Ты" : m.username}
+                </span>
+                {m.id === openParty.leaderId && (
+                  <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
+                    style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>ЛИДЕР</span>
+                )}
+                {isLeader && m.id !== user?.id && (
+                  <button onClick={() => onKick(openParty.id, m.id)}
+                    className="text-[9px] px-2 py-1 rounded-lg transition-all"
+                    style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.6)" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
+                    Кик
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Пригласить */}
+          {isLeader && invitableFriends.length > 0 && (
+            <>
+              <p className="text-[9px] uppercase tracking-widest px-1 pt-2" style={{ color: "rgba(255,255,255,0.28)" }}>
+                Позвать друга
+              </p>
+              {invitableFriends.map(f => (
+                <button key={f.id} onClick={() => onInvite(openParty.id, f.id)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all"
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.1)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                    style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}>
+                    {f.username?.slice(0, 2).toUpperCase()}
+                  </div>
+                  <span className="text-[12px] flex-1" style={{ color: "rgba(255,255,255,0.7)" }}>{f.username}</span>
+                  <UserPlus size={12} style={{ color: "rgba(96,165,250,0.5)" }} />
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Главный экран: список партий ── */
   return (
-    <div className="flex-1 overflow-y-auto px-3 pb-3">
+    <div className="flex-1 overflow-y-auto px-3 py-3">
+
+      {/* Приглашения */}
       {partyInvites.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[10px] uppercase tracking-widest px-2 py-2"
-            style={{ color: "rgba(96,165,250,0.7)" }}>
+        <div className="mb-3">
+          <p className="text-[9px] uppercase tracking-widest px-1 pb-1.5" style={{ color: "rgba(96,165,250,0.7)" }}>
             Приглашения &middot; {partyInvites.length}
           </p>
-          {partyInvites.map((inv, i) => (
+          {partyInvites.map(inv => (
             <motion.div key={inv.partyId} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-              className="rounded-xl p-3.5 mb-2"
-              style={{ background: "rgba(37,99,235,0.08)", border: "1px solid rgba(59,130,246,0.15)" }}>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd", fontWeight: 700, fontSize: 13 }}>
-                  {inv.fromUsername?.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-semibold text-white truncate">{inv.fromUsername} зовёт поиграть</p>
-                </div>
+              className="rounded-xl p-3 mb-2 flex items-center gap-3"
+              style={{ background: "rgba(37,99,235,0.07)", border: "1px solid rgba(59,130,246,0.14)" }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0"
+                style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}>
+                {inv.fromUsername?.slice(0, 1).toUpperCase()}
               </div>
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => onAcceptInvite(inv.partyId)}
-                  className="flex-1 py-2 rounded-xl text-[11px] font-bold text-white transition-all"
-                  style={{ background: "rgba(37,99,235,0.6)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.8)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.6)"}>
-                  Принять
-                </button>
-                <button onClick={() => onDeclineInvite(inv.partyId)}
-                  className="flex-1 py-2 rounded-xl text-[11px] font-semibold transition-all"
-                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
-                  Отклонить
-                </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold text-white truncate">{inv.partyName || "Группа"}</p>
+                <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>от @{inv.fromUsername}</p>
               </div>
+              <button onClick={() => onAcceptInvite(inv.partyId)}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all"
+                style={{ background: "rgba(37,99,235,0.6)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.8)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.6)"}>
+                Войти
+              </button>
+              <button onClick={() => onDeclineInvite(inv.partyId)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: "rgba(255,255,255,0.3)" }}
+                onMouseEnter={e => e.currentTarget.style.color = "#f87171"}
+                onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}>
+                <X size={12} />
+              </button>
             </motion.div>
           ))}
         </div>
       )}
 
-      {!party ? (
-        <div className="flex flex-col items-center py-14 gap-4">
-          <UsersThree size={32} weight="thin" style={{ color: "rgba(255,255,255,0.15)" }} />
-          <div className="text-center">
-            <p className="text-[13px] font-semibold text-white mb-1">Нет активной группы</p>
-            <p className="text-[11px] px-6" style={{ color: "rgba(255,255,255,0.35)" }}>
-              Собери друзей в группу, чтобы играть вместе на сервере
-            </p>
-          </div>
-          <button onClick={onCreate}
-            className="px-5 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all"
-            style={{ background: "rgba(37,99,235,0.7)" }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.9)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.7)"}>
-            Собрать группу
-          </button>
-        </div>
-      ) : (
-        <div>
-          <div className="rounded-2xl p-4 mb-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>
-                Текущая группа &middot; {party.members.length}
-              </p>
-              <button onClick={onLeave}
-                className="text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-all"
-                style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.7)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
-                onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
-                Покинуть
-              </button>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {party.members.map(m => {
-                const online = onlineIds.has(m.id);
-                return (
-                  <div key={m.id} className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                    <div className="relative flex-shrink-0">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold"
-                        style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
-                        {m.username?.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-black"
-                        style={{ background: online ? "#4ade80" : "rgba(255,255,255,0.15)" }} />
-                    </div>
-                    <span className="text-[12px] flex-1" style={{ color: "rgba(255,255,255,0.8)" }}>
-                      {m.id === user?.id ? "Ты" : m.username}
-                    </span>
-                    {m.id === party.leaderId && (
-                      <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
-                        style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>ЛИДЕР</span>
-                    )}
-                    {isLeader && m.id !== user?.id && (
-                      <button onClick={() => onKick(m.id)}
-                        className="text-[9px] px-2 py-1 rounded-lg transition-all"
-                        style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.6)" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
-                        onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
-                        Кик
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {isLeader && (
-            <div>
-              {!showInvite ? (
-                <button onClick={() => setShowInvite(true)}
-                  className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 text-white transition-all"
-                  style={{ background: "rgba(37,99,235,0.15)", border: "1px dashed rgba(59,130,246,0.3)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.25)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.15)"}>
-                  <UserPlus size={13} /> Позвать друга
-                </button>
-              ) : (
-                <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.35)" }}>Друзья</p>
-                    <button onClick={() => setShowInvite(false)} style={{ color: "rgba(255,255,255,0.3)" }}><X size={12} /></button>
-                  </div>
-                  {invitableFriends.length === 0 ? (
-                    <p className="text-[11px] py-3 text-center" style={{ color: "rgba(255,255,255,0.3)" }}>Все друзья уже в группе</p>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {invitableFriends.map(f => (
-                        <button key={f.id} onClick={() => { onInvite(f.id); setShowInvite(false); }}
-                          className="flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
-                          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold flex-shrink-0"
-                            style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
-                            {f.username?.slice(0, 2).toUpperCase()}
-                          </div>
-                          <span className="text-[12px] flex-1" style={{ color: "rgba(255,255,255,0.75)" }}>{f.username}</span>
-                          <UserPlus size={12} style={{ color: "rgba(96,165,250,0.6)" }} />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+      {/* Мои группы */}
+      {parties.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[9px] uppercase tracking-widest px-1 pb-1.5" style={{ color: "rgba(255,255,255,0.28)" }}>
+            Мои группы &middot; {parties.length}
+          </p>
+          {parties.map((p, idx) => (
+            <motion.div key={p.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.04 }}>
+              <button onClick={() => setActiveParty(p.id)}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all mb-1.5"
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[12px] font-black flex-shrink-0"
+                  style={{ background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.2)", color: "#60a5fa" }}>
+                  {p.name?.slice(0, 1).toUpperCase()}
                 </div>
-              )}
-            </div>
-          )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-white truncate">{p.name}</p>
+                  <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                    {p.members.length} игрок{p.members.length !== 1 ? "ов" : ""}
+                    {p.members.some(m => onlineIds.has(m.id) && m.id !== user?.id) && (
+                      <span style={{ color: "#4ade80" }}> &middot; есть онлайн</span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  {p.members.slice(0, 4).map(m => (
+                    <div key={m.id} className="w-6 h-6 rounded-md flex items-center justify-center text-[8px] font-bold"
+                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+                      {m.username?.slice(0, 2).toUpperCase()}
+                    </div>
+                  ))}
+                </div>
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Создать группу */}
+      {!creating ? (
+        <button onClick={() => setCreating(true)}
+          className="w-full py-3 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 text-white transition-all"
+          style={{ background: "rgba(37,99,235,0.12)", border: "1px dashed rgba(59,130,246,0.25)" }}
+          onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.22)"}
+          onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.12)"}>
+          <Plus size={13} /> Создать группу
+        </button>
+      ) : (
+        <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={40} autoFocus
+            placeholder="Название группы..."
+            onKeyDown={e => {
+              if (e.key === "Enter" && newName.trim()) { onCreate(newName.trim()); setNewName(""); setCreating(false); }
+              if (e.key === "Escape") { setCreating(false); setNewName(""); }
+            }}
+            className="w-full rounded-lg px-3 py-2 text-[12px] outline-none mb-2"
+            style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+          <div className="flex gap-2">
+            <button onClick={() => { setCreating(false); setNewName(""); }}
+              className="flex-1 py-2 rounded-lg text-[11px] font-semibold"
+              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>
+              Отмена
+            </button>
+            <button onClick={() => { if (newName.trim()) { onCreate(newName.trim()); setNewName(""); setCreating(false); } }}
+              disabled={!newName.trim()}
+              className="flex-1 py-2 rounded-lg text-[11px] font-bold text-white disabled:opacity-40 transition-all"
+              style={{ background: "rgba(37,99,235,0.6)" }}>
+              Создать
+            </button>
+          </div>
+        </div>
+      )}
+
+      {parties.length === 0 && !creating && partyInvites.length === 0 && (
+        <div className="flex flex-col items-center py-10 gap-2 mt-2">
+          <UsersThree size={28} weight="thin" style={{ color: "rgba(255,255,255,0.1)" }} />
+          <p className="text-[11px] text-center" style={{ color: "rgba(255,255,255,0.3)" }}>
+            Создай группу и позови друзей играть вместе
+          </p>
         </div>
       )}
     </div>

@@ -1028,24 +1028,33 @@ const GROUP_MAX = 8;
 const groupVoice = new Map(); // groupId -> Set<userId>
 
 // ─── Parties (temporary play sessions) ─────────────────────────────────────
-const parties     = new Map(); // partyId -> { id, leaderId, members: Set<userId>, createdAt }
-const userParty   = new Map(); // userId -> partyId
-const partyInvites = new Map(); // userId (invitee) -> [{ partyId, fromId, fromUsername }]
+const parties      = new Map(); // partyId -> { id, name, leaderId, members: Set<userId>, createdAt }
+const userParties  = new Map(); // userId -> Set<partyId>
+const partyInvites = new Map(); // userId (invitee) -> [{ partyId, partyName, fromId, fromUsername }]
 let partyCounter = 0;
+
+function userPartyIds(uid) {
+  if (!userParties.has(uid)) userParties.set(uid, new Set());
+  return userParties.get(uid);
+}
 
 function publicParty(p) {
   const memberList = [...p.members].map(uid => {
     const acc = [...redisAccounts._map.values()].find(a => a && a.id === uid);
     return { id: uid, username: acc?.username || uid };
   });
-  return { id: p.id, leaderId: p.leaderId, members: memberList, createdAt: p.createdAt };
+  return { id: p.id, name: p.name, leaderId: p.leaderId, members: memberList, createdAt: p.createdAt };
 }
 
 function disbandParty(partyId) {
   const p = parties.get(partyId);
   if (!p) return;
-  for (const uid of p.members) userParty.delete(uid);
+  for (const uid of p.members) userPartyIds(uid).delete(partyId);
   parties.delete(partyId);
+}
+
+function userPartiesList(uid) {
+  return [...userPartyIds(uid)].map(id => parties.get(id)).filter(Boolean).map(publicParty);
 }
 
 
@@ -1444,8 +1453,7 @@ wss.on("connection", (ws, req) => {
           }
           send(ws, { type: "friends_list", friends: myFriends });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
-          const authPartyId = userParty.get(client.userId);
-          send(ws, { type: "party_update", party: authPartyId ? publicParty(parties.get(authPartyId)) : null });
+          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
           send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
           break;
@@ -1724,23 +1732,22 @@ wss.on("connection", (ws, req) => {
         }
         // ─── Parties (temporary play sessions) ────────────────────────────────────
         case "party_create": {
-          if (userParty.has(client.userId)) break; // already in one
+          const pname = sanitize(msg.name || "", 40) || "Группа";
           const id = String(++partyCounter);
-          const p = { id, leaderId: client.userId, members: new Set([client.userId]), createdAt: Date.now() };
+          const p = { id, name: pname, leaderId: client.userId, members: new Set([client.userId]), createdAt: Date.now() };
           parties.set(id, p);
-          userParty.set(client.userId, id);
-          send(ws, { type: "party_update", party: publicParty(p) });
+          userPartyIds(client.userId).add(id);
+          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
           break;
         }
         case "party_invite": {
-          const { toId } = msg;
-          const partyId = userParty.get(client.userId);
-          if (!partyId || !toId) break;
+          const { toId, partyId } = msg;
+          if (!toId || !partyId) break;
           const p = parties.get(partyId);
           if (!p || p.leaderId !== client.userId) break;
           if (p.members.size >= 8) break;
           if (!areFriends(client.userId, toId)) break;
-          const invite = { partyId, fromId: client.userId, fromUsername: client.username };
+          const invite = { partyId, partyName: p.name, fromId: client.userId, fromUsername: client.username };
           partyInvites.set(toId, [...(partyInvites.get(toId) || []).filter(i => i.partyId !== partyId), invite]);
           sendToUser(toId, { type: "party_invite_received", invite });
           break;
@@ -1750,40 +1757,47 @@ wss.on("connection", (ws, req) => {
           partyInvites.set(client.userId, (partyInvites.get(client.userId) || []).filter(i => i.partyId !== partyId));
           if (accept) {
             const p = parties.get(partyId);
-            if (p && p.members.size < 8 && !userParty.has(client.userId)) {
+            if (p && p.members.size < 8) {
               p.members.add(client.userId);
-              userParty.set(client.userId, partyId);
-              for (const mid of p.members) sendToUser(mid, { type: "party_update", party: publicParty(p) });
+              userPartyIds(client.userId).add(partyId);
+              for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
             }
           }
           send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           break;
         }
         case "party_leave": {
-          const partyId = userParty.get(client.userId);
+          const { partyId } = msg;
           if (!partyId) break;
           const p = parties.get(partyId);
-          if (!p) { userParty.delete(client.userId); break; }
+          if (!p) { userPartyIds(client.userId).delete(partyId); break; }
           p.members.delete(client.userId);
-          userParty.delete(client.userId);
+          userPartyIds(client.userId).delete(partyId);
           if (p.members.size === 0) { disbandParty(partyId); }
           else {
             if (p.leaderId === client.userId) p.leaderId = p.members.values().next().value;
-            for (const mid of p.members) sendToUser(mid, { type: "party_update", party: publicParty(p) });
+            for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
           }
-          send(ws, { type: "party_update", party: null });
+          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
           break;
         }
         case "party_kick": {
-          const { userId: targetId } = msg;
-          const partyId = userParty.get(client.userId);
+          const { userId: targetId, partyId } = msg;
           if (!partyId || !targetId) break;
           const p = parties.get(partyId);
           if (!p || p.leaderId !== client.userId || targetId === client.userId) break;
           p.members.delete(targetId);
-          userParty.delete(targetId);
-          sendToUser(targetId, { type: "party_update", party: null });
-          for (const mid of p.members) sendToUser(mid, { type: "party_update", party: publicParty(p) });
+          userPartyIds(targetId).delete(partyId);
+          sendToUser(targetId, { type: "parties_list", parties: userPartiesList(targetId) });
+          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
+          break;
+        }
+        case "party_rename": {
+          const { partyId, name } = msg;
+          const p = parties.get(partyId);
+          if (!p || p.leaderId !== client.userId) break;
+          p.name = sanitize(name || "", 40) || p.name;
+          for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: userPartiesList(mid) });
           break;
         }
         case "community_sync": {
@@ -1800,8 +1814,7 @@ wss.on("connection", (ws, req) => {
           const myInvites = [];
           for (const [gid, list] of groupInvites.entries()) for (const inv of list) if (inv.toId === client.userId) myInvites.push({ ...inv, groupId: gid });
           send(ws, { type: "group_invites_list", invites: myInvites });
-          const myPartyId = userParty.get(client.userId);
-          send(ws, { type: "party_update", party: myPartyId ? publicParty(parties.get(myPartyId)) : null });
+          send(ws, { type: "parties_list", parties: userPartiesList(client.userId) });
           send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           break;
         }
@@ -1832,12 +1845,14 @@ wss.on("connection", (ws, req) => {
     }
     broadcastOnlineUsers();
   });
-  ws.on("error", () => {
-    clearTimeout(authTimeout);
-    wsClients.delete(clientId);
-    const cnt = wsIPCount.get(ip) || 1;
-    if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
-    broadcastOnlineUsers();
+  ws.on("error", (err) => {
+    try {
+      clearTimeout(authTimeout);
+      wsClients.delete(clientId);
+      const cnt = wsIPCount.get(ip) || 1;
+      if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
+      broadcastOnlineUsers();
+    } catch (e) { console.error("[WS error handler]:", e); }
   });
 });
 
