@@ -707,7 +707,7 @@ app.post("/api/user/:id/comments", requireAuth, (req, res) => {
   res.json({ ok: true, comment: c });
 });
 
-app.delete("/api/user/:id/comments/:cid", requireAuth, (req, res) => {
+app.delete("/api/user/:id/comments/:cid", requireAuth, async (req, res) => {
   const targetId = sanitize(req.params.id, 64);
   const cid = sanitize(req.params.cid, 64);
   const list = profileComments.get(targetId) || [];
@@ -717,7 +717,7 @@ app.delete("/api/user/:id/comments/:cid", requireAuth, (req, res) => {
   if (c.fromId !== req.userId) return res.status(403).json({ message: "Not your comment" });
   list.splice(idx, 1);
   profileComments.set(targetId, list);
-  try { redis.del(`sbgames:comments:` + targetId); for (const item of list) redis.rpush(`sbgames:comments:` + targetId, JSON.stringify(item)); } catch {}
+  try { await redis.del(`sbgames:comments:` + targetId); for (const item of list) await redis.rpush(`sbgames:comments:` + targetId, JSON.stringify(item)); } catch {}
   res.json({ ok: true });
 });
 
@@ -959,7 +959,6 @@ async function loadCommentsFromRedis() {
           const arr = JSON.parse(jsonVal);
           if (Array.isArray(arr) && arr.length) {
             profileComments.set(userId, arr);
-            await redis.del("sbgames:comments");
             for (const c of arr) await redis.rpush(`sbgames:comments:` + userId, JSON.stringify(c));
           }
         } catch {}
@@ -1296,7 +1295,22 @@ wss.on("connection", (ws, req) => {
           break;
         }
         case "friend_request_send": {
-          const target = [...redisAccounts._map.values()].find(a => a && (a.username || "").toLowerCase() === (msg.toUsername || "").trim().toLowerCase());
+          const _toNick = (msg.toUsername || "").trim().toLowerCase();
+          let target = [...redisAccounts._map.values()].find(a => a && (a.username || "").toLowerCase() === _toNick);
+          if (!target) {
+            // fallback: scan Redis for users not in memory
+            try {
+              const stream = redis.scanStream({ match: "acc:*", count: 200 });
+              outer: for await (const keys of stream) {
+                for (const k of keys) {
+                  const v = await redis.get(k);
+                  if (!v) continue;
+                  const acc = JSON.parse(v);
+                  if ((acc.username || "").toLowerCase() === _toNick) { target = acc; break outer; }
+                }
+              }
+            } catch {}
+          }
           if (!target)                              { send(ws, { type: "friend_error", message: "Пользователь не найден" }); break; }
           if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "Нельзя добавить себя" }); break; }
           if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "Уже в друзьях" }); break; }
