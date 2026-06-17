@@ -47,6 +47,12 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   const [activeGroup,    setActiveGroup]    = useState(null);
   const [groupMessages,  setGroupMessages]  = useState([]);
 
+  // refs to avoid stale closures in handleEvent without re-subscribing WS
+  const chatWithRef   = useRef(null);
+  const activeGroupRef = useRef(null);
+  useEffect(() => { chatWithRef.current   = chatWith;   }, [chatWith]);
+  useEffect(() => { activeGroupRef.current = activeGroup; }, [activeGroup]);
+
   // ─── Call state ──────────────────────────────────────────────────────────────
   const [incomingCall,   setIncomingCall]   = useState(null); // { fromId, fromUsername, offer, callType }
   const [activeCall,     setActiveCall]     = useState(null); // { type:'dm'|'group', peerId, groupId, muted, sharing }
@@ -107,7 +113,8 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
       case "dm_message": {
         if (!msg.message) break;
         const partnerId = msg.with || msg.message.from;
-        if (chatWith && (msg.with === chatWith.id || msg.message.from === chatWith.id)) {
+        const cw = chatWithRef.current;
+        if (cw && (msg.with === cw.id || msg.message.from === cw.id)) {
           setMessages(prev => [...prev, msg.message]);
         } else if (partnerId) {
           setUnread(prev => ({ ...prev, [partnerId]: (prev[partnerId] || 0) + 1 }));
@@ -125,11 +132,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         pushNotif?.("Предмет продан", `${msg.buyerName} купил твой лот за ${msg.price} SBT`, "market");
         break;
       case "group_message":
-        if (activeGroup?.id === msg.groupId) setGroupMessages(prev => [...prev, msg.message]);
+        if (activeGroupRef.current?.id === msg.groupId) setGroupMessages(prev => [...prev, msg.message]);
         break;
       case "group_update":
         setGroups(prev => prev.map(g => g.id === msg.group.id ? msg.group : g));
-        if (activeGroup?.id === msg.group.id) setActiveGroup(msg.group);
+        if (activeGroupRef.current?.id === msg.group.id) setActiveGroup(msg.group);
         break;
       case "group_invite":
         setGroupInvites(prev => [...prev, msg.invite]);
@@ -137,7 +144,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         break;
       case "group_kicked":
         setGroups(prev => prev.filter(g => g.id !== msg.groupId));
-        if (activeGroup?.id === msg.groupId) { setActiveGroup(null); setGroupMessages([]); }
+        if (activeGroupRef.current?.id === msg.groupId) { setActiveGroup(null); setGroupMessages([]); }
         pushNotif?.("Кик из группы", `Тебя исключили из "${msg.groupName}"`, "group");
         break;
       case "groups_list":
@@ -197,7 +204,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         })();
         break;
     }
-  }, [chatWith, onBadgeChange, pushNotif, activeGroup]);
+  }, [onBadgeChange, pushNotif]);
 
   // ─── Subscribe to shared WS messages ──────────────────────────────────
   const [connected, setConnected] = useState(isWSConnected());
