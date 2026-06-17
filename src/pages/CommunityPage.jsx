@@ -84,7 +84,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         setFriends(prev => prev.some(f => f.id === msg.byId) ? prev : [...prev, { id: msg.byId, username: msg.byUsername }]);
         break;
       case "friend_request_sent":
-        setAddStatus({ ok: true, msg: `Заявка отправлена → ${msg.toUsername}` });
+        setAddStatus({ ok: true, msg: `Заявка отправлена: ${msg.toUsername}` });
         setAddNick("");
         pushNotif?.("Заявка отправлена", `Ждём ответа от ${msg.toUsername}`, "info");
         break;
@@ -124,12 +124,12 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         break;
       case "group_invite":
         setGroupInvites(prev => [...prev, msg.invite]);
-        pushNotif?.("Приглашение в группу", `${msg.invite.fromUsername} зовёт в «${msg.invite.groupName}»`, "group");
+        pushNotif?.("Приглашение в группу", `${msg.invite.fromUsername} зовёт в "${msg.invite.groupName}"`, "group");
         break;
       case "group_kicked":
         setGroups(prev => prev.filter(g => g.id !== msg.groupId));
         if (activeGroup?.id === msg.groupId) { setActiveGroup(null); setGroupMessages([]); }
-        pushNotif?.("Кик из группы", `Тебя исключили из «${msg.groupName}»`, "group");
+        pushNotif?.("Кик из группы", `Тебя исключили из "${msg.groupName}"`, "group");
         break;
       case "groups_list":
         setGroups(msg.groups || []);
@@ -240,7 +240,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               </span>
               {connected && (
                 <span className="text-[9px] font-bold text-white/50 tracking-wider">
-                  · {friends.length} друзей
+                  &middot; {friends.length} друзей
                 </span>
               )}
             </div>
@@ -365,14 +365,14 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                   <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.35)" }}>Нет друзей</p>
                   <button onClick={() => setTab("add")}
                     className="text-[11px] text-blue-400/60 hover:text-blue-400 transition-colors mt-1">
-                    Добавить друга →
+                    Добавить друга &rarr;
                   </button>
                 </div>
               ) : (
                 <>
                   <p className="text-[10px] uppercase tracking-widest px-2 py-3"
                     style={{ color: "rgba(255,255,255,0.35)" }}>
-                    Друзья · {friends.length}
+                    Друзья &middot; {friends.length}
                   </p>
                   {conversations.map((f, i) => (
                     <ConversationRow key={f.id} f={f} i={i} myId={user?.id}
@@ -425,7 +425,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
             <motion.div key="add" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 px-4 py-4 flex flex-col gap-4">
               <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-                Введи ник — найдём среди всех зарегистрированных
+                Введи ник &mdash; найдём среди всех зарегистрированных
               </p>
               <div className="flex gap-2.5">
                 <input
@@ -454,7 +454,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 <div className="flex flex-col gap-1 mt-1">
                   <span className="text-[10px] uppercase tracking-widest px-1 flex items-center gap-2"
                     style={{ color: "rgba(255,255,255,0.35)" }}>
-                    {searching ? "Поиск..." : searchResults.length === 0 ? "Не найдено" : `Найдено · ${searchResults.length}`}
+                    {searching ? "Поиск..." : searchResults.length === 0 ? "Не найдено" : `Найдено: ${searchResults.length}`}
                     {searching && <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />}
                   </span>
                   <AnimatePresence>
@@ -535,7 +535,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 <>
                   <p className="text-[10px] uppercase tracking-widest px-2 py-3"
                     style={{ color: "rgba(255,255,255,0.35)" }}>
-                    Входящие заявки · {requests.length}
+                    Входящие заявки &middot; {requests.length}
                   </p>
                   {requests.map(req => (
                     <div key={req.fromId}
@@ -787,7 +787,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
         <div className="mb-4">
           <p className="text-[10px] uppercase tracking-widest px-2 py-2"
             style={{ color: "rgba(168,85,247,0.7)" }}>
-            Приглашения · {groupInvites.length}
+            Приглашения &middot; {groupInvites.length}
           </p>
           {groupInvites.map((inv, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
@@ -835,7 +835,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
       ) : (
         <div className="mb-4 rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
           <input value={name} onChange={e => setName(e.target.value)} maxLength={40} autoFocus
-            placeholder="Название команды…"
+            placeholder="Название команды..."
             onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
             className="w-full rounded-xl px-4 py-3 text-[12px] outline-none"
             style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
@@ -853,7 +853,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 
       <p className="text-[10px] uppercase tracking-widest px-2 py-2"
         style={{ color: "rgba(255,255,255,0.35)" }}>
-        Группы · {groups.length}
+        Группы &middot; {groups.length}
       </p>
       {groups.length === 0 ? (
         <div className="flex flex-col items-center py-10 gap-3">
@@ -887,7 +887,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                       )}
                     </div>
                     <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {g.members.length} · {onlineCount > 0 ? `${onlineCount} в сети` : "никого нет"}
+                      {g.members.length} &middot; {onlineCount > 0 ? `${onlineCount} в сети` : "никого нет"}
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
@@ -972,7 +972,7 @@ function GroupChat({ group, user, messages, onLeave, onKick }) {
             style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
             <div className="px-5 py-3 max-h-56 overflow-y-auto">
               <p className="text-[10px] uppercase tracking-widest mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
-                Участники · {group.members.length}
+                Участники &middot; {group.members.length}
               </p>
               {group.members.map(mid => {
                 const memberName = group.memberNames?.[mid] || mid;
@@ -1003,7 +1003,7 @@ function GroupChat({ group, user, messages, onLeave, onKick }) {
               })}
               <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                 <input value={inviteNick} onChange={e => setInviteNick(e.target.value)}
-                  placeholder="Ник игрока…" maxLength={16}
+                  placeholder="Ник игрока..." maxLength={16}
                   onKeyDown={e => { if (e.key === "Enter") invite(); }}
                   className="flex-1 rounded-lg px-3 py-2 text-[11px] outline-none"
                   style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
@@ -1052,7 +1052,7 @@ function GroupChat({ group, user, messages, onLeave, onKick }) {
         style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
         <textarea value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(e); } }}
-          placeholder="Сообщение команде…" rows={1}
+          placeholder="Сообщение команде..." rows={1}
           className="flex-1 rounded-xl text-[13px] px-4 py-3 outline-none resize-none"
           style={{ background: "rgba(255,255,255,0.05)", color: "#fff", maxHeight: 80, caretColor: "#c4b5fd" }} />
         <button type="submit" disabled={!input.trim()}
