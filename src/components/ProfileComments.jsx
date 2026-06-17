@@ -35,12 +35,12 @@ export default function ProfileComments({ targetId, viewer, onOpenProfile }) {
     if (!t || posting || isOwn) return;
     setPosting(true); setError(null);
     try {
-      const d = await authedFetch(`/api/user/${encodeURIComponent(targetId)}/comments`, {
+      await authedFetch(`/api/user/${encodeURIComponent(targetId)}/comments`, {
         method: "POST", body: JSON.stringify({ text: t }),
       });
-      setComments(prev => [d.comment, ...prev]);
       setText("");
       setCooldown(10);
+      await load(); // перезагружаем список с сервера
     } catch (e) {
       const m = e.message || "";
       if (m.includes("429")) { setCooldown(10); setError("Подожди 10 секунд"); }

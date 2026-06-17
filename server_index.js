@@ -799,7 +799,6 @@ app.get("/api/user/:id/comments", (req, res) => {
 app.post("/api/user/:id/comments", requireAuth, (req, res) => {
   const id = sanitize(req.params.id, 64);
   if (id === req.userId) return res.status(400).json({ message: "Нельзя комментировать свой профиль" });
-  console.log(`[comment] targetId=${id} viewerId=${req.userId}`);
   const text = sanitize(req.body.text || "", 200);
   if (text.length < 2) return res.status(400).json({ message: "Слишком короткий комментарий" });
   const now = Date.now();
