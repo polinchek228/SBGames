@@ -1704,10 +1704,11 @@ wss.on("connection", (ws, req) => {
 
   ws.on("close", () => {
     clearTimeout(authTimeout);
+    const client = wsClients.get(clientId);
     wsClients.delete(clientId);
     const cnt = wsIPCount.get(ip) || 1;
     if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
-    if (client.userId) {
+    if (client?.userId) {
       for (const [gid, voices] of groupVoice.entries()) {
         if (voices.has(client.userId)) {
           voices.delete(client.userId);
