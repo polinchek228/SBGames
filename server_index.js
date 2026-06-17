@@ -911,6 +911,7 @@ app.delete("/api/market/:id", requireAuth, async (req, res) => {
 const groups = new Map(), groupMessages = new Map(), groupInvites = new Map();
 let groupCounter = 0;
 const GROUP_MAX = 8;
+const groupVoice = new Map(); // groupId -> Set<userId>
 
 
 // ─── Redis persistence for groups ─────────────────────────────────────────────
@@ -1488,6 +1489,83 @@ wss.on("connection", (ws, req) => {
           else { saveGroup(g); for (const memberId of g.members) sendToUser(memberId, { type: "group_update", group: publicGroup(g) }); }
           break;
         }
+        // ─── DM Calls ────────────────────────────────────────────────────────────
+        case "call_offer": {
+          const { toId, offer } = msg;
+          if (!toId || !offer) break;
+          sendToUser(toId, { type: "incoming_call", fromId: client.userId, fromUsername: client.username, offer, callType: "dm" });
+          break;
+        }
+        case "call_answer": {
+          const { toId, answer } = msg;
+          if (!toId || !answer) break;
+          sendToUser(toId, { type: "call_answered", fromId: client.userId, answer });
+          break;
+        }
+        case "call_ice": {
+          const { toId, candidate } = msg;
+          if (!toId || !candidate) break;
+          sendToUser(toId, { type: "call_ice_candidate", fromId: client.userId, candidate });
+          break;
+        }
+        case "call_reject": {
+          const { toId } = msg;
+          if (!toId) break;
+          sendToUser(toId, { type: "call_rejected", fromId: client.userId });
+          break;
+        }
+        case "call_end": {
+          const { toId } = msg;
+          if (!toId) break;
+          sendToUser(toId, { type: "call_ended", fromId: client.userId });
+          break;
+        }
+        // ─── Group Calls ─────────────────────────────────────────────────────────
+        case "group_call_join": {
+          const { groupId } = msg;
+          const g = groups.get(groupId);
+          if (!g || !g.members.has(client.userId)) break;
+          if (!groupVoice.has(groupId)) groupVoice.set(groupId, new Set());
+          groupVoice.get(groupId).add(client.userId);
+          const participants = [...groupVoice.get(groupId)];
+          for (const memberId of g.members) {
+            sendToUser(memberId, { type: "group_call_state", groupId, participants });
+          }
+          break;
+        }
+        case "group_call_leave": {
+          const { groupId } = msg;
+          const g = groups.get(groupId);
+          if (groupVoice.has(groupId)) {
+            groupVoice.get(groupId).delete(client.userId);
+            if (groupVoice.get(groupId).size === 0) groupVoice.delete(groupId);
+          }
+          if (g) {
+            const participants = [...(groupVoice.get(groupId) || [])];
+            for (const memberId of g.members) {
+              sendToUser(memberId, { type: "group_call_state", groupId, participants });
+            }
+          }
+          break;
+        }
+        case "group_call_offer": {
+          const { groupId, toId, offer } = msg;
+          if (!toId || !offer) break;
+          sendToUser(toId, { type: "group_call_offer", groupId, fromId: client.userId, fromUsername: client.username, offer });
+          break;
+        }
+        case "group_call_answer": {
+          const { groupId, toId, answer } = msg;
+          if (!toId || !answer) break;
+          sendToUser(toId, { type: "group_call_answer", groupId, fromId: client.userId, answer });
+          break;
+        }
+        case "group_call_ice": {
+          const { groupId, toId, candidate } = msg;
+          if (!toId || !candidate) break;
+          sendToUser(toId, { type: "group_call_ice_candidate", groupId, fromId: client.userId, candidate });
+          break;
+        }
         case "community_sync": {
           send(ws, { type: "friends_list", friends: [...getFriends(client.userId)].map(fid => {
             const fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
@@ -1515,6 +1593,16 @@ wss.on("connection", (ws, req) => {
     wsClients.delete(clientId);
     const cnt = wsIPCount.get(ip) || 1;
     if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
+    if (client.userId) {
+      for (const [gid, voices] of groupVoice.entries()) {
+        if (voices.has(client.userId)) {
+          voices.delete(client.userId);
+          if (voices.size === 0) groupVoice.delete(gid);
+          const g = groups.get(gid);
+          if (g) { const p = [...(groupVoice.get(gid) || [])]; for (const mid of g.members) sendToUser(mid, { type: "group_call_state", groupId: gid, participants: p }); }
+        }
+      }
+    }
     broadcastOnlineUsers();
   });
   ws.on("error", () => {

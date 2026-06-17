@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   UsersThree, ChatCircle, X, UserCirclePlus,
   WifiHigh, WifiSlash, PaperPlaneTilt, Check, Checks,
-  CaretLeft, Users, UserPlus, SignOut,
+  CaretLeft, Users, UserPlus, SignOut, Phone, PhoneSlash,
+  Microphone, MicrophoneSlash, MonitorArrowUp, VideoCamera,
 } from "@phosphor-icons/react";
 import { Eye, Plus } from "lucide-react";
 import { authFetch } from "../lib/api.js";
@@ -45,6 +46,14 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   const [groupInvites,   setGroupInvites]   = useState([]);
   const [activeGroup,    setActiveGroup]    = useState(null);
   const [groupMessages,  setGroupMessages]  = useState([]);
+
+  // ─── Call state ──────────────────────────────────────────────────────────────
+  const [incomingCall,   setIncomingCall]   = useState(null); // { fromId, fromUsername, offer, callType }
+  const [activeCall,     setActiveCall]     = useState(null); // { type:'dm'|'group', peerId, groupId, muted, sharing }
+  const [groupVoiceIds,  setGroupVoiceIds]  = useState([]);   // participants in active group voice
+  const pcRef        = useRef({});   // { [peerId]: RTCPeerConnection }
+  const localStream  = useRef(null);
+  const screenStream = useRef(null);
 
   useEffect(() => {
     if (tab !== "add" || addNick.length < 2) { setSearchResults([]); return; }
@@ -140,6 +149,53 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
       case "dm_history":
         setMessages(msg.messages || []);
         break;
+
+      // ─── Call signaling ─────────────────────────────────────────────────��──
+      case "incoming_call":
+        setIncomingCall({ fromId: msg.fromId, fromUsername: msg.fromUsername, offer: msg.offer, callType: msg.callType });
+        break;
+      case "call_answered":
+        (async () => {
+          const pc = pcRef.current[msg.fromId];
+          if (pc && msg.answer) await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+        })();
+        break;
+      case "call_ice_candidate":
+        (async () => {
+          const pc = pcRef.current[msg.fromId];
+          if (pc && msg.candidate) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        })();
+        break;
+      case "call_rejected":
+        teardownCall();
+        break;
+      case "call_ended":
+        teardownCall();
+        break;
+      case "group_call_state":
+        setGroupVoiceIds(msg.participants || []);
+        break;
+      case "group_call_offer":
+        (async () => {
+          const pc = createPeerConnection(msg.fromId, msg.groupId, false);
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          sendWS({ type: "group_call_answer", groupId: msg.groupId, toId: msg.fromId, answer });
+        })();
+        break;
+      case "group_call_answer":
+        (async () => {
+          const pc = pcRef.current[msg.fromId];
+          if (pc && msg.answer) await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+        })();
+        break;
+      case "group_call_ice_candidate":
+        (async () => {
+          const pc = pcRef.current[msg.fromId];
+          if (pc && msg.candidate) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        })();
+        break;
     }
   }, [chatWith, onBadgeChange, pushNotif, activeGroup]);
 
@@ -193,6 +249,127 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     setLastMessages(prev => ({ ...prev, [chatWith.id]: { text, time: Date.now(), from: user?.id } }));
   };
 
+  // ─── WebRTC helpers ──────────────────────────────────────────────────────────
+  const STUN = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+  function createPeerConnection(peerId, groupId, isOffer) {
+    const pc = new RTCPeerConnection(STUN);
+    pcRef.current[peerId] = pc;
+
+    if (localStream.current) localStream.current.getTracks().forEach(t => pc.addTrack(t, localStream.current));
+    if (screenStream.current) screenStream.current.getTracks().forEach(t => pc.addTrack(t, screenStream.current));
+
+    pc.onicecandidate = e => {
+      if (!e.candidate) return;
+      if (groupId) sendWS({ type: "group_call_ice", groupId, toId: peerId, candidate: e.candidate });
+      else sendWS({ type: "call_ice", toId: peerId, candidate: e.candidate });
+    };
+
+    pc.ontrack = e => {
+      const audio = document.getElementById(`audio-${peerId}`);
+      if (audio) { audio.srcObject = e.streams[0]; audio.play().catch(() => {}); }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        pc.close(); delete pcRef.current[peerId];
+      }
+    };
+    return pc;
+  }
+
+  function teardownCall() {
+    Object.values(pcRef.current).forEach(pc => { try { pc.close(); } catch {} });
+    pcRef.current = {};
+    if (localStream.current) { localStream.current.getTracks().forEach(t => t.stop()); localStream.current = null; }
+    if (screenStream.current) { screenStream.current.getTracks().forEach(t => t.stop()); screenStream.current = null; }
+    setActiveCall(null);
+    setIncomingCall(null);
+    setGroupVoiceIds([]);
+  }
+
+  const startDMCall = async (peer) => {
+    try {
+      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const pc = createPeerConnection(peer.id, null, true);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendWS({ type: "call_offer", toId: peer.id, offer });
+      setActiveCall({ type: "dm", peerId: peer.id, peerName: peer.username, muted: false, sharing: false });
+    } catch (e) {
+      console.error("startDMCall error:", e);
+    }
+  };
+
+  const acceptDMCall = async () => {
+    if (!incomingCall) return;
+    try {
+      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const pc = createPeerConnection(incomingCall.fromId, null, false);
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendWS({ type: "call_answer", toId: incomingCall.fromId, answer });
+      setActiveCall({ type: "dm", peerId: incomingCall.fromId, peerName: incomingCall.fromUsername, muted: false, sharing: false });
+      setIncomingCall(null);
+    } catch (e) {
+      console.error("acceptDMCall error:", e);
+    }
+  };
+
+  const rejectCall = () => {
+    if (incomingCall) sendWS({ type: "call_reject", toId: incomingCall.fromId });
+    setIncomingCall(null);
+  };
+
+  const hangUp = () => {
+    if (activeCall?.type === "dm") sendWS({ type: "call_end", toId: activeCall.peerId });
+    if (activeCall?.type === "group") sendWS({ type: "group_call_leave", groupId: activeCall.groupId });
+    teardownCall();
+  };
+
+  const joinGroupCall = async (groupId, existingParticipants = []) => {
+    try {
+      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      sendWS({ type: "group_call_join", groupId });
+      setActiveCall({ type: "group", groupId, muted: false, sharing: false });
+      for (const peerId of existingParticipants) {
+        if (peerId === user?.id) continue;
+        const pc = createPeerConnection(peerId, groupId, true);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendWS({ type: "group_call_offer", groupId, toId: peerId, offer });
+      }
+    } catch (e) {
+      console.error("joinGroupCall error:", e);
+    }
+  };
+
+  const toggleMute = () => {
+    if (!localStream.current) return;
+    localStream.current.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
+    setActiveCall(prev => prev ? { ...prev, muted: !prev.muted } : prev);
+  };
+
+  const startScreenShare = async () => {
+    try {
+      screenStream.current = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const videoTrack = screenStream.current.getVideoTracks()[0];
+      for (const pc of Object.values(pcRef.current)) {
+        const sender = pc.getSenders().find(s => s.track?.kind === "video");
+        if (sender) sender.replaceTrack(videoTrack);
+        else pc.addTrack(videoTrack, screenStream.current);
+      }
+      videoTrack.onended = stopScreenShare;
+      setActiveCall(prev => prev ? { ...prev, sharing: true } : prev);
+    } catch {}
+  };
+
+  const stopScreenShare = () => {
+    if (screenStream.current) { screenStream.current.getTracks().forEach(t => t.stop()); screenStream.current = null; }
+    setActiveCall(prev => prev ? { ...prev, sharing: false } : prev);
+  };
+
   const totalBadge = requests.length;
 
   // Build conversation list: friends sorted by online, then by last message time
@@ -212,6 +389,36 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
   return (
     <div className={"h-full flex " + (mini ? "flex-col" : "w-full")} style={{ background: mini ? "rgba(8,8,10,0.97)" : "transparent" }}>
+
+      {/* ─── Hidden audio elements for remote streams ─── */}
+      {Object.keys(pcRef.current).map(peerId => (
+        <audio key={peerId} id={`audio-${peerId}`} autoPlay playsInline style={{ display: "none" }} />
+      ))}
+
+      {/* ─── Incoming call modal ─── */}
+      <AnimatePresence>
+        {incomingCall && (
+          <IncomingCallModal
+            call={incomingCall}
+            onAccept={acceptDMCall}
+            onReject={rejectCall}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ─── Active call overlay ─── */}
+      <AnimatePresence>
+        {activeCall && (
+          <CallOverlay
+            call={activeCall}
+            groupVoiceIds={groupVoiceIds}
+            friends={friends}
+            onMute={toggleMute}
+            onShare={activeCall.sharing ? stopScreenShare : startScreenShare}
+            onHangUp={hangUp}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ─── Left sidebar (hidden in mini mode) ─── */}
       {!mini && (
@@ -285,21 +492,32 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               <CaretLeft size={16} weight="bold" />
               Назад к друзьям
             </button>
-            <div className="flex items-center gap-3 px-3 pt-3">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black"
-                  style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.5)" }}>
-                  {chatWith.username?.slice(0, 2).toUpperCase()}
+            <div className="flex items-center justify-between gap-3 px-3 pt-3">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black"
+                    style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.5)" }}>
+                    {chatWith.username?.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black"
+                    style={{ background: onlineIds.has(chatWith.id) ? "#4ade80" : STATUS_DOT.offline }} />
                 </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black"
-                  style={{ background: onlineIds.has(chatWith.id) ? "#4ade80" : STATUS_DOT.offline }} />
+                <div>
+                  <p className="text-[13px] font-bold text-white">{chatWith.username}</p>
+                  <p className="text-[10px]" style={{ color: onlineIds.has(chatWith.id) ? "rgba(74,222,128,0.7)" : "rgba(255,255,255,0.4)" }}>
+                    {onlineIds.has(chatWith.id) ? "в сети" : "не в сети"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-[13px] font-bold text-white">{chatWith.username}</p>
-                <p className="text-[10px]" style={{ color: onlineIds.has(chatWith.id) ? "rgba(74,222,128,0.7)" : "rgba(255,255,255,0.4)" }}>
-                  {onlineIds.has(chatWith.id) ? "в сети" : "не в сети"}
-                </p>
-              </div>
+              {!activeCall && (
+                <button onClick={() => startDMCall(chatWith)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+                  style={{ background: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.3)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.15)"}>
+                  <Phone size={14} weight="fill" />
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -601,7 +819,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               className="flex-1 flex flex-col overflow-hidden">
               <GroupChat
                 group={activeGroup} user={user} messages={groupMessages}
+                groupVoiceIds={groupVoiceIds}
+                activeCall={activeCall}
+                onJoinCall={() => joinGroupCall(activeGroup.id, groupVoiceIds)}
                 onLeave={async () => {
+                  if (activeCall?.type === "group" && activeCall.groupId === activeGroup.id) hangUp();
                   try { await authFetch(`/api/groups/${activeGroup.id}/leave`, { method: "POST" }); } catch {}
                   setGroups(prev => prev.filter(x => x.id !== activeGroup.id));
                   setActiveGroup(null); setGroupMessages([]);
@@ -912,7 +1134,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 }
 
 // ─── GroupChat ───────────────────────────────────────────────────────────────
-function GroupChat({ group, user, messages, onLeave, onKick }) {
+function GroupChat({ group, user, messages, onLeave, onKick, groupVoiceIds = [], activeCall, onJoinCall }) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [inviteNick, setInviteNick] = useState("");
@@ -954,8 +1176,20 @@ function GroupChat({ group, user, messages, onLeave, onKick }) {
         </button>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-bold text-white truncate">{group.name}</p>
-          <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>{group.members.length} участников</p>
+          <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+            {group.members.length} участников
+            {groupVoiceIds.length > 0 && <span style={{ color: "#4ade80" }}> &middot; {groupVoiceIds.length} в голосе</span>}
+          </p>
         </div>
+        {!activeCall && (
+          <button onClick={onJoinCall}
+            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+            style={{ background: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.3)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.15)"}>
+            <Phone size={14} weight="fill" />
+          </button>
+        )}
         <button onClick={() => setShowMembers(!showMembers)}
           className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
           style={{ background: showMembers ? "rgba(255,255,255,0.1)" : "transparent", color: "rgba(255,255,255,0.5)" }}
@@ -1062,5 +1296,173 @@ function GroupChat({ group, user, messages, onLeave, onKick }) {
         </button>
       </form>
     </>
+  );
+}
+
+// ─── IncomingCallModal ────────────────────────────────────────────────────────
+function IncomingCallModal({ call, onAccept, onReject }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9, y: -20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9, y: -20 }}
+      transition={{ type: "spring", stiffness: 400, damping: 28 }}
+      style={{
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      }}
+    >
+      <div style={{
+        width: 300, borderRadius: 20,
+        background: "linear-gradient(180deg, #1a1a24 0%, #14141c 100%)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+        padding: "28px 24px 24px",
+        textAlign: "center",
+      }}>
+        <div style={{ position: "relative", display: "inline-block", marginBottom: 16 }}>
+          <motion.div
+            animate={{ scale: [1, 1.12, 1] }}
+            transition={{ repeat: Infinity, duration: 1.4 }}
+            style={{
+              position: "absolute", inset: -8, borderRadius: "50%",
+              background: "rgba(37,99,235,0.2)",
+            }}
+          />
+          <div style={{
+            width: 64, height: 64, borderRadius: "50%",
+            background: "rgba(37,99,235,0.15)", border: "2px solid rgba(59,130,246,0.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 22, fontWeight: 900, color: "#60a5fa", position: "relative",
+          }}>
+            {call.fromUsername?.slice(0, 2).toUpperCase()}
+          </div>
+        </div>
+
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>
+          Входящий звонок
+        </p>
+        <p style={{ color: "#fff", fontSize: 18, fontWeight: 800, marginBottom: 24 }}>
+          {call.fromUsername}
+        </p>
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button onClick={onReject}
+            style={{
+              flex: 1, padding: "12px 0", borderRadius: 14, border: "none", cursor: "pointer",
+              background: "rgba(239,68,68,0.15)", color: "#f87171", fontWeight: 700, fontSize: 13,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.3)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.15)"}>
+            <PhoneSlash size={16} weight="fill" />
+            Отклонить
+          </button>
+          <button onClick={onAccept}
+            style={{
+              flex: 1, padding: "12px 0", borderRadius: 14, border: "none", cursor: "pointer",
+              background: "rgba(34,197,94,0.2)", color: "#4ade80", fontWeight: 700, fontSize: 13,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(34,197,94,0.35)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(34,197,94,0.2)"}>
+            <Phone size={16} weight="fill" />
+            Принять
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── CallOverlay ──────────────────────────────────────────────────────────────
+function CallOverlay({ call, groupVoiceIds, friends, onMute, onShare, onHangUp }) {
+  const label = call.type === "dm"
+    ? (call.peerName || "Собеседник")
+    : `Голосовой чат (${groupVoiceIds.length})`;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.95 }}
+      transition={{ type: "spring", stiffness: 380, damping: 28 }}
+      style={{
+        position: "fixed", bottom: 20, right: 20, zIndex: 9998,
+        width: 280, borderRadius: 18,
+        background: "linear-gradient(180deg, #1a1a24 0%, #14141c 100%)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        boxShadow: "0 12px 48px rgba(0,0,0,0.7)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ height: 2, background: "linear-gradient(90deg, transparent, #2563eb, transparent)" }} />
+      <div style={{ padding: "14px 16px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Phone size={15} weight="fill" style={{ color: "#60a5fa" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ color: "#fff", fontSize: 13, fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</p>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, margin: 0 }}>
+              {call.muted ? "Микрофон выкл" : "В эфире"}{call.sharing ? " · Экран" : ""}
+            </p>
+          </div>
+        </div>
+
+        {call.type === "group" && groupVoiceIds.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+            {groupVoiceIds.map(uid => {
+              const f = friends.find(x => x.id === uid);
+              return (
+                <div key={uid} style={{
+                  width: 32, height: 32, borderRadius: 8,
+                  background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.25)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 700, color: "#60a5fa",
+                }}>
+                  {(f?.username || "?").slice(0, 2).toUpperCase()}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onMute}
+            style={{
+              flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
+              background: call.muted ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.06)",
+              color: call.muted ? "#f87171" : "rgba(255,255,255,0.6)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 11, fontWeight: 600,
+            }}>
+            {call.muted ? <MicrophoneSlash size={13} weight="fill" /> : <Microphone size={13} weight="fill" />}
+            {call.muted ? "Вкл" : "Выкл"}
+          </button>
+          <button onClick={onShare}
+            style={{
+              flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
+              background: call.sharing ? "rgba(37,99,235,0.3)" : "rgba(255,255,255,0.06)",
+              color: call.sharing ? "#60a5fa" : "rgba(255,255,255,0.6)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 11, fontWeight: 600,
+            }}>
+            <MonitorArrowUp size={13} weight="fill" />
+            {call.sharing ? "Стоп" : "Экран"}
+          </button>
+          <button onClick={onHangUp}
+            style={{
+              flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
+              background: "rgba(239,68,68,0.2)", color: "#f87171",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 11, fontWeight: 600,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.35)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}>
+            <PhoneSlash size={13} weight="fill" />
+            Завершить
+          </button>
+        </div>
+      </div>
+    </motion.div>
   );
 }
