@@ -1,5 +1,7 @@
-// Безопасная обёртка над Tauri invoke — если Tauri нет, выкидывает ошибку явно
+const isTauri = typeof window !== "undefined" && window.__TAURI_INTERNALS__;
+
 export async function invoke(cmd, args = {}) {
+  if (!isTauri) throw new Error("Tauri not available (running in browser)");
   const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
   return await tauriInvoke(cmd, args);
 }
