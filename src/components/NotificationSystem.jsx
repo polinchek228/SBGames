@@ -59,7 +59,7 @@ const ICONS = {
   friend:  { icon: Users,          color: "#60a5fa", accent: "#3b82f6" },
   balance: { icon: Coins,          color: "#34d399", accent: "#10b981" },
   ticket:  { icon: MessageCircle,  color: "#f59e0b", accent: "#f59e0b" },
-  system:  { icon: Info,           color: "#a78bfa", accent: "#8b5cf6" },
+  system:  { icon: Info,           color: "#60a5fa", accent: "#2563eb" },
   success: { icon: CheckCircle,    color: "#34d399", accent: "#10b981" },
   dm:      { icon: MessageSquareText, color: "#38bdf8", accent: "#0ea5e9" },
   comment: { icon: MessageCircle,  color: "#fb923c", accent: "#f97316" },
@@ -276,10 +276,10 @@ export function NotificationBell() {
           whileTap={{ scale: 0.88 }}
           className="relative w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150"
           style={open
-            ? { background: "rgba(139,92,246,0.25)", color: "#a78bfa" }
+            ? { background: "rgba(37,99,235,0.2)", color: "#60a5fa" }
             : { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.45)" }
           }
-          onMouseEnter={e => { if (!open) { e.currentTarget.style.color = "#a78bfa"; e.currentTarget.style.background = "rgba(139,92,246,0.15)"; } }}
+          onMouseEnter={e => { if (!open) { e.currentTarget.style.color = "#60a5fa"; e.currentTarget.style.background = "rgba(37,99,235,0.14)"; } }}
           onMouseLeave={e => { if (!open) { e.currentTarget.style.color = "rgba(255,255,255,0.45)"; e.currentTarget.style.background = "rgba(255,255,255,0.06)"; } }}
         >
           <Bell size={14} />
@@ -293,7 +293,7 @@ export function NotificationBell() {
                 exit={{ scale: 0, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 500, damping: 28 }}
                 className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full flex items-center justify-center text-[8px] font-black text-white"
-                style={{ background: "#7c3aed", boxShadow: "0 0 8px rgba(124,58,237,0.7)" }}
+                style={{ background: "#2563eb", boxShadow: "0 0 8px rgba(37,99,235,0.6)" }}
               >
                 {unread > 9 ? "9+" : unread}
               </motion.span>
@@ -302,13 +302,13 @@ export function NotificationBell() {
 
           {unread === 0 && hasInbox && !open && (
             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
-              style={{ background: "#7c3aed", boxShadow: "0 0 6px rgba(124,58,237,0.5)" }}
+              style={{ background: "#2563eb", boxShadow: "0 0 6px rgba(37,99,235,0.5)" }}
             />
           )}
 
           {unread > 0 && !open && (
             <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full animate-ping"
-              style={{ background: "rgba(124,58,237,0.4)" }}
+              style={{ background: "rgba(37,99,235,0.35)" }}
             />
           )}
         </motion.button>
@@ -339,7 +339,7 @@ export function NotificationBell() {
                 <p className="text-[11px] font-bold text-white tracking-wide uppercase">Уведомления</p>
                 {unread > 0 && (
                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
+                    style={{ background: "rgba(37,99,235,0.15)", color: "#60a5fa" }}>
                     {unread}
                   </span>
                 )}
@@ -382,11 +382,11 @@ export function NotificationBell() {
                       transition={{ delay: i * 0.025 }}
                       className="flex items-start gap-3 px-4 py-3 transition-all duration-100 cursor-default"
                       style={{
-                        background: n.read ? "transparent" : "rgba(124,58,237,0.04)",
+                        background: n.read ? "transparent" : "rgba(37,99,235,0.05)",
                         borderBottom: "1px solid rgba(255,255,255,0.03)",
                       }}
                       onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
-                      onMouseLeave={e => e.currentTarget.style.background = n.read ? "transparent" : "rgba(124,58,237,0.04)"}
+                      onMouseLeave={e => e.currentTarget.style.background = n.read ? "transparent" : "rgba(37,99,235,0.05)"}
                     >
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
                         style={{
