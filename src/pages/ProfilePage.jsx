@@ -273,9 +273,10 @@ function ProfileTab({ user, equip }) {
 
             {/* Name + info */}
             <div className="flex-1 min-w-0 pb-1">
-              {/* Name row */}
+
+              {/* Row 1: Ник + теги + Telegram */}
               <div className="flex items-center gap-2.5 flex-wrap">
-                <p className="text-[26px] font-black text-white leading-none tracking-tight truncate"
+                <p className="text-[26px] font-black text-white leading-none tracking-tight"
                   style={{ textShadow: "0 2px 20px rgba(0,0,0,0.6)" }}>{username}</p>
                 {isAdmin && (
                   <span className="text-[7px] font-black px-2 py-0.5 rounded text-white tracking-[0.15em] uppercase"
@@ -294,47 +295,47 @@ function ProfileTab({ user, equip }) {
                     </span>
                   )
                 )}
-              </div>
-
-              {/* Sub-row: role + id + telegram */}
-              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-                  {isAdmin ? "Администратор" : "Игрок"}
-                </span>
-                <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  #{user?.id?.toString().slice(-6) || "000000"}
-                </span>
                 {user?.telegram && (
-                  <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "#60a5fa" }}>
+                  <span className="flex items-center gap-1 text-[11px]" style={{ color: "#60a5fa" }}>
                     <TelegramLogo size={11} weight="fill" />
                     @{user.telegram}
                   </span>
                 )}
               </div>
 
-              {/* Balance + Level — under the name */}
-              <div className="flex items-center gap-2 mt-3">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }}>
-                  <img src="/money.png" alt="" className="w-4 h-4 object-contain"
+              {/* Row 2: роль + ID */}
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                  {isAdmin ? "Администратор" : "Игрок"}
+                </span>
+                <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  #{user?.id?.toString().slice(-6) || "000000"}
+                </span>
+              </div>
+
+              {/* Row 3: SBT + LVL — крупно */}
+              <div className="flex items-center gap-2.5 mt-3">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  <img src="/money.png" alt="" className="w-5 h-5 object-contain"
                     onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                  <span className="text-[15px] font-bold text-white tabular-nums leading-none">
+                  <span className="text-[20px] font-black text-white tabular-nums leading-none">
                     {(user?.balance ?? 0).toLocaleString("ru-RU")}
                   </span>
-                  <span className="text-[10px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
+                  <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
                 </div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-                  style={{ background: "rgba(37,99,235,0.1)", border: "1px solid rgba(59,130,246,0.15)" }}>
-                  <Zap size={12} style={{ color: "#60a5fa" }} />
-                  <span className="text-[15px] font-bold tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
-                  <span className="text-[10px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>LVL</span>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
+                  style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)" }}>
+                  <Zap size={15} style={{ color: "#60a5fa" }} />
+                  <span className="text-[20px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
+                  <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(96,165,250,0.6)" }}>LVL</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Bio */}
-          <div className="mt-4 max-w-[480px]">
+          {/* Bio — сразу под шапкой */}
+          <div className="mt-3 max-w-[520px]">
             {editingBio ? (
               <div className="flex flex-col gap-2">
                 <textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={200} rows={2}
