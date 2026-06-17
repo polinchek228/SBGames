@@ -61,36 +61,19 @@ export default function AchievementShowcase({ user, equip, inventory }) {
   }
 
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-4"
-      style={{
-        background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-        border: "1px solid rgba(255,255,255,0.1)",
-        backdropFilter: "blur(16px)",
-        boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.2)"
-      }}
+    <div className="flex flex-col gap-4"
+      style={{ padding: "4px 0" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-1 h-4 rounded-full" style={{ background: "#2563eb" }} />
-          <span className="text-[10px] uppercase tracking-[0.16em] font-black"
-            style={{ color: "rgba(255,255,255,0.55)" }}>
-            Витрина достижений
-          </span>
+      {/* Progress bar */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+          <div className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${progress}%`, background: "linear-gradient(90deg, #2563eb, #818cf8)" }} />
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] tabular-nums font-bold" style={{ color: "rgba(255,255,255,0.5)" }}>
-            {totalUnlocked}/{ACHIEVEMENTS.length}
-          </span>
-          <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-            <div className="h-full rounded-full transition-all duration-700"
-              style={{
-                width: `${progress}%`,
-                background: "linear-gradient(90deg, #2563eb, #818cf8)",
-                boxShadow: "0 0 8px rgba(37,99,235,0.5)"
-              }} />
-          </div>
-        </div>
+        <span className="text-[10px] tabular-nums" style={{ color: "rgba(255,255,255,0.35)" }}>
+          {totalUnlocked}/{ACHIEVEMENTS.length}
+        </span>
       </div>
 
       {/* 5 slots */}

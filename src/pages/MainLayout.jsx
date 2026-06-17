@@ -34,8 +34,6 @@ function GlobalBackground() {
   useEffect(() => {
     const update = () => {
       try {
-        const settings = JSON.parse(localStorage.getItem("sbgames_settings")) || {};
-        if (!settings.globalBg) { setVideoSrc(null); return; }
         const userData = JSON.parse(localStorage.getItem("sbgames_user")) || {};
         const bgId = userData?.equip?.background;
         if (!bgId) { setVideoSrc(null); return; }
@@ -62,7 +60,7 @@ function GlobalBackground() {
       onError={() => setVideoFailed(true)}
       style={{
         position: "absolute", inset: 0, width: "100%", height: "100%",
-        objectFit: "cover", zIndex: 0, pointerEvents: "none",
+        objectFit: "cover", zIndex: 0, pointerEvents: "none", opacity: 0.45,
       }}
     />
   );

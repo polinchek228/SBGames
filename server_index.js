@@ -1027,6 +1027,27 @@ let groupCounter = 0;
 const GROUP_MAX = 8;
 const groupVoice = new Map(); // groupId -> Set<userId>
 
+// ─── Parties (temporary play sessions) ─────────────────────────────────────
+const parties     = new Map(); // partyId -> { id, leaderId, members: Set<userId>, createdAt }
+const userParty   = new Map(); // userId -> partyId
+const partyInvites = new Map(); // userId (invitee) -> [{ partyId, fromId, fromUsername }]
+let partyCounter = 0;
+
+function publicParty(p) {
+  const memberList = [...p.members].map(uid => {
+    const acc = [...redisAccounts._map.values()].find(a => a && a.id === uid);
+    return { id: uid, username: acc?.username || uid };
+  });
+  return { id: p.id, leaderId: p.leaderId, members: memberList, createdAt: p.createdAt };
+}
+
+function disbandParty(partyId) {
+  const p = parties.get(partyId);
+  if (!p) return;
+  for (const uid of p.members) userParty.delete(uid);
+  parties.delete(partyId);
+}
+
 
 // ─── Redis persistence for groups ─────────────────────────────────────────────
 async function saveGroup(g) {
@@ -1423,6 +1444,9 @@ wss.on("connection", (ws, req) => {
           }
           send(ws, { type: "friends_list", friends: myFriends });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+          const authPartyId = userParty.get(client.userId);
+          send(ws, { type: "party_update", party: authPartyId ? publicParty(parties.get(authPartyId)) : null });
+          send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
           break;
         }
@@ -1698,6 +1722,70 @@ wss.on("connection", (ws, req) => {
           sendToUser(toId, { type: "group_call_ice_candidate", groupId, fromId: client.userId, candidate });
           break;
         }
+        // ─── Parties (temporary play sessions) ────────────────────────────────────
+        case "party_create": {
+          if (userParty.has(client.userId)) break; // already in one
+          const id = String(++partyCounter);
+          const p = { id, leaderId: client.userId, members: new Set([client.userId]), createdAt: Date.now() };
+          parties.set(id, p);
+          userParty.set(client.userId, id);
+          send(ws, { type: "party_update", party: publicParty(p) });
+          break;
+        }
+        case "party_invite": {
+          const { toId } = msg;
+          const partyId = userParty.get(client.userId);
+          if (!partyId || !toId) break;
+          const p = parties.get(partyId);
+          if (!p || p.leaderId !== client.userId) break;
+          if (p.members.size >= 8) break;
+          if (!areFriends(client.userId, toId)) break;
+          const invite = { partyId, fromId: client.userId, fromUsername: client.username };
+          partyInvites.set(toId, [...(partyInvites.get(toId) || []).filter(i => i.partyId !== partyId), invite]);
+          sendToUser(toId, { type: "party_invite_received", invite });
+          break;
+        }
+        case "party_invite_respond": {
+          const { partyId, accept } = msg;
+          partyInvites.set(client.userId, (partyInvites.get(client.userId) || []).filter(i => i.partyId !== partyId));
+          if (accept) {
+            const p = parties.get(partyId);
+            if (p && p.members.size < 8 && !userParty.has(client.userId)) {
+              p.members.add(client.userId);
+              userParty.set(client.userId, partyId);
+              for (const mid of p.members) sendToUser(mid, { type: "party_update", party: publicParty(p) });
+            }
+          }
+          send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
+          break;
+        }
+        case "party_leave": {
+          const partyId = userParty.get(client.userId);
+          if (!partyId) break;
+          const p = parties.get(partyId);
+          if (!p) { userParty.delete(client.userId); break; }
+          p.members.delete(client.userId);
+          userParty.delete(client.userId);
+          if (p.members.size === 0) { disbandParty(partyId); }
+          else {
+            if (p.leaderId === client.userId) p.leaderId = p.members.values().next().value;
+            for (const mid of p.members) sendToUser(mid, { type: "party_update", party: publicParty(p) });
+          }
+          send(ws, { type: "party_update", party: null });
+          break;
+        }
+        case "party_kick": {
+          const { userId: targetId } = msg;
+          const partyId = userParty.get(client.userId);
+          if (!partyId || !targetId) break;
+          const p = parties.get(partyId);
+          if (!p || p.leaderId !== client.userId || targetId === client.userId) break;
+          p.members.delete(targetId);
+          userParty.delete(targetId);
+          sendToUser(targetId, { type: "party_update", party: null });
+          for (const mid of p.members) sendToUser(mid, { type: "party_update", party: publicParty(p) });
+          break;
+        }
         case "community_sync": {
           const friendIds = [...getFriends(client.userId)];
           const friendList = await Promise.all(friendIds.map(async fid => {
@@ -1712,6 +1800,9 @@ wss.on("connection", (ws, req) => {
           const myInvites = [];
           for (const [gid, list] of groupInvites.entries()) for (const inv of list) if (inv.toId === client.userId) myInvites.push({ ...inv, groupId: gid });
           send(ws, { type: "group_invites_list", invites: myInvites });
+          const myPartyId = userParty.get(client.userId);
+          send(ws, { type: "party_update", party: myPartyId ? publicParty(parties.get(myPartyId)) : null });
+          send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           break;
         }
       }

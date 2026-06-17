@@ -296,8 +296,8 @@ function ProfileTab({ user, equip }) {
                 )}
               </div>
 
-              {/* Sub-row */}
-              <div className="flex items-center gap-3 mt-1.5">
+              {/* Sub-row: role + id + telegram */}
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                 <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>
                   {isAdmin ? "Администратор" : "Игрок"}
                 </span>
@@ -305,30 +305,30 @@ function ProfileTab({ user, equip }) {
                   #{user?.id?.toString().slice(-6) || "000000"}
                 </span>
                 {user?.telegram && (
-                  <span className="flex items-center gap-1 text-[10px]" style={{ color: "#60a5fa" }}>
-                    <TelegramLogo size={9} weight="fill" />@{user.telegram}
+                  <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "#60a5fa" }}>
+                    <TelegramLogo size={11} weight="fill" />
+                    @{user.telegram}
                   </span>
                 )}
               </div>
 
-            </div>
-
-            {/* Balance + Level — right side, horizontal */}
-            <div className="flex items-center gap-2 flex-shrink-0 self-end pb-1">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                <span className="text-[13px] font-bold text-white tabular-nums leading-none">
-                  {(user?.balance ?? 0).toLocaleString("ru-RU")}
-                </span>
-                <span className="text-[8px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>SBT</span>
-              </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-                style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.1)" }}>
-                <Zap size={10} style={{ color: "#60a5fa" }} />
-                <span className="text-[13px] font-bold tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
-                <span className="text-[8px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>LVL</span>
+              {/* Balance + Level — under the name */}
+              <div className="flex items-center gap-2 mt-3">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }}>
+                  <img src="/money.png" alt="" className="w-4 h-4 object-contain"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  <span className="text-[15px] font-bold text-white tabular-nums leading-none">
+                    {(user?.balance ?? 0).toLocaleString("ru-RU")}
+                  </span>
+                  <span className="text-[10px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+                  style={{ background: "rgba(37,99,235,0.1)", border: "1px solid rgba(59,130,246,0.15)" }}>
+                  <Zap size={12} style={{ color: "#60a5fa" }} />
+                  <span className="text-[15px] font-bold tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
+                  <span className="text-[10px] font-semibold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>LVL</span>
+                </div>
               </div>
             </div>
           </div>
@@ -375,22 +375,18 @@ function ProfileTab({ user, equip }) {
         </div>
 
       {/* ═══ CONTENT ═══ */}
-      <div className="flex-1 flex flex-col gap-4 px-6 py-5 min-h-0"
-        style={{
-          background: "transparent",
-          borderRadius: "20px 20px 0 0",
-          marginTop: -8,
-          paddingTop: 28,
-          borderTop: "1px solid rgba(255,255,255,0.06)",
-        }}>
+      <div className="flex-1 flex flex-col gap-5 px-6 py-5 min-h-0"
+        style={{ paddingTop: 20 }}>
 
         {/* ── Achievement showcase ── */}
         <motion.div variants={itemVariants}>
+          <p className="text-[9px] font-bold uppercase tracking-[0.16em] mb-2.5" style={{ color: "rgba(255,255,255,0.28)" }}>Достижения</p>
           <AchievementShowcase user={user} equip={equip} inventory={equippedItems} />
         </motion.div>
 
         {/* Recent activity */}
         <motion.div variants={itemVariants}>
+          <p className="text-[9px] font-bold uppercase tracking-[0.16em] mb-2.5" style={{ color: "rgba(255,255,255,0.28)" }}>Активность</p>
           <RecentActivityCard />
         </motion.div>
 

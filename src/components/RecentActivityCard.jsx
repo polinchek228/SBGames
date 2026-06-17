@@ -86,22 +86,11 @@ export default function RecentActivityCard({ userId }) {
   const serverEntries = Object.entries(data.byServer).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-4 transition-colors duration-300"
-      style={{
-        background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
-        border: "1px solid rgba(255,255,255,0.1)",
-        backdropFilter: "blur(16px)",
-        boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.2)"
-      }}
-    >
+    <div className="flex flex-col gap-4" style={{ padding: "4px 0" }}>
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2.5">
-          <div className="w-1 h-4 rounded-full" style={{ background: "#2563eb" }} />
-          <p className="text-[10px] uppercase tracking-[0.16em] font-black"
-            style={{ color: "rgba(255,255,255,0.55)" }}>Активность в игре</p>
-        </div>
+        <div />
         {data.lastSessionAt && (
-          <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.35)" }}>
             Последняя игра: {new Date(data.lastSessionAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
