@@ -40,11 +40,8 @@ jobs:
 
       - name: Deploy nginx config
         run: |
-          # Write config to temp file as regular user, then sudo install it
-          cat << 'NGINX' | sshpass -p "${{ secrets.SERVER_PASS }}" \
-            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            "cat > /tmp/games-sb-capital.conf && echo '${{ secrets.SERVER_PASS }}' | sudo -S cp /tmp/games-sb-capital.conf /etc/nginx/sites-available/games.sb-capital.group && echo '${{ secrets.SERVER_PASS }}' | sudo -S nginx -t && echo '${{ secrets.SERVER_PASS }}' | sudo -S systemctl reload nginx"
+          # Write nginx config to local file
+          cat > /tmp/nginx-games.conf << 'NGINX'
           server {
               server_name games.sb-capital.group;
 
@@ -208,4 +205,14 @@ jobs:
               return 404;
           }
           NGINX
-          echo "✅ Nginx reloaded"
+
+          # Upload config, install, test, reload
+          sshpass -p "${{ secrets.SERVER_PASS }}" \
+            scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            /tmp/nginx-games.conf \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/games-sb-capital.conf
+
+          sshpass -p "${{ secrets.SERVER_PASS }}" \
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "echo '${{ secrets.SERVER_PASS }}' | sudo -S cp /tmp/games-sb-capital.conf /etc/nginx/sites-available/games.sb-capital.group 2>/dev/null && echo '${{ secrets.SERVER_PASS }}' | sudo -S nginx -t 2>&1 && echo '${{ secrets.SERVER_PASS }}' | sudo -S systemctl reload nginx 2>&1 && echo '✅ Nginx reloaded'"
