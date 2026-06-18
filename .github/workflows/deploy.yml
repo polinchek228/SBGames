@@ -18,8 +18,8 @@ on:
         required: false
 
 env:
-  SERVER_HOST: 62.77.154.84
-  SERVER_USER: mnntn
+  SERVER_HOST: ${{ secrets.SERVER_HOST }}
+  SERVER_USER: ${{ secrets.SERVER_USER }}
   REMOTE_DIR: /opt/sbgames-auth
 
 jobs:

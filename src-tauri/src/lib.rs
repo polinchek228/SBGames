@@ -11,6 +11,14 @@ use std::path::PathBuf;
 
 static INTEGRITY_OK: AtomicBool = AtomicBool::new(false);
 
+// ─── Custom modpack modules ──────────────────────────────────────────────────
+mod instance;
+mod java;
+mod launcher;
+mod loaders;
+mod mods;
+mod mrpack;
+
 // ─── Discord RPC state ────────────────────────────────────────────────────────
 struct DiscordState(Mutex<Option<discord_rich_presence::DiscordIpcClient>>);
 
@@ -1141,19 +1149,25 @@ async fn launch_minecraft(
                     out
                 }
 
-                // Путь DLL считается доверенным если он из системных папок,
-                // папки игры или папки Java-рантайма.
+                // Путь DLL считается доверенным если он из системных папок
+                // ИЛИ из настоящего Java-рантайма. Папка игры целиком БОЛЬШЕ
+                // НЕ доверенная — иначе читер кладёт DLL в .sbgames/ и инжектит
+                // оттуда. Доверяем только bundled-рантайму внутри игры (natives,
+                // runtime), привязанному к НАЧАЛУ пути, а не contains где попало.
+                let game_natives = format!("{}\\natives\\", game_dir_l.trim_end_matches('\\'));
+                let game_runtime = format!("{}\\runtime\\", game_dir_l.trim_end_matches('\\'));
                 let is_trusted_path = |p: &str| -> bool {
                     p.starts_with("c:\\windows\\")
                         || p.contains("\\system32\\")
                         || p.contains("\\syswow64\\")
                         || p.contains("\\winsxs\\")
-                        || p.contains(&game_dir_l)
-                        || (!java_dir.is_empty() && p.contains(&java_dir))
-                        || p.contains("\\program files\\java")
-                        || p.contains("\\program files\\eclipse adoptium")
-                        || p.contains("\\runtime\\")          // bundled JRE
-                        || p.contains("\\jbr\\")              // JetBrains runtime
+                        // bundled-рантайм ВНУТРИ папки игры — только эти подпапки
+                        || p.starts_with(&game_natives)
+                        || p.starts_with(&game_runtime)
+                        // настоящий путь к Java (директория java.exe и её поддеревья)
+                        || (!java_dir.is_empty() && p.starts_with(&java_dir))
+                        || p.starts_with("c:\\program files\\java\\")
+                        || p.starts_with("c:\\program files\\eclipse adoptium\\")
                 };
 
                 // Baseline: ждём 4 сек пока MC прогрузит свои нативные DLL
@@ -1440,7 +1454,7 @@ async fn launch_minecraft(
 }
 
 /// Проверяет, запущен ли уже Minecraft (через PID файл + tasklist)
-fn read_running_minecraft_pid() -> Option<u32> {
+pub(crate) fn read_running_minecraft_pid() -> Option<u32> {
     let mc_dir = minecraft_dir();
     let pid_file = mc_dir.join(".minecraft.pid");
     if !pid_file.exists() { return None; }
@@ -1827,7 +1841,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
 //   - известные читы/инжекторы (x64dbg, Cheat Engine, Process Hacker)
 //   - подозрительные DLL с путём не в system/program files
 // Используется ПЕРЕД запуском MC.
-fn security_precheck() -> Result<(), String> {
+pub(crate) fn security_precheck() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
@@ -1899,7 +1913,7 @@ fn validate_launch_classpath(
     Ok(())
 }
 
-fn validate_java_binary(java: &std::path::Path) -> Result<(), String> {
+pub(crate) fn validate_java_binary(java: &std::path::Path) -> Result<(), String> {
     let canonical = std::fs::canonicalize(java)
         .map_err(|e| format!("Java path invalid: {}", e))?;
     let name = canonical.file_name()
@@ -2006,7 +2020,7 @@ fn check_java_dll_integrity(pid: u32) -> Result<Vec<String>, String> {
 }
 
 // SB Games game dir — кастомная директория .sbgames чтобы не путать с обычным MC
-fn minecraft_dir() -> std::path::PathBuf {
+pub(crate) fn minecraft_dir() -> std::path::PathBuf {
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").unwrap_or_default();
@@ -2023,7 +2037,7 @@ fn minecraft_dir() -> std::path::PathBuf {
     }
 }
 
-fn find_java() -> Option<PathBuf> {
+pub(crate) fn find_java() -> Option<PathBuf> {
     // 1. JAVA_HOME
     if let Ok(jh) = std::env::var("JAVA_HOME") {
         let p = PathBuf::from(jh).join(if cfg!(target_os = "windows") { "bin/java.exe" } else { "bin/java" });
@@ -2161,7 +2175,7 @@ fn check_jar_has_module_info(jar: &PathBuf) -> std::io::Result<bool> {
     Ok(false)
 }
 
-async fn download_file(url: &str, dest: &PathBuf, app: &tauri::AppHandle) -> Result<(), String> {
+pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri::AppHandle) -> Result<(), String> {
     use futures_util::StreamExt;
     use std::io::Write as _;
     use reqwest::header::USER_AGENT;
@@ -2574,7 +2588,7 @@ async fn install_forge_from_zip(
     Ok(())
 }
 
-fn generate_wrapped_classpath_manifest(path: &std::path::Path, rest_classpath: &[std::path::PathBuf], mc_dir: &std::path::Path) -> Result<(), String> {
+pub(crate) fn generate_wrapped_classpath_manifest(path: &std::path::Path, rest_classpath: &[std::path::PathBuf], mc_dir: &std::path::Path) -> Result<(), String> {
     use zip::write::FileOptions;
     use std::io::Write as _;
 
@@ -2687,6 +2701,16 @@ pub fn run() {
             tray_launch_game,
             tray_logout,
             launch_game_hidden,
+            // Custom modpacks / instances
+            instance::instance_list,
+            instance::instance_create,
+            instance::instance_delete,
+            instance::instance_update,
+            instance::instance_open_folder,
+            java::java_ensure,
+            launcher::launch_instance,
+            mods::mod_versions,
+            mrpack::import_mrpack,
         ])
         .setup(|app| {
             // Трей

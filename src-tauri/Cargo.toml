@@ -27,7 +27,7 @@ sha1         = "0.10"
 sha2         = "0.10"
 hmac         = "0.12"
 hex          = "0.4"
-reqwest      = { version = "0.12", features = ["stream"] }
+reqwest      = { version = "0.12", features = ["stream", "json"] }
 futures-util = "0.3"
 zip          = "0.6"
 tokio        = { version = "1", features = ["full"] }
@@ -35,6 +35,10 @@ dirs-next    = "2"
 libloading   = "0.8"
 jni          = { version = "0.21", features = ["invocation"] }
 walkdir      = "2"
+uuid         = { version = "1", features = ["v4", "serde"] }
+async-trait  = "0.1"
+tar          = "0.4"
+flate2       = "1.0"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.52"

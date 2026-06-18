@@ -184,18 +184,24 @@ export default function LoginPage({ onLogin }) {
     }
     setLoading(true);
     setError("");
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
     try {
       const res = await fetch(`${API_URL}/auth/tg-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tgUser, username: clean }),
+        signal: ctrl.signal,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.message || "Ошибка входа");
+      if (!data.token) throw new Error(data.message || "Сервер не вернул токен, попробуй ещё раз");
       finishLogin(data.user, data.token);
     } catch (err) {
-      setError(err.message);
+      setError(err.name === "AbortError" ? "Сервер не ответил, попробуй ещё раз" : err.message);
       setLoading(false);
+    } finally {
+      clearTimeout(timer);
     }
   };
 
@@ -474,7 +480,7 @@ export default function LoginPage({ onLogin }) {
               <input
                 type="text"
                 value={nick}
-                onChange={(e) => { setNick(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")); setError(""); }}
+                onChange={(e) => { setNick(e.target.value.replace(/[^a-zA-Z0-9_]/g, "")); setError(""); }}
                 placeholder="ник"
                 autoFocus
                 maxLength={16}

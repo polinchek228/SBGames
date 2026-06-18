@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Settings, X, Cpu, HardDrive, AlertTriangle, ShieldAlert, Info, Plus, Package, FileImage, Sparkles, Trash2, Search, Download, Check, ExternalLink, ChevronDown, ArrowLeft, MoreHorizontal, Grid3X3, List } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
-import { invoke, notifyDesktop, setDiscordPresence, getMinecraftStatus, killMinecraft } from "../lib/tauri.js";
+import { invoke, notifyDesktop, setDiscordPresence, getMinecraftStatus, killMinecraft, launchInstance, instanceCreate, instanceDelete, importMrpack } from "../lib/tauri.js";
 import { pushLocalActivity } from "../components/RecentActivityCard.jsx";
 import { searchMods, searchResourcePacks, searchShaders, getPopular, getProjectVersions, downloadUrl, formatDownloads, truncateText, getMcVersions, getModrinthLoaders } from "../lib/modrinth.js";
 
@@ -98,6 +98,37 @@ export default function PlayPage({ user, onOpenCommunity }) {
   useEffect(() => { if (modpackReport) localStorage.setItem("sbg_play_modpackReport", JSON.stringify(modpackReport)); }, [modpackReport]);
   useEffect(() => { if (guardModal) localStorage.setItem("sbg_play_guardModal", JSON.stringify(guardModal)); else localStorage.removeItem("sbg_play_guardModal"); }, [guardModal]);
   useEffect(() => { localStorage.setItem("sbg_custom_modpacks", JSON.stringify(customModpacks)); }, [customModpacks]);
+
+  // Миграция: старые модпаки без instanceId → создать инстансы на бэке.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const legacy = customModpacks.filter(m => !m.instanceId && !m.id?.length?.match(/^[0-9a-f]{8}-/));
+      if (!legacy.length) return;
+      for (const mp of legacy) {
+        if (cancelled) break;
+        try {
+          const allMods = [
+            ...(mp.mods || []).map(m => ({ ...m, kind: "mods" })),
+            ...(mp.resourcePacks || []).map(m => ({ ...m, kind: "resourcepacks" })),
+            ...(mp.shaders || []).map(m => ({ ...m, kind: "shaderpacks" })),
+          ];
+          const cfg = {
+            id: "", name: mp.name || "Unnamed", mcVersion: mp.mcVersion || "1.20.1",
+            loader: (mp.loader || "vanilla").toLowerCase(), loaderVersion: mp.loaderVersion || null,
+            javaVersion: 0, minRamMb: 512, maxRamMb: 4096, jvmArgs: [], mods: allMods,
+          };
+          const instanceId = await instanceCreate(cfg);
+          if (!cancelled) {
+            setCustomModpacks(prev => prev.map(p =>
+              p.id === mp.id ? { ...p, instanceId, id: instanceId } : p
+            ));
+          }
+        } catch (e) { console.warn("[migration] skip", mp.id, e); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Fetch MC versions and loaders from API
   useEffect(() => {
@@ -256,24 +287,56 @@ export default function PlayPage({ user, onOpenCommunity }) {
     }
   }, [draft.loader, showBuilder]);
 
-  const saveModpack = () => {
+  const saveModpack = async () => {
     if (!draft.name.trim()) return;
-    const mp = { ...draft, name: draft.name.trim(), id: Date.now().toString() };
-    setCustomModpacks(prev => {
-      const existing = prev.findIndex(p => p.id === mp.id);
-      if (existing >= 0) { const copy = [...prev]; copy[existing] = mp; return copy; }
-      return [...prev, mp];
-    });
-    setShowBuilder(false);
+    const allMods = [
+      ...(draft.mods || []).map(m => ({ ...m, kind: "mods" })),
+      ...(draft.resourcePacks || []).map(m => ({ ...m, kind: "resourcepacks" })),
+      ...(draft.shaders || []).map(m => ({ ...m, kind: "shaderpacks" })),
+    ];
+    const cfg = {
+      id: draft.instanceId || "", // пустой → бэк сгенерирует uuid
+      name: draft.name.trim(),
+      mcVersion: draft.mcVersion,
+      loader: (draft.loader || "vanilla").toLowerCase(),
+      loaderVersion: draft.loaderVersion || null,
+      javaVersion: 0, // бэк сам выводит из mcVersion
+      minRamMb: 512,
+      maxRamMb: (ramGb || 4) * 1024,
+      jvmArgs: [],
+      mods: allMods,
+    };
+    try {
+      const instanceId = await instanceCreate(cfg);
+      const mp = {
+        ...draft,
+        name: draft.name.trim(),
+        instanceId,
+        id: instanceId, // бэкн-end id — единый идентификатор
+        mods: draft.mods || [],
+        resourcePacks: draft.resourcePacks || [],
+        shaders: draft.shaders || [],
+      };
+      setCustomModpacks(prev => {
+        const existing = prev.findIndex(p => p.id === mp.id);
+        if (existing >= 0) { const copy = [...prev]; copy[existing] = mp; return copy; }
+        return [...prev, mp];
+      });
+      setShowBuilder(false);
+    } catch (err) {
+      console.error("[saveModpack]", err);
+      setLaunchError(String(err));
+    }
   };
 
-  const deleteModpack = (id) => {
+  const deleteModpack = async (id) => {
+    try { await instanceDelete(id); } catch { /* idempotent */ }
     setCustomModpacks(prev => prev.filter(p => p.id !== id));
     if (selected?.id === `custom_${id}`) setSelected(null);
   };
 
   const openBuilder = (existing) => {
-    setDraft(existing || { name: "", mcVersion: "1.20.1", loader: "forge", mods: [], resourcePacks: [], shaders: [] });
+    setDraft(existing || { name: "", mcVersion: "1.20.1", loader: "forge", mods: [], resourcePacks: [], shaders: [], instanceId: "", loaderVersion: null });
     setSelectedModDetail(null);
     setSearchQuery("");
     setActiveTab("mods");
@@ -296,11 +359,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
     await setDiscordPresence(`Играет на ${selected.name}`, "В игре · SB Games", "sbgames");
     const startedAt = Date.now();
     try {
-      if (selected.id?.startsWith("custom_") && selected.customPack) {
-        const result = await invoke("launch_custom_modpack", {
-          modpack: selected.customPack, username: user?.username || "Player",
-          token: localStorage.getItem("sbgames_token") || "0", ramGb, javaPath,
-        });
+      if (selected.id?.startsWith("custom_") && selected.customPack?.instanceId) {
+        const result = await launchInstance(
+          selected.customPack.instanceId,
+          user?.username || "Player",
+          user?.uuid || "00000000-0000-0000-0000-000000000000",
+          localStorage.getItem("sbgames_token") || "0",
+        );
         saveSession(selected.id, user?.username);
         sessionStorage.setItem("sbg_last_session", JSON.stringify({ serverId: selected.id, startedAt }));
         await notifyDesktop("SB Games", `${result}`);
@@ -360,11 +425,15 @@ export default function PlayPage({ user, onOpenCommunity }) {
         <motion.div key={selected ? selected.id + "_bg" : showBuilder ? "builder_bg" : "empty_bg"} className="absolute inset-0"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
           {selected ? (
-            <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 30% 80%, ${selected.accent}15, transparent 60%)` }} />
+            <>
+              {selected.image && <img src={selected.image} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.25 }} onError={e => e.currentTarget.style.display = "none"} />}
+              <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 30% 80%, ${selected.accent}20, transparent 60%)` }} />
+              <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%)" }} />
+            </>
           ) : showBuilder ? (
             <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 30% 80%, rgba(168,85,247,0.08), transparent 60%)" }} />
           ) : (
-            <div className="absolute inset-0" style={{ backgroundImage: "url('/hero.jpg')", backgroundSize: "cover", backgroundPosition: "center", opacity: 0.4 }} />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(8,8,12,1) 0%, rgba(12,12,18,1) 100%)" }} />
           )}
         </motion.div>
       </AnimatePresence>
