@@ -310,7 +310,7 @@ app.get("/update/:target/:arch/:currentVersion", (req, res) => {
   let signature = "";
   if (sigFile) { try { signature = fs.readFileSync(require("path").join(updatesDir, sigFile), "utf8").trim(); } catch {} }
 
-  const url = UPDATE_BASE + "/" + latest + "/" + zipFile;
+  const url = UPDATE_BASE + "/" + zipFile;
   res.json({ version: latest, notes: UPDATE_NOTES, pub_date: new Date().toISOString(), url, signature });
 });
 
@@ -330,7 +330,7 @@ app.get("/downloads/latest.json", (_req, res) => {
     const p = require("path").join(updatesDir, file);
     if (!fs.existsSync(p)) return false;
     const st = fs.statSync(p);
-    platforms[platform] = { url: UPDATE_BASE + "/" + latest + "/" + file, size: st.size };
+    platforms[platform] = { url: UPDATE_BASE + "/" + file, size: st.size };
     if (!newestMtime || st.mtime > newestMtime) newestMtime = st.mtime;
     return true;
   };
