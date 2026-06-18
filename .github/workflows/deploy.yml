@@ -142,6 +142,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/nsis/*.nsis.zip
             src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
+            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
           if-no-files-found: warn
 
       - name: Upload macOS updater
@@ -162,6 +163,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
             src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
+            src-tauri/target/release/bundle/appimage/*.AppImage.sig
           if-no-files-found: warn
 
       - name: Upload Windows installer

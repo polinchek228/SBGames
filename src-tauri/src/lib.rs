@@ -787,7 +787,24 @@ async fn launch_minecraft(
     // Helper: get jar path from library entry — format is {name, downloads:{artifact:{path,url}}}
     fn extract_lib_paths(mc_dir: &PathBuf, libs: &serde_json::Value, out: &mut Vec<PathBuf>) {
         if let Some(arr) = libs.as_array() {
+            let our_os = if cfg!(target_os = "windows") { "windows" }
+                         else if cfg!(target_os = "macos") { "osx" }
+                         else { "linux" };
             for lib in arr {
+                // OS rules — skip библиотеки не нашей ОС
+                // (например macOS-only java-objc-bridge не должен попадать в Windows classpath)
+                if let Some(rules) = lib.get("rules").and_then(|r| r.as_array()) {
+                    let allowed = rules.iter().any(|r| {
+                        let os_name = r["os"]["name"].as_str().unwrap_or("");
+                        let action  = r["action"].as_str().unwrap_or("allow");
+                        if action == "allow" {
+                            os_name.is_empty() || os_name == our_os
+                        } else {
+                            !(os_name == our_os)
+                        }
+                    });
+                    if !allowed { continue; }
+                }
                 // Современный формат: lib.downloads.artifact.path
                 if let Some(p) = lib["downloads"]["artifact"]["path"].as_str() {
                     out.push(mc_dir.join("libraries").join(p));
