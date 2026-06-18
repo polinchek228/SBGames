@@ -288,13 +288,17 @@ app.get("/update/:target/:arch/:currentVersion", (req, res) => {
   let sigFile = null;
   if (key === "windows-x86_64") {
     zipFile = findUpdateFile(f => f.endsWith(".nsis.zip") && f.includes(latest))
-           || findUpdateFile(f => f.endsWith("-setup.exe") && f.includes(latest));
+           || findUpdateFile(f => f.endsWith("-setup.exe") && f.includes(latest))
+           || findUpdateFile(f => f.endsWith(".exe") && f.includes(latest) && !f.endsWith(".sig"));
   } else if (key === "darwin-x86_64") {
-    zipFile = findUpdateFile(f => f.endsWith(".app.tar.gz") && f.includes(latest) && (f.includes("_x64") || (!f.includes("aarch64") && !f.includes("arm64"))));
+    zipFile = findUpdateFile(f => f.endsWith(".app.tar.gz") && f.includes(latest) && (f.includes("_x64") || (!f.includes("aarch64") && !f.includes("arm64"))))
+           || findUpdateFile(f => f.endsWith(".dmg") && f.includes(latest) && f.includes("_x64"));
   } else if (key === "darwin-aarch64") {
-    zipFile = findUpdateFile(f => f.endsWith(".app.tar.gz") && f.includes(latest) && (f.includes("aarch64") || f.includes("arm64")));
+    zipFile = findUpdateFile(f => f.endsWith(".app.tar.gz") && f.includes(latest) && (f.includes("aarch64") || f.includes("arm64")))
+           || findUpdateFile(f => f.endsWith(".dmg") && f.includes(latest) && (f.includes("aarch64") || f.includes("arm64")));
   } else if (key === "linux-x86_64") {
-    zipFile = findUpdateFile(f => f.endsWith(".AppImage.tar.gz") && f.includes(latest));
+    zipFile = findUpdateFile(f => f.endsWith(".AppImage.tar.gz") && f.includes(latest))
+           || findUpdateFile(f => f.endsWith(".AppImage") && !f.endsWith(".tar.gz") && f.includes(latest));
   }
   if (!zipFile) return res.status(204).send();
 
@@ -316,6 +320,13 @@ app.get("/update/:target/:arch/:currentVersion", (req, res) => {
 
 // Static: update binaries
 app.use("/update", express.static(updatesDir, { maxAge: "1d", etag: true }));
+
+// Debug: updater diagnostics
+app.get("/update-debug", (_req, res) => {
+  const latest = detectLatestVersion();
+  const files = listUpdates();
+  res.json({ latest, files, dir: updatesDir });
+});
 
 // --- Downloads manifest for website -------------------------------------------
 app.get("/downloads/latest.json", (_req, res) => {
