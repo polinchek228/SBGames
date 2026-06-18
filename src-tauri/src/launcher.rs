@@ -191,9 +191,16 @@ fn resolve_placeholders(
     // Для запуска достаточно -Djava.library.path=natives_dir; тут делаем базово.
     let natives_list = &merged.natives;
     // Список путей в -cp: libraries + natives-jars.
-    let mut cp_items: Vec<PathBuf> = merged.libraries.clone();
+    // Фильтруем несуществующие файлы (могут быть macOS/Linux-only libs,
+    // которые не скачались под Windows — напр. java-objc-bridge).
+    let mut cp_items: Vec<PathBuf> = Vec::new();
+    for p in &merged.libraries {
+        if p.exists() && !cp_items.contains(p) {
+            cp_items.push(p.clone());
+        }
+    }
     for n in natives_list {
-        if !cp_items.contains(n) {
+        if n.exists() && !cp_items.contains(n) {
             cp_items.push(n.clone());
         }
     }

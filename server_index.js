@@ -244,10 +244,7 @@ let _updatesCache = null;
 let _updatesMtime = 0;
 function listUpdates() {
   try {
-    const st = fs.statSync(updatesDir);
-    if (_updatesCache && st.mtimeMs === _updatesMtime) return _updatesCache;
     _updatesCache = fs.readdirSync(updatesDir).filter(f => !f.startsWith("."));
-    _updatesMtime = st.mtimeMs;
     return _updatesCache;
   } catch { return []; }
 }
@@ -321,11 +318,11 @@ app.get("/update/:target/:arch/:currentVersion", (req, res) => {
 // Static: update binaries
 app.use("/update", express.static(updatesDir, { maxAge: "1d", etag: true }));
 
-// Debug: updater diagnostics
+// Debug: updater diagnostics (accessible via /health)
 app.get("/update-debug", (_req, res) => {
   const latest = detectLatestVersion();
   const files = listUpdates();
-  res.json({ latest, files, dir: updatesDir });
+  res.json({ latest, files, dir: updatesDir, exists: fs.existsSync(updatesDir) });
 });
 
 // --- Downloads manifest for website -------------------------------------------

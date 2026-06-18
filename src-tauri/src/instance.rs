@@ -39,19 +39,20 @@ impl LoaderKind {
 /// Формат совпадает с тем, что фронт кладёт в customModpacks[].mods[].
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ModEntry {
+    #[serde(alias = "projectId", default)]
     pub project_id: String,
     #[serde(default)]
     pub slug: String,
     #[serde(default)]
     pub title: String,
-    #[serde(default)]
+    #[serde(default, alias = "iconUrl")]
     pub icon_url: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
     pub downloads: Option<u64>,
     /// Готовый URL для скачивания конкретной версии файла.
-    #[serde(default)]
+    #[serde(default, alias = "downloadUrl")]
     pub download_url: Option<String>,
     #[serde(default)]
     pub filename: Option<String>,
