@@ -1,6 +1,10 @@
 const { Client } = require('ssh2');
-const c = new Client();
-const config = `server {
+const fs = require('fs');
+
+const config = fs.readFileSync(require('path').join(__dirname, '..', 'games-sb-capital.conf'), 'utf8');
+// Actually let's just write it directly via heredoc
+
+const newConfig = `server {
     server_name games.sb-capital.group;
 
     listen 443 ssl;
@@ -52,12 +56,20 @@ server {
     return 404;
 }`;
 
+// Upload config via SFTP, then sudo cp
+const c = new Client();
 c.on('ready', () => {
-  const cmd = `echo '${config.replace(/'/g, "'\\''")}' > /tmp/games.conf && echo tcfgd12 | sudo -S cp /tmp/games.conf /etc/nginx/sites-available/games.sb-capital.group && echo tcfgd12 | sudo -S nginx -t 2>&1 && echo tcfgd12 | sudo -S systemctl reload nginx 2>&1 && echo "=== nginx reloaded ===" && curl -skI https://games.sb-capital.group/backgrounds/fon1.mp4 2>&1 | head -5`;
-  c.exec(cmd, (e, s) => {
-    s.on('data', c => process.stdout.write(c));
-    s.stderr.on('data', c => process.stderr.write(c));
-    s.on('close', () => c.end());
+  c.sftp((err, sftp) => {
+    if (err) { console.error('SFTP err:', err); c.end(); process.exit(1); }
+    const stream = sftp.createWriteStream('/tmp/games-sb-capital.conf');
+    stream.on('close', () => {
+      c.exec("echo tcfgd12 | sudo -S cp /tmp/games-sb-capital.conf /etc/nginx/sites-available/games.sb-capital.group && echo tcfgd12 | sudo -S nginx -t 2>&1 && echo tcfgd12 | sudo -S systemctl reload nginx 2>&1 && echo '=== RELOADED ===' && curl -skI https://games.sb-capital.group/backgrounds/fon1.mp4 2>&1 | head -8", (e, s) => {
+        s.on('data', c => process.stdout.write(c));
+        s.stderr.on('data', c => process.stderr.write(c));
+        s.on('close', () => c.end());
+      });
+    });
+    stream.end(newConfig);
   });
 }).on('error', e => console.error(e.message))
   .connect({ host: '62.77.154.84', port: 22, username: 'mnntn', password: 'tcfgd12' });
