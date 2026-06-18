@@ -28,9 +28,11 @@ const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://api.hype
 
 const googleOAuth = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
 const googlePending = new Map(); // state -> { googleId, email, name, avatar, expiresAt }
+// Cleanup expired Google OAuth entries every 5 minutes
+setInterval(() => { const now = Date.now(); for (const [k, v] of googlePending) { if (v.expiresAt && v.expiresAt < now) googlePending.delete(k); } }, 300_000);
 
-const SSL_KEY  = "/etc/ssl/private/sbgames.key";
-const SSL_CERT = "/etc/ssl/certs/sbgames.crt";
+const SSL_KEY  = process.env.SSL_KEY  || "/etc/ssl/private/sbgames.key";
+const SSL_CERT = process.env.SSL_CERT || "/etc/ssl/certs/sbgames.crt";
 
 // ΓöÇΓöÇΓöÇ Redis ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const redis = new Redis({ host: "127.0.0.1", port: 6379, lazyConnect: true });
@@ -130,6 +132,8 @@ const ALLOWED_ORIGINS = new Set([
   "https://sbgames.hyperionsearch.xyz:8444",
   "https://sbgames.hyperionsearch.xyz",
   "http://sbgames.hyperionsearch.xyz",
+  "https://games.sb-capital.group",
+  "http://games.sb-capital.group",
   "http://localhost:1420",
   "http://localhost:5173",
   "tauri://localhost",
@@ -1066,8 +1070,8 @@ function userPartyIds(uid) {
 async function publicParty(p) {
   const memberList = await Promise.all([...p.members].map(async uid => {
     let acc = [...redisAccounts._map.values()].find(a => a && a.id === uid);
-    if (!acc) { try { acc = JSON.parse(await redisAccounts.get(uid)); } catch {} }
-    return { id: uid, username: acc?.username || uid };
+    if (!acc) { try { acc = await redisAccounts.get(uid); } catch {} }
+    return { id: uid, username: acc?.username || acc?.telegram || uid };
   }));
   return { id: p.id, name: p.name, leaderId: p.leaderId, members: memberList, createdAt: p.createdAt };
 }
@@ -2185,7 +2189,7 @@ setInterval(async () => {
   }
 }, PLAY_HOURS_TICK_MS);
 
-function send(ws, data) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
+function send(ws, data) { try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); } catch {} }
 function broadcastOnlineUsers() {
   const users = [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username, role: c.role }));
   for (const { ws } of wsClients.values()) send(ws, { type: "online_users", users });
@@ -2912,7 +2916,7 @@ try {
   const sslOpts = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };
   const httpsServer = https.createServer(sslOpts, app);
   const wssSSL = new WebSocketServer({ server: httpsServer });
-  wssSSL.on("connection", (ws) => wss.emit("connection", ws));
+  wssSSL.on("connection", (ws, req) => wss.emit("connection", ws, req));
   httpsServer.listen(PORT_SSL, "0.0.0.0", () => console.log(`SBGames HTTPS :${PORT_SSL}`));
 } catch (e) {
   console.warn("HTTPS not started:", e.message);

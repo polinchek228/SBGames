@@ -308,6 +308,7 @@ export default function MainLayout({ user, onLogout }) {
                 <CommunityPage
                   user={user}
                   mini
+                  suppressNotifications={page === "community"}
                   onBadgeChange={setFriendBadge}
                   onViewProfile={(id) => { setViewUserId(id); setPage("profile"); setCommunityOpen(false); }}
                 />

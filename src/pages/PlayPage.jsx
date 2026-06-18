@@ -176,7 +176,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
           try {
             const token = localStorage.getItem("sbgames_token");
             if (token) {
-              fetch("https://api.hyperionsearch.xyz/api/activity", {
+              fetch("https://games.sb-capital.group/api/activity", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ serverId: s.serverId, startedAt: s.startedAt, endedAt: Date.now(), durationSec: durSec }),
@@ -330,7 +330,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
         /* Server content (when server selected) */
         <div className="absolute inset-0 flex flex-col" style={{ paddingLeft: 252 }}>
           {/* Title + description */}
-          <div className="pt-8 pr-10 flex flex-col gap-3">
+          <div className="pt-8 pr-10 pl-10 flex flex-col gap-3">
             <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white"
               style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}
             >

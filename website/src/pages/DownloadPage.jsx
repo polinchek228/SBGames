@@ -14,7 +14,7 @@ export default function DownloadPage() {
   const [selected, setSelected] = useState("windows");
 
   useEffect(() => {
-    fetch("https://api.hyperionsearch.xyz/downloads/latest.json")
+    fetch("https://games.sb-capital.group/downloads/latest.json")
       .then(r => r.ok ? r.json() : null)
       .then(data => { setManifest(data); setLoading(false); })
       .catch(() => setLoading(false));
