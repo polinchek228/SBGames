@@ -71,6 +71,7 @@ export default function LoginPage({ onLogin }) {
         }
         if (data.needNick) {
           setTgUser(tgUser);
+          setLoading(false);
           setStep("nick");
           return false;
         }
@@ -496,6 +497,10 @@ export default function LoginPage({ onLogin }) {
                   onChange={(e) => { setNick(e.target.value); setError(""); }}
                   placeholder="Ник (3–16 символов)"
                   autoFocus
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-all"
                   style={{
                     background: "rgba(18,18,18,0.95)",
@@ -565,6 +570,10 @@ export default function LoginPage({ onLogin }) {
                   onChange={(e) => { setNick(e.target.value); setError(""); }}
                   placeholder="Ник (3–16 символов)"
                   autoFocus
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-all"
                   style={{
                     background: "rgba(18,18,18,0.95)",
