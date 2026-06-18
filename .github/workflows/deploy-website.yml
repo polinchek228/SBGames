@@ -22,11 +22,184 @@ jobs:
       - name: Install & build
         run: cd website && npm install && npm run build
 
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass >/dev/null 2>&1
+
       - name: Upload to server
         run: |
-          sudo apt-get install -y sshpass >/dev/null 2>&1
           sshpass -p "${{ secrets.SERVER_PASS }}" \
             scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -r website/dist/. \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/sbgames/
-          echo "✅ Website deployed"
+          echo "✅ Website files uploaded"
+
+      - name: Deploy nginx config
+        run: |
+          cat << 'NGINX' | sshpass -p "${{ secrets.SERVER_PASS }}" \
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "cat | sudo tee /etc/nginx/sites-available/games.sb-capital.group > /dev/null && sudo nginx -t && sudo systemctl reload nginx"
+          server {
+              server_name games.sb-capital.group;
+
+              listen 443 ssl;
+              ssl_certificate /etc/letsencrypt/live/games.sb-capital.group/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/games.sb-capital.group/privkey.pem;
+              include /etc/letsencrypt/options-ssl-nginx.conf;
+              ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+              client_max_body_size 20M;
+
+              # Static assets from disk
+              location /backgrounds/ {
+                  alias /opt/sbgames/backgrounds/;
+                  add_header Cache-Control "public, max-age=86400";
+                  add_header Access-Control-Allow-Origin "*";
+              }
+              location /frames/ {
+                  alias /opt/sbgames/frames/;
+                  add_header Cache-Control "public, max-age=86400";
+                  add_header Access-Control-Allow-Origin "*";
+              }
+              location /icons/ {
+                  alias /opt/sbgames/icons/;
+                  add_header Cache-Control "public, max-age=86400";
+                  add_header Access-Control-Allow-Origin "*";
+              }
+
+              # API routes → Express
+              location /auth/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /api/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /payments/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /admin/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /support/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /update/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /downloads/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /servers/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /online {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /health {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /news {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /skin-proxy/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location /user/ {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+
+              # WebSocket
+              location /ws {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_read_timeout 86400;
+              }
+
+              # Website static files (catch-all)
+              location / {
+                  root /var/www/sbgames;
+                  try_files $uri $uri/ /index.html;
+              }
+          }
+
+          server {
+              if ($host = games.sb-capital.group) {
+                  return 301 https://$host$request_uri;
+              }
+              listen 80;
+              server_name games.sb-capital.group;
+              return 404;
+          }
+          NGINX
+          echo "✅ Nginx reloaded"
