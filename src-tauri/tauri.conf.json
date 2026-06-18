@@ -88,7 +88,7 @@
       "active": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyQTQ0REE0N0JFODI2MzMKUldRekp1aDdwRTJrc3BoTnlJUGpObXBnenBLWjJaaFptMU1zVTc1bWtuemZwbTZJSy9VZWlIU1UK",
       "endpoints": [
-        "https://api.hyperionsearch.xyz/update/{{target}}/{{arch}}/{{current_version}}"
+        "https://games.sb-capital.group/update/{{target}}/{{arch}}/{{current_version}}"
       ],
       "windows": {
         "installMode": "passive"

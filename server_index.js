@@ -226,7 +226,7 @@ app.use("/api",              apiLimiter);
 app.use("/support/ticket",   apiLimiter);
 // ─── Auto-updater endpoint ────────────────────────────────────────────────────
 const LATEST_VERSION = "1.0.0";
-const UPDATE_BASE    = "https://api.hyperionsearch.xyz/update";
+const UPDATE_BASE    = process.env.UPDATE_BASE || "https://games.sb-capital.group/update";
 const UPDATE_NOTES   = "Обновление доступно";
 
 app.get("/update/:target/:arch/:currentVersion", (req, res) => {
@@ -2908,6 +2908,17 @@ bot.on("callback_query", async (q) => {
 
 bot.on("polling_error", (err) => { if (!err.message?.includes("409")) console.error("[bot]", err.message); });
 
+
+// ─── Website static serving ─────────────────────────────────────────────────────
+const websiteDir = require("path").join(__dirname, "website-dist");
+if (fs.existsSync(websiteDir)) {
+  app.use(express.static(websiteDir, { maxAge: "1d", etag: true, index: "index.html" }));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/auth/") || req.path.startsWith("/api/") || req.path.startsWith("/payments/") ||
+        req.path.startsWith("/admin/") || req.path.startsWith("/support/") || req.path.startsWith("/update/")) return next();
+    res.sendFile(require("path").join(websiteDir, "index.html"), err => { if (err) next(); });
+  });
+}
 
 // ΓöÇΓöÇΓöÇ Start ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
