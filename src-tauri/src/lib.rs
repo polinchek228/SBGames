@@ -1896,6 +1896,12 @@ fn validate_launch_classpath(
 ) -> Result<(), String> {
     let mc_root = std::fs::canonicalize(mc_dir)
         .map_err(|e| format!("minecraft dir canonicalize: {}", e))?;
+    // Папка модов: <mc_root>/mods/*.jar — jar лежит прямо внутри mods/.
+    // Maven-библиотеки (securejarhandler и др.) лежат в <mc_root>/libraries/...
+    // и могут содержать подстроку "\mods\" (напр. cpw\mods\securejarhandler),
+    // что НЕ должно считаться модом.
+    let mods_dir = mc_root.join("mods");
+    let mods_dir_canon = std::fs::canonicalize(&mods_dir).ok();
     for path in boot_modules.iter().chain(rest_classpath.iter()) {
         let canonical = std::fs::canonicalize(path)
             .map_err(|e| format!("Classpath file missing: {} ({})", path.display(), e))?;
@@ -1905,9 +1911,13 @@ fn validate_launch_classpath(
         if canonical.extension().and_then(|e| e.to_str()).map_or(true, |e| !e.eq_ignore_ascii_case("jar")) {
             return Err(format!("Blocked non-jar classpath entry: {}", canonical.display()));
         }
-        let lower = canonical.to_string_lossy().to_lowercase();
-        if lower.contains("\\mods\\") || lower.contains("/mods/") {
-            return Err(format!("Blocked mod jar in launch classpath: {}", canonical.display()));
+        // Только если родитель файла — сама папка <mc_root>/mods/, это мод.
+        if let Some(ref mods_canon) = mods_dir_canon {
+            if let Some(parent) = canonical.parent() {
+                if parent == mods_canon {
+                    return Err(format!("Blocked mod jar in launch classpath: {}", canonical.display()));
+                }
+            }
         }
     }
     Ok(())

@@ -237,72 +237,80 @@ const updatesDir = require("path").join(__dirname, "updates");
 if (!fs.existsSync(updatesDir)) fs.mkdirSync(updatesDir, { recursive: true });
 
 const UPDATE_BASE  = process.env.UPDATE_BASE || "https://games.sb-capital.group/update";
-const UPDATE_NOTES  = "Исправления и улучшения";
+const UPDATE_NOTES = "Исправления и улучшения";
 
-/** Detect latest version from filenames in updates/ dir */
-function detectLatestVersion() {
+/** Список файлов в updates/ (с кешем по mtime директории). */
+let _updatesCache = null;
+let _updatesMtime = 0;
+function listUpdates() {
   try {
-    const files = fs.readdirSync(updatesDir);
-    const verRe = /sbgames-launcher_(\d+\.\d+\.\d+)_/;
-    const versions = [];
-    for (const f of files) {
-      const m = f.match(verRe);
-      if (m) versions.push(m[1]);
-    }
-    if (versions.length === 0) return null;
-    versions.sort((a, b) => {
-      const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
-      return (pb[0] - pa[0]) || (pb[1] - pa[1]) || (pb[2] - pa[2]);
-    });
-    return versions[0];
-  } catch { return null; }
+    const st = fs.statSync(updatesDir);
+    if (_updatesCache && st.mtimeMs === _updatesMtime) return _updatesCache;
+    _updatesCache = fs.readdirSync(updatesDir).filter(f => !f.startsWith("."));
+    _updatesMtime = st.mtimeMs;
+    return _updatesCache;
+  } catch { return []; }
 }
 
-const UPDATER_PLATFORMS = {
-  "windows-x86_64": {
-    zip: "sbgames-launcher_${VER}_x64-setup.nsis.zip",
-    sig: "sbgames-launcher_${VER}_x64-setup.nsis.zip.sig",
-    installer: "sbgames-launcher_${VER}_x64-setup.exe",
-  },
-  "darwin-x86_64": {
-    zip: "sbgames-launcher_${VER}_x64.app.tar.gz",
-    sig: "sbgames-launcher_${VER}_x64.app.tar.gz.sig",
-    installer: "sbgames-launcher_${VER}_x64.dmg",
-  },
-  "darwin-aarch64": {
-    zip: "sbgames-launcher_${VER}_aarch64.app.tar.gz",
-    sig: "sbgames-launcher_${VER}_aarch64.app.tar.gz.sig",
-    installer: "sbgames-launcher_${VER}_aarch64.dmg",
-  },
-  "linux-x86_64": {
-    zip: "sbgames-launcher_${VER}_amd64.AppImage.tar.gz",
-    sig: "sbgames-launcher_${VER}_amd64.AppImage.tar.gz.sig",
-    installer: "sbgames-launcher_${VER}_amd64.AppImage",
-  },
-};
+/** Найти самую свежую версию X.Y.Z по всем именам файлов. */
+function detectLatestVersion() {
+  const verRe = /(\d+\.\d+\.\d+)/;
+  const versions = [];
+  for (const f of listUpdates()) {
+    const m = f.match(verRe);
+    if (m) versions.push(m[1]);
+  }
+  if (!versions.length) return null;
+  versions.sort((a, b) => {
+    const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
+    return (pb[0] - pa[0]) || (pb[1] - pa[1]) || (pb[2] - pa[2]);
+  });
+  return versions[0];
+}
 
-/** Tauri updater endpoint */
+/** Найти файл в updates/ по подстроке (или функции-предикату). */
+function findUpdateFile(predicate) {
+  const pred = typeof predicate === "function" ? predicate : (f) => f.includes(predicate);
+  return listUpdates().find(f => pred(f) && !f.endsWith(".sig"));
+}
+
+/** Tauri updater endpoint.
+ *  Формат updater-артефакта зависит от Tauri: .nsis.zip (старый) или .exe (новый NSIS),
+ *  .app.tar.gz (macOS), .AppImage.tar.gz (Linux). Ищем по любому из вариантов. */
 app.get("/update/:target/:arch/:currentVersion", (req, res) => {
   const { target, arch, currentVersion } = req.params;
   const latest = detectLatestVersion();
   if (!latest) return res.status(204).send();
 
   const key = target + "-" + arch;
-  const fmt = UPDATER_PLATFORMS[key];
-  if (!fmt) return res.status(204).send();
+  // Ищем updater-архив по паттернам. Имя продукта может содержать пробелы.
+  let zipFile = null;
+  let sigFile = null;
+  if (key === "windows-x86_64") {
+    zipFile = findUpdateFile(f => f.endsWith(".nsis.zip") && f.includes(latest))
+           || findUpdateFile(f => f.endsWith("-setup.exe") && f.includes(latest));
+  } else if (key === "darwin-x86_64") {
+    zipFile = findUpdateFile(f => f.endsWith(".app.tar.gz") && f.includes(latest) && (f.includes("_x64") || (!f.includes("aarch64") && !f.includes("arm64"))));
+  } else if (key === "darwin-aarch64") {
+    zipFile = findUpdateFile(f => f.endsWith(".app.tar.gz") && f.includes(latest) && (f.includes("aarch64") || f.includes("arm64")));
+  } else if (key === "linux-x86_64") {
+    zipFile = findUpdateFile(f => f.endsWith(".AppImage.tar.gz") && f.includes(latest));
+  }
+  if (!zipFile) return res.status(204).send();
 
-  // Version comparison: newer?
+  const sig = zipFile + ".sig";
+  if (listUpdates().includes(sig)) sigFile = sig;
+
+  // Сравнение версий: новее ли latest?
   const cur = currentVersion.split(".").map(Number);
   const lat = latest.split(".").map(Number);
   const newer = lat[0] > cur[0] || (lat[0] === cur[0] && lat[1] > cur[1]) || (lat[0] === cur[0] && lat[1] === cur[1] && lat[2] > cur[2]);
   if (!newer) return res.status(204).send();
 
-  const fill = (t) => t.replace(/\$\{VER\}/g, latest);
-  const sigFile = fill(fmt.sig);
   let signature = "";
-  try { signature = fs.readFileSync(require("path").join(updatesDir, sigFile), "utf8").trim(); } catch {}
+  if (sigFile) { try { signature = fs.readFileSync(require("path").join(updatesDir, sigFile), "utf8").trim(); } catch {} }
 
-  const url = UPDATE_BASE + "/" + latest + "/" + fill(fmt.zip);
+  const url = UPDATE_BASE + "/" + latest + "/" + zipFile;
   res.json({ version: latest, notes: UPDATE_NOTES, pub_date: new Date().toISOString(), url, signature });
 });
 
@@ -315,44 +323,33 @@ app.get("/downloads/latest.json", (_req, res) => {
   if (!latest) return res.json({ version: "v0.0.0", publishedAt: null, platforms: {} });
 
   const platforms = {};
+  let newestMtime = null;
 
-  // Windows
-  const winExe = "sbgames-launcher_" + latest + "_x64-setup.exe";
-  const winExePath = require("path").join(updatesDir, winExe);
-  if (fs.existsSync(winExePath)) {
-    const stat = fs.statSync(winExePath);
-    platforms.windows = {
-      url: UPDATE_BASE + "/" + latest + "/" + winExe,
-      size: stat.size,
-    };
+  const tryAdd = (platform, file) => {
+    if (!file) return false;
+    const p = require("path").join(updatesDir, file);
+    if (!fs.existsSync(p)) return false;
+    const st = fs.statSync(p);
+    platforms[platform] = { url: UPDATE_BASE + "/" + latest + "/" + file, size: st.size };
+    if (!newestMtime || st.mtime > newestMtime) newestMtime = st.mtime;
+    return true;
+  };
+
+  // Windows: NSIS .exe инсталлер
+  tryAdd("windows", findUpdateFile(f => f.endsWith("-setup.exe") && f.includes(latest)));
+
+  // macOS: .dmg (aarch64 или x64), fallback на .app.tar.gz
+  if (!tryAdd("macos", findUpdateFile(f => f.endsWith("_aarch64.dmg") && f.includes(latest)))
+   && !tryAdd("macos", findUpdateFile(f => f.endsWith("_x64.dmg") && f.includes(latest)))) {
+    tryAdd("macos", findUpdateFile(f => f.endsWith(".dmg") && f.includes(latest)));
   }
 
-  // macOS (aarch64 preferred, fallback x86_64)
-  const macAarch = "sbgames-launcher_" + latest + "_aarch64.dmg";
-  const macX64   = "sbgames-launcher_" + latest + "_x64.dmg";
-  const macFile = fs.existsSync(require("path").join(updatesDir, macAarch)) ? macAarch : macX64;
-  const macPath = require("path").join(updatesDir, macFile);
-  if (fs.existsSync(macPath)) {
-    platforms.macos = {
-      url: UPDATE_BASE + "/" + latest + "/" + macFile,
-      size: fs.statSync(macPath).size,
-    };
-  }
+  // Linux: AppImage
+  tryAdd("linux", findUpdateFile(f => f.endsWith(".AppImage") && f.includes(latest) && !f.endsWith(".tar.gz")));
 
-  // Linux
-  const linuxFile = "sbgames-launcher_" + latest + "_amd64.AppImage";
-  const linuxPath = require("path").join(updatesDir, linuxFile);
-  if (fs.existsSync(linuxPath)) {
-    platforms.linux = {
-      url: UPDATE_BASE + "/" + latest + "/" + linuxFile,
-      size: fs.statSync(linuxPath).size,
-    };
-  }
-
-  const verStat = fs.statSync(require("path").join(updatesDir, winExe) || macPath || linuxPath);
   res.json({
     version: "v" + latest,
-    publishedAt: verStat ? verStat.mtime.toISOString() : null,
+    publishedAt: newestMtime ? newestMtime.toISOString() : null,
     platforms,
   });
 });
