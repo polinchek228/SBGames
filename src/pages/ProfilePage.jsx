@@ -229,23 +229,6 @@ function ProfileTab({ user, equip }) {
       <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto w-full px-8 pt-8 pb-6 gap-6">
         {/* ═══ HEADER ═══ */}
         <div className="relative flex-shrink-0 px-6 pt-8 pb-6">
-          {/* SBT + LVL — правый верхний угол */}
-          <div className="absolute top-6 right-6 flex items-center gap-2">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
-              style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
-              <img src="/money.png" alt="" className="w-5 h-5 object-contain"
-                onError={(e) => { e.currentTarget.style.display = "none"; }} />
-              <span className="text-[20px] font-black text-white tabular-nums leading-none">
-                {(user?.balance ?? 0).toLocaleString("ru-RU")}
-              </span>
-              <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
-            </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
-              style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)" }}>
-              <span className="text-[20px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
-              <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(96,165,250,0.6)" }}>LVL</span>
-            </div>
-          </div>
           <div className="flex items-end gap-5">
             {/* Avatar — larger */}
             <div className="relative cursor-pointer group flex-shrink-0" onClick={() => setShowAvatarPicker(true)}>
@@ -275,6 +258,25 @@ function ProfileTab({ user, equip }) {
               {/* Online dot */}
               <div className="absolute -bottom-0.5 -right-0.5 w-[16px] h-[16px] rounded-full"
                 style={{ background: "#22c55e", border: "2.5px solid #0d0d12", zIndex: 15 }} />
+            </div>
+
+            {/* SBT badge — same size as avatar */}
+            <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
+              style={{ background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+              <img src="/money.png" alt="" className="w-7 h-7 object-contain"
+                style={{ filter: "drop-shadow(0 0 6px rgba(250,204,21,0.6))" }}
+                onError={(e) => { e.currentTarget.style.display = "none"; }} />
+              <span className="text-[22px] font-black text-white tabular-nums leading-none">
+                {(user?.balance ?? 0).toLocaleString("ru-RU")}
+              </span>
+              <span className="text-[10px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
+            </div>
+
+            {/* LVL badge — same size as avatar */}
+            <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
+              style={{ background: "rgba(37,99,235,0.1)", border: "2px solid rgba(59,130,246,0.2)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+              <span className="text-[28px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
+              <span className="text-[10px] font-bold tracking-wider" style={{ color: "rgba(96,165,250,0.6)" }}>LVL</span>
             </div>
 
             {/* Name + info */}
@@ -367,6 +369,49 @@ function ProfileTab({ user, equip }) {
       {/* ═══ CONTENT ═══ */}
       <div className="flex-1 flex flex-col gap-5 px-6 py-5 min-h-0"
         style={{ paddingTop: 20 }}>
+
+        {/* ── Мои предметы ── */}
+        {(() => {
+          const owned = (user?.inventory || []).map(id => CATALOG_BY_ID[id]).filter(Boolean);
+          if (owned.length === 0) return null;
+          return (
+            <motion.div variants={itemVariants}>
+              <p className="text-[9px] font-bold uppercase tracking-[0.16em] mb-2.5" style={{ color: "rgba(255,255,255,0.28)" }}>Мои предметы</p>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {owned.map(item => {
+                  const meta = TYPE_META[item.type] || { label: item.type, color: "#94a3b8" };
+                  const rarity = RARITIES[item.rarity] || RARITIES.common;
+                  const isEquipped = equip?.frame === item.id || equip?.background === item.id || equip?.badge === item.id;
+                  return (
+                    <div key={item.id} className="flex-shrink-0 w-[100px] rounded-2xl overflow-hidden"
+                      style={{ background: isEquipped ? `${rarity.color}15` : "rgba(255,255,255,0.05)", border: isEquipped ? `1.5px solid ${rarity.color}30` : "1px solid rgba(255,255,255,0.08)" }}>
+                      <div className="h-[70px] flex items-center justify-center relative"
+                        style={{ background: `radial-gradient(ellipse at 50% 120%, ${rarity.color}12 0%, transparent 70%)` }}>
+                        {item.image ? (
+                          <img src={item.image} alt="" className="w-12 h-12 object-cover rounded-lg" onError={e => { e.currentTarget.style.display = "none"; }} />
+                        ) : item.icon ? (
+                          <img src={item.icon} alt="" className="w-10 h-10 object-contain" onError={e => { e.currentTarget.style.display = "none"; }} />
+                        ) : (
+                          <div className="w-10 h-10 rounded-xl" style={{ background: `${rarity.color}20` }} />
+                        )}
+                        {isEquipped && (
+                          <span className="absolute top-1.5 right-1.5 text-[7px] font-black px-1.5 py-0.5 rounded-full"
+                            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80" }}>
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                      <div className="px-2 py-2">
+                        {item.name && <p className="text-[9px] font-bold text-white truncate">{item.name}</p>}
+                        <p className="text-[8px] truncate" style={{ color: `${rarity.color}aa` }}>{meta.label}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          );
+        })()}
 
         {/* ── Achievement showcase ── */}
         <motion.div variants={itemVariants}>

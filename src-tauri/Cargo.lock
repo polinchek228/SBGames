@@ -3476,8 +3476,10 @@ dependencies = [
 name = "sbgames-launcher"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "dirs-next",
  "discord-rich-presence",
+ "flate2",
  "futures-util",
  "hex",
  "hmac",
@@ -3488,6 +3490,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-notification",
@@ -3495,6 +3498,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-updater",
  "tokio",
+ "uuid 1.23.2",
  "walkdir",
  "windows-sys 0.52.0",
  "zip 0.6.6",

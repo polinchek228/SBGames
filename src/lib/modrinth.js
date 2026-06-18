@@ -73,8 +73,15 @@ export async function getMcVersions() {
       const res = await fetch("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json");
       if (!res.ok) throw new Error(`Mojang ${res.status}`);
       const data = await res.json();
+      const sixMonthsAgo = Date.now() - 1000 * 60 * 60 * 24 * 30 * 6;
       const versions = data.versions
-        .filter(v => v.type === "release" || v.type === "snapshot")
+        .filter(v => {
+          if (v.type === "release") return true;
+          if (v.type === "snapshot" && v.releaseTime) {
+            return new Date(v.releaseTime).getTime() >= sixMonthsAgo;
+          }
+          return false;
+        })
         .map(v => ({ id: v.id, type: v.type, releaseTime: v.releaseTime }));
       _versionsCache = versions;
       return versions;

@@ -23,10 +23,21 @@ function QRCodeComponent({ value, size = 180 }) {
   const canvasRef = useRef(null);
   useEffect(() => {
     if (canvasRef.current && value) {
-      QRCodeLib.toCanvas(canvasRef.current, value, { width: size });
+      QRCodeLib.toCanvas(canvasRef.current, value, {
+        width: size,
+        margin: 2,
+        color: { dark: "#000000", light: "#ffffff" },
+      });
     }
   }, [value, size]);
-  return <canvas ref={canvasRef} />;
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      style={{ display: "block", borderRadius: 8 }}
+    />
+  );
 }
 
 const PILL_STYLE = {
@@ -63,13 +74,16 @@ export default function LoginPage({ onLogin }) {
           await new Promise(r => setTimeout(r, 2000));
           continue;
         }
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        // Успешный автологин — аккаунт уже существует
         if (data.user && data.token) {
           setStep("success");
           setTimeout(() => onLogin(data), 700);
           return true;
         }
-        if (data.needNick) {
+        // Новый пользователь: сервер просит ник (needNick) ИЛИ вернул 400.
+        // В обоих случаях показываем форму ника, а не зацикливаемся молча.
+        if (data.needNick || res.status === 400) {
           setTgUser(tgUser);
           setLoading(false);
           setStep("nick");
@@ -78,6 +92,10 @@ export default function LoginPage({ onLogin }) {
       } catch {}
       await new Promise(r => setTimeout(r, 1000));
     }
+    // Все попытки исчерпаны — не оставляем пустой экран, ведём на форму ника
+    setTgUser(tgUser);
+    setLoading(false);
+    setStep("nick");
     return false;
   };
 

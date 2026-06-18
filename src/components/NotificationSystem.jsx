@@ -139,7 +139,7 @@ function ToastStack({ toasts, onDismiss }) {
     >
       <AnimatePresence>
         {toasts.map((n) => (
-          <Toast key={n.id} notif={n} onDismiss={onDismiss} />
+          <Toast key={`${n.id}-${n.time}`} notif={n} onDismiss={onDismiss} />
         ))}
       </AnimatePresence>
     </div>
@@ -376,7 +376,7 @@ export function NotificationBell() {
                   const Icon = meta.icon;
                   return (
                     <motion.div
-                      key={n.id}
+                      key={`${n.id}-${n.time}`}
                       initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.025 }}

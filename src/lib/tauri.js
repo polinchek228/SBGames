@@ -100,3 +100,22 @@ export async function getMinecraftStatus() {
 export async function killMinecraft() {
   return invoke("kill_minecraft");
 }
+
+// ─── Custom instances / modpacks ────────────────────────────────────────────
+
+export const instanceList = () => invoke("instance_list");
+export const instanceCreate = (cfg) => invoke("instance_create", { cfg });
+export const instanceDelete = (id) => invoke("instance_delete", { id });
+export const instanceUpdate = (cfg) => invoke("instance_update", { cfg });
+export const instanceOpenFolder = (id) => invoke("instance_open_folder", { id });
+
+export const javaEnsure = (version) => invoke("java_ensure", { version });
+
+export const launchInstance = (instanceId, username, uuid, accessToken) =>
+  invoke("launch_instance", { instanceId, username, uuid, accessToken });
+
+export const importMrpack = (filePath, customName) =>
+  invoke("import_mrpack", { filePath, customName });
+
+export const modVersions = (projectId, mcVersion, loader) =>
+  invoke("mod_versions", { projectId, mcVersion, loader });
