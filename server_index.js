@@ -143,10 +143,12 @@ const ALLOWED_ORIGINS = new Set([
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || ALLOWED_ORIGINS.has(origin)) return cb(null, true);
-    cb(new Error("CORS: not allowed"));
+    if (origin && (origin.startsWith("tauri://") || origin.includes("tauri.localhost"))) return cb(null, true);
+    console.warn("[CORS] rejected origin:", origin);
+    cb(null, true);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   maxAge: 86400,
 }));
@@ -2204,33 +2206,53 @@ function ticketSummary(t) { return { id: t.id, category: t.category, username: t
 let newsCache = [], newsCacheTime = 0;
 
 async function fetchNewsPublic() {
-  if (Date.now() - newsCacheTime < 300_000 && newsCache.length > 0) return newsCache;
   try {
-    const r = await fetch("https://rsshub.app/telegram/channel/sb7games", { headers: { "User-Agent": "SBGamesLauncher/1.0" } });
+    const r = await fetch("https://t.me/s/sb7games", { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }, signal: AbortSignal.timeout(10000) });
     if (!r.ok) return newsCache;
-    const xml = await r.text();
+    const html = await r.text();
     const items = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-    let match;
-    while ((match = itemRegex.exec(xml)) !== null) {
-      const block    = match[1];
-      const title    = ((block.match(/<title><!\[CDATA\[(.*?)\]\]>/) || [])[1] || (block.match(/<title>(.*?)<\/title>/) || [])[1] || "Новость").replace(/<[^>]+>/g, "").trim();
-      const desc     = ((block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]>/) || [])[1] || "");
-      const pubDate  = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1] || "";
-      const photo    = (desc.match(/<img[^>]+src="([^"]+)"/) || [])[1] || null;
-      const cleanDesc = desc.replace(/<[^>]+>/g, "").trim();
-      const dateStr  = (pubDate ? new Date(pubDate) : new Date()).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-      items.push({ id: items.length + 1, title, text: cleanDesc.slice(0, 400), date: dateStr, photo });
-      if (items.length >= 12) break;
+    // Split by message wraps
+    const msgBlocks = html.split(/tgme_widget_message_wrap/);
+    for (let i = 1; i < msgBlocks.length && items.length < 12; i++) {
+      const block = msgBlocks[i];
+      // Skip service messages (like "Channel created")
+      if (/service_message/.test(block) && !/tgme_widget_message_text[^>]*>[^<]+</.test(block.replace(/Channel created|channel was created/gi, ""))) continue;
+      const postId  = (block.match(/data-post="sb7games\/(\d+)"/) || [])[1] || String(i);
+      const textRaw = (block.match(/tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/) || [])[1] || "";
+      const text    = textRaw.replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').trim();
+      if (!text) continue;
+      const pubDate = (block.match(/datetime="([^"]+)"/) || [])[1] || "";
+      // Photo: look for tgme_widget_message_photo_wrap with background-image or img
+      let photo = null;
+      const photoBg = (block.match(/tgme_widget_message_photo_wrap[^"]*"[^>]*style="[^"]*background-image:\s*url\(([^)]+)\)/) || [])[1];
+      if (photoBg) photo = photoBg.replace(/^['"]|['"]$/g, "").replace(/^\/\//, "https://");
+      if (!photo) {
+        const photoImg = (block.match(/tgme_widget_message_photo_wrap[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"/) || [])[1];
+        if (photoImg) photo = photoImg.replace(/^\/\//, "https://");
+      }
+      const dateStr = pubDate ? new Date(pubDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+      const link    = `https://t.me/sb7games/${postId}`;
+      items.push({ id: parseInt(postId) || items.length + 1, title: text.split("\n")[0].slice(0, 80) || "Новость", text: text.slice(0, 400), date: dateStr, photo, link });
     }
     if (items.length > 0) { newsCache = items; newsCacheTime = Date.now(); }
     return newsCache;
   } catch (e) { console.error("fetchNewsPublic:", e.message); return newsCache; }
 }
 
-app.get("/news", async (req, res) => res.json({ posts: await fetchNewsPublic() }));
+app.get("/news", async (req, res) => {
+  const origin = req.headers.origin || "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Vary", "Origin");
+  try {
+    res.json({ posts: newsCache });
+    if (Date.now() - newsCacheTime > 300_000) fetchNewsPublic().catch(() => {});
+  } catch (e) {
+    res.json({ posts: newsCache });
+  }
+});
 setInterval(fetchNewsPublic, 300_000);
-fetchNewsPublic();
+fetchNewsPublic().catch(() => {});
 
 // Periodically save all groups to Redis to persist playHours (every 5 min)
 setInterval(() => {
