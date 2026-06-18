@@ -27,7 +27,15 @@ function formatHours(sec) {
   return `${m}м`;
 }
 
-const SERVER_LABEL = { starwars: "STARWARS" };
+const SERVER_LABEL = { starwars: "STARWARS", minigames: "MINIGAMES", gta: "GTA", vanilla_plus: "VANILA+", anarchy: "АНАРХИЯ" };
+
+const SERVER_IMAGE = {
+  starwars: "https://games.sb-capital.group/servers/starwars.jpg",
+  minigames: "https://games.sb-capital.group/servers/minigames.jpg",
+  gta: "https://games.sb-capital.group/servers/gta.jpg",
+  vanilla_plus: "https://games.sb-capital.group/servers/vanilla.jpg",
+  anarchy: "https://games.sb-capital.group/servers/anarchy.jpg",
+};
 
 export default function RecentActivityCard({ userId }) {
   const [data, setData] = useState({ totalSec: 0, byServer: {}, lastSessionAt: null, recent: [] });
@@ -112,9 +120,12 @@ export default function RecentActivityCard({ userId }) {
           <div className="flex flex-col gap-2.5">
             {serverEntries.map(([srv, sec]) => {
               const pct = data.totalSec ? Math.round((sec / data.totalSec) * 100) : 0;
+              const img = SERVER_IMAGE[srv];
               return (
                 <div key={srv} className="flex items-center gap-3 group">
-                  <span className="text-[12px] font-bold text-white/95 w-24 truncate group-hover:text-white transition-colors">
+                  {img && <img src={img} alt="" className="w-7 h-7 rounded-lg flex-shrink-0 object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
+                  {!img && <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)" }} />}
+                  <span className="text-[12px] font-bold text-white/95 w-20 truncate group-hover:text-white transition-colors">
                     {SERVER_LABEL[srv] || srv.toUpperCase()}
                   </span>
                   <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.04)" }}>

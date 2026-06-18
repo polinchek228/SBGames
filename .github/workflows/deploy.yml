@@ -18,7 +18,8 @@ on:
         required: false
 
 env:
-  SERVER: root@94.26.83.31
+  SERVER_HOST: 62.77.154.84
+  SERVER_USER: mnntn
   REMOTE_DIR: /opt/sbgames-auth
 
 jobs:
@@ -78,7 +79,6 @@ jobs:
           fi
           echo "✅ Signing key available (length: ${#TAURI_SIGNING_PRIVATE_KEY} chars)"
 
-      # ── Version: ручной ввод или из tauri.conf.json ──
       - name: Compute version
         id: version
         shell: bash
@@ -126,7 +126,6 @@ jobs:
             exit 1
           fi
 
-      # ── Build с подписью ──
       - name: Build Tauri app
         shell: bash
         env:
@@ -135,7 +134,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build
 
-      # ── Upload updater artifacts (не NSIS .exe, а .nsis.zip + .sig) ──
       - name: Upload Windows updater
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
@@ -166,7 +164,6 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
           if-no-files-found: warn
 
-      # ── Upload regular installers (для первичной установки) ──
       - name: Upload Windows installer
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
@@ -195,16 +192,13 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: warn
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # Деплой на сервер (только на Windows билде, т.к. NSIS — основная платформа)
-  # ═══════════════════════════════════════════════════════════════════════════
   deploy:
     needs: build-and-deploy
     runs-on: ubuntu-latest
     name: Deploy to server
 
     steps:
-      - name: Download server files
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
@@ -217,23 +211,18 @@ jobs:
         with:
           path: artifacts
 
-      - name: List all downloaded artifacts
-        run: find artifacts -type f | head -50
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass >/dev/null 2>&1
 
       - name: Clean old artifacts on server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASS }}
-          script: |
-            mkdir -p /opt/sbgames-auth/updates
-            find /opt/sbgames-auth/updates -type f ! -name '*.json' -delete
-            echo "Cleaned old build artifacts"
+        run: |
+          sshpass -p "${{ secrets.SERVER_PASS }}" \
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} \
+            "mkdir -p /opt/sbgames-auth/updates && find /opt/sbgames-auth/updates -type f ! -name '*.json' -delete && echo 'Cleaned'"
 
       - name: Deploy updater artifacts to server
         run: |
-          sudo apt-get install -y sshpass >/dev/null 2>&1
           find artifacts -type f -print0 | while IFS= read -r -d '' f; do
             fname=$(basename "$f")
             case "$fname" in
@@ -242,33 +231,21 @@ jobs:
                 sshpass -p "${{ secrets.SERVER_PASS }}" \
                   scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                   "$f" \
-                  ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/sbgames-auth/updates/ || true
+                  ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }}:/opt/sbgames-auth/updates/ || true
                 ;;
             esac
           done
-
-      - name: Generate latest.json on server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASS }}
-          script: python3 /opt/sbgames-auth/gen-latest.sh
 
       - name: Deploy server code
         run: |
           sshpass -p "${{ secrets.SERVER_PASS }}" \
             scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             server_index.js \
-            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/sbgames-auth/
+            ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }}:/opt/sbgames-auth/
 
-      - name: Restart server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASS }}
-          script: |
-            cd /opt/sbgames-auth
-            pm2 restart sbgames-auth
-            echo "✅ Deployed and restarted"
+      - name: Install deps and restart server
+        run: |
+          sshpass -p "${{ secrets.SERVER_PASS }}" \
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} \
+            "cd /opt/sbgames-auth && npm install --production 2>/dev/null && pm2 restart sbgames-auth && echo '✅ Deployed and restarted'"
