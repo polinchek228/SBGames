@@ -54,34 +54,34 @@ export const PALETTE = {
   "N": "#fbbf24", // искра жёлтая
 };
 
-// ── STARWARS — Nether Star (звезда Незера из MC, 8-конечная) ──
-// 4 кардинальных луча + 4 диагональных, белое тело, жёлтое ядро.
-// tip — остриё верхнего луча: (12, 0)
+// ── STARWARS — световой меч (lightsaber), синий клинок вверх ──
+// Клинок: u/U синий glow, F белое ядро. Рукоять: S хром, g тёмные пазы, K контур.
+// tip — остриё клинка по центру (колонка 12): (12, 0)
 export const SPRITE_STARWARS = [
-  "............KK..........",
-  "............KW..........",
-  "............KWK.........",
-  "............KWWK........",
-  "...........KWWWWK.......",
-  "..........KWWWWWWK......",
-  "KKKKKKKKKKKWWWWWWWKKKKKK",
-  ".KWWWWWWWWWWWWWWWWWWWK..",
-  "..KWWWWWKKWWWWWWKKWWWWK.",
-  "...KWWWKK..KWWK..KKWWWK.",
-  "....KWK.....KWW.....KWK.",
-  ".....K......KWW......K..",
-  "............KWWK........",
-  "............KWWK........",
-  "...........KWWWWK.......",
-  "..........KWWWWWWK......",
-  ".........KWWNNNNWWK.....",
-  "........KWWNyyyyNWWK....",
-  ".........KWWNNNNWWK.....",
-  "..........KWWWWWWK......",
-  "...........KWWWWK.......",
-  "............KWWK........",
-  ".............KK.........",
-  ".........................",
+  "............U...........",  // 12 dots | U | 11 dots  (24)
+  "............u...........",
+  "...........uFu..........",  // F на колонке 12
+  "...........uFu..........",
+  "..........uuFuu.........",  // клинок расширяется к основанию
+  "..........uuFuu.........",
+  "..........uuFuu.........",
+  "..........uuFuu.........",
+  "..........uuFuu.........",
+  "..........uuFuu.........",
+  "........GuuuFuuuG.......",  // основание клинка
+  "......GGGuuuFuuuGGG.....",  // эмиттер
+  ".....KSSSSSSSSSSSSSK....",  // гарда
+  ".....KSSSSSSSSSSSSSK....",
+  ".....KSSgSSgSSgSSgSK....",  // рукоять с пазами
+  ".....KSSgSSgSSgSSgSK....",
+  ".....KSSgSSgSSgSSgSK....",
+  ".....KSSgSSgSSgSSgSK....",
+  ".....KSSSSSSSSSSSSSK....",
+  ".....KKKKKKKKKKKKKKK....",  // навершие
+  "........................",
+  "........................",
+  "........................",
+  "........................",
 ];
 
 // ── MINIGAMES — кровать (MC bed, вид сбоку, зелёное одеяло) ──
@@ -206,7 +206,7 @@ export const SPRITE_ANARCHY = [
 // ── Таблица курсоров: id сервера → { sprite, tipX, tipY, name } ──
 // tipX/tipY — точка клика в координатах спрайта (куда наводится острие/активная точка).
 export const CURSORS = {
-  starwars:     { sprite: SPRITE_STARWARS,  tipX: 12, tipY: 1,  name: "lightsaber", glow: "rgba(167,139,250,0.55)" },
+  starwars:     { sprite: SPRITE_STARWARS,  tipX: 12, tipY: 0,  name: "lightsaber", glow: "rgba(59,130,246,0.55)" },
   minigames:    { sprite: SPRITE_MINIGAMES, tipX: 3,  tipY: 1,  name: "bed",        glow: "rgba(74,222,128,0.55)" },
   gta:          { sprite: SPRITE_GTA,       tipX: 12, tipY: 12, name: "target",     glow: "rgba(248,113,113,0.55)" },
   vanilla_plus: { sprite: SPRITE_VANILLA,   tipX: 19, tipY: 1,  name: "pickaxe",    glow: "rgba(34,211,238,0.55)" },
