@@ -2822,7 +2822,6 @@ pub fn run() {
                 });
             }
 
-            #[cfg(debug_assertions)]
             if let Some(w) = app.get_webview_window("main") {
                 w.open_devtools();
             }
