@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { DownloadSimple, WindowsLogo, AppleLogo, LinuxLogo, ArrowClockwise } from "@phosphor-icons/react";
+import { DownloadSimple, WindowsLogo, LinuxLogo, ArrowClockwise } from "@phosphor-icons/react";
 
 const PLATFORMS = [
-  { id: "windows", icon: WindowsLogo, label: "Windows", sub: "Windows 10 / 11",  ext: ".exe",      color: "#60a5fa" },
-  { id: "macos",   icon: AppleLogo,   label: "macOS",   sub: "macOS 10.15+",     ext: ".dmg",      color: "#a5b4fc" },
+  { id: "windows", icon: WindowsLogo, label: "Windows", sub: "Windows 10 / 11", ext: ".exe", color: "#60a5fa" },
   { id: "linux",   icon: LinuxLogo,   label: "Linux",   sub: "Ubuntu / Debian",  ext: ".AppImage", color: "#86efac" },
 ];
 
@@ -51,7 +50,7 @@ export default function DownloadPage() {
       </div>
 
       {/* Platform selector */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 gap-3 mb-6">
         {PLATFORMS.map(p => (
           <button key={p.id} onClick={() => setSelected(p.id)}
             className="rounded-2xl p-5 flex flex-col items-center gap-3 transition-all duration-150"
@@ -119,7 +118,7 @@ export default function DownloadPage() {
         )}
       </div>
 
-      {/* Notes */}
+      {/* Install notes */}
       <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
         <p className="text-[11px] font-bold tracking-widest uppercase mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>Установка</p>
         <div className="flex flex-col gap-2">
@@ -131,18 +130,6 @@ export default function DownloadPage() {
             <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.55)" }}>
               <span className="text-white font-semibold">Windows</span> — запусти .exe и следуй установщику
             </p>
-          </div>
-
-          <div className="flex items-start gap-3 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(165,180,252,0.12)" }}>
-              <AppleLogo size={14} weight="fill" color="#a5b4fc" />
-            </div>
-            <div>
-              <p className="text-[12px] font-semibold text-white mb-1">macOS — первый запуск</p>
-              <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-                Открой .dmg → перетащи в Applications. <span style={{ color: "#fbbf24" }}>Не двойной клик</span> — правой кнопкой → «Открыть» → снова «Открыть» в диалоге. Только один раз.
-              </p>
-            </div>
           </div>
 
           <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>

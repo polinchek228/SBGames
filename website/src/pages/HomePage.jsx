@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  GameController, TelegramLogo, YoutubeLogo, TiktokLogo,
+  TelegramLogo, YoutubeLogo, TiktokLogo,
   ArrowUpRight, CaretRight, UsersThree,
 } from "@phosphor-icons/react";
 
@@ -88,26 +88,32 @@ export default function HomePage() {
               <div style={{ ...sectionMeta }}>Ваш выбор — ваша история</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 6 }}>
-              <span style={{ color: "#3b82f6", fontSize: 9 }}>●</span> 1 сервер онлайн
+              <span style={{ color: "#3b82f6", fontSize: 9 }}>●</span> 5 серверов
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
             {[
-              { name: "STARWARS", color: "#a855f7" },
-            ].map(({ name, color }) => (
-              <Link key={name} to="/cabinet" style={{ ...card, padding: "22px 22px 26px", position: "relative", height: 150, display: "flex", flexDirection: "column", justifyContent: "space-between", textDecoration: "none", color: "#fff" }}>
-                <ArrowUpRight size={18} style={{ position: "absolute", top: 18, right: 18, color: "rgba(255,255,255,0.25)" }} />
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12,
-                  background: `${color}24`, border: `1px solid ${color}55`,
-                  boxShadow: `0 0 14px ${color}40`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <GameController size={24} color={color} weight="duotone" />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: "0.02em" }}>{name}</div>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginTop: 4 }}>{name.toLowerCase()}</div>
+              { id: "starwars",     name: "STARWARS",   color: "#a855f7", image: "https://games.sb-capital.group/servers/starwars.jpg",   sub: "Звёздные Войны" },
+              { id: "minigames",    name: "MINIGAMES",  color: "#22c55e", image: "https://games.sb-capital.group/servers/minigames.jpg", sub: "Мини-игры" },
+              { id: "gta",          name: "GTA",        color: "#ef4444", image: "https://games.sb-capital.group/servers/gta.jpg",       sub: "Grand Theft Auto RP" },
+              { id: "vanilla_plus", name: "VANILA+",    color: "#06b6d4", image: "https://games.sb-capital.group/servers/vanilla.jpg",   sub: "Ванильный+" },
+              { id: "anarchy",      name: "АНАРХИЯ",    color: "#f59e0b", image: "https://games.sb-capital.group/servers/anarchy.jpg",   sub: "Без правил" },
+            ].map(({ id, name, color, image, sub }) => (
+              <Link key={id} to="/download" style={{
+                position: "relative", height: 200, borderRadius: 20, overflow: "hidden",
+                display: "flex", flexDirection: "column", justifyContent: "flex-end",
+                textDecoration: "none", color: "#fff",
+              }}>
+                {/* hero image */}
+                <img src={image} alt={name} loading="lazy"
+                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "brightness(0.45)" }}
+                />
+                {/* gradient overlay */}
+                <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to top, ${color}30 0%, transparent 60%)` }} />
+                {/* content */}
+                <div style={{ position: "relative", padding: "20px 22px" }}>
+                  <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: "0.02em", textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>{name}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>{sub}</div>
                 </div>
               </Link>
             ))}
