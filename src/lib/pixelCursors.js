@@ -114,33 +114,35 @@ export const SPRITE_MINIGAMES = [
   ".........................",
 ];
 
-// ── GTA — прицел/мишень (bullseye target, красный) ──
-// tip — центр мишени: (12, 12)
+// ── GTA — долларовая купюра (dollar bill), вид спереди ──
+// Купюра: d тёмно-зелёная, S серый портрет/номинал, X красная лента (акцент),
+// g тёмные метки-номиналы на ленте, K контур.
+// tip — центр купюры: (12, 12)
 export const SPRITE_GTA = [
-  ".........................",
-  ".........................",
-  ".......KKKK..KKKK........",
-  "......K....KK....K.......",
-  ".....K..KKKKKKKK..K......",
-  "....K.KKxxxxxxxxKK.K.....",
-  "...K.KxxrrrrrrrrxxK.K....",
-  "..K.KxrrrrrrrrrrrrxK.K...",
-  "..K.KxrrXXXXXXXXXXrxK.K..",
-  "..K.KxrXXXXXXXXXXXrxK.K..",
-  "..K.KxrXXXXXXXXXXXrxK.K..",
-  "KKK.KxrXXXXXXXXXXXrxK.KKK",
-  "..K.KxrXXXXXXXXXXXrxK.K..",
-  "..K.KxrXXXXXXXXXXXrxK.K..",
-  "..K.KxrXXXXXXXXXXXrxK.K..",
-  "..K.KxrrXXXXXXXXXXrxK.K..",
-  "...K.KxxrrrrrrrrxxK.K....",
-  "....K.KKxxxxxxxxKK.K.....",
-  ".....K..KKKKKKKK..K......",
-  "......K....KK....K.......",
-  ".......KKKK..KKKK........",
-  ".........................",
-  ".........................",
-  ".........................",
+  "........................",
+  "....KKKKKKKKKKKKKKKK....",
+  "....KddddddddddddddK....",
+  "....KdSSSSSSSSSSSSdK....",
+  "....KdSSSSSSSSSSSSdK....",
+  "....KddddddddddddddK....",
+  "....KXXXXXXXXXXXXXXK....",
+  "....KXXXXgXXXXgXXXXK....",
+  "....KXXXXXXXXXXXXXXK....",
+  "....KddddddddddddddK....",
+  "....KdSSSSSSSSSSSSdK....",
+  "....KdSSSSSSSSSSSSdK....",
+  "....KddddddddddddddK....",
+  "....KKKKKKKKKKKKKKKK....",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
 ];
 
 // ── VANILA+ — кирка (pickaxe, диагональ, гол.руда cyan + дерево) ──
@@ -208,7 +210,7 @@ export const SPRITE_ANARCHY = [
 export const CURSORS = {
   starwars:     { sprite: SPRITE_STARWARS,  tipX: 12, tipY: 0,  name: "lightsaber", glow: "rgba(59,130,246,0.55)" },
   minigames:    { sprite: SPRITE_MINIGAMES, tipX: 3,  tipY: 1,  name: "bed",        glow: "rgba(74,222,128,0.55)" },
-  gta:          { sprite: SPRITE_GTA,       tipX: 12, tipY: 12, name: "target",     glow: "rgba(248,113,113,0.55)" },
+  gta:          { sprite: SPRITE_GTA,       tipX: 12, tipY: 12, name: "bills",      glow: "rgba(239,68,68,0.55)" },
   vanilla_plus: { sprite: SPRITE_VANILLA,   tipX: 19, tipY: 1,  name: "pickaxe",    glow: "rgba(34,211,238,0.55)" },
   anarchy:      { sprite: SPRITE_ANARCHY,   tipX: 11, tipY: 4,  name: "heart",      glow: "rgba(248,113,113,0.6)" },
 };
