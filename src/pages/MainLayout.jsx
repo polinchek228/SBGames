@@ -13,7 +13,7 @@ import SupportPage from "./SupportPage.jsx";
 import CommunityPage from "./CommunityPage.jsx";
 import DownloadProgress from "../components/DownloadProgress.jsx";
 import { NotificationBell, useNotifications, pushNotification } from "../components/NotificationSystem.jsx";
-import { notifyDesktop, setDiscordPresence, invoke } from "../lib/tauri.js";
+import { notifyDesktop, setDiscordPresence, invoke, safeInvoke } from "../lib/tauri.js";
 import { initWS, onWSMessage } from "../lib/ws.js";
 import { CATALOG_BY_ID } from "./catalog.js";
 
@@ -27,7 +27,9 @@ const NAV_ITEMS = [
 ];
 
 /* ── Global background video (experimental setting) ─────────────────────── */
-function GlobalBackground() {
+// Видео-фон отключён на странице «Играть» (там чёрный фон + фоны режимов).
+// На остальных страницах работает как раньше.
+function GlobalBackground({ page }) {
   const [videoSrc, setVideoSrc] = useState(null);
   const [videoFailed, setVideoFailed] = useState(false);
 
@@ -51,6 +53,8 @@ function GlobalBackground() {
     return () => { window.removeEventListener("storage", onStorage); window.removeEventListener("sbgames_equip_changed", update); };
   }, []);
 
+  // На странице «Играть» видео-фон не показываем — там чёрный фон.
+  if (page === "play") return null;
   if (!videoSrc || videoFailed) return null;
   return (
     <video
@@ -140,7 +144,7 @@ export default function MainLayout({ user, onLogout }) {
     };
     // IPC с треем: пушим актуальный стейт в popup
     const pushTrayState = () => {
-      invoke("tray_update_state", {
+      safeInvoke("tray_update_state", {
         user:    user ? { id: user.id, username: user.username, role: user.role, balance } : null,
         notifs:  null, // notifs обновляются ниже отдельно
         playing: false,
@@ -164,7 +168,7 @@ export default function MainLayout({ user, onLogout }) {
   // Синхронизируем уведомления в трей
   const { inbox } = useNotifications() || { inbox: [] };
   useEffect(() => {
-    invoke("tray_update_state", { user: null, notifs: inbox, playing: false });
+    safeInvoke("tray_update_state", { user: null, notifs: inbox, playing: false });
   }, [inbox]);
 
   const renderPage = (id) => {
@@ -278,7 +282,7 @@ export default function MainLayout({ user, onLogout }) {
 
       {/* ── Content ── */}
       <div className="flex-1 relative overflow-hidden">
-        <GlobalBackground />
+        <GlobalBackground page={page} />
         {NAV_ITEMS.map(({ id }) => (
           <motion.div
             key={id}

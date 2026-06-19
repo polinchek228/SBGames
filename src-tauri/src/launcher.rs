@@ -32,7 +32,7 @@ pub async fn launch_instance(
     username: String,
     uuid: String,
     access_token: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     use std::process::Stdio;
 
     // ── Single-launch protection ──
@@ -71,10 +71,17 @@ pub async fn launch_instance(
     let version_id = match cfg.loader {
         LoaderKind::Vanilla => cfg.mc_version.clone(),
         LoaderKind::Forge => {
-            let fv = cfg
-                .loader_version
-                .clone()
-                .ok_or("forge_version missing")?;
+            let fv = match cfg.loader_version.clone() {
+                Some(v) if !v.is_empty() => v,
+                _ => {
+                    emit(&app, "Подбор версии Forge…", 50, 100);
+                    let mut vers = loaders::forge::list_versions(&cfg.mc_version).await.unwrap_or_default();
+                    vers.retain(|v| !v.is_empty());
+                    vers.first().cloned().ok_or_else(|| format!(
+                        "Не удалось найти версию Forge для {}", cfg.mc_version
+                    ))?
+                }
+            };
             loaders::forge::install_forge(&cfg.mc_version, &fv, &inst_dir, &app).await?
         }
         LoaderKind::Fabric => {
@@ -96,10 +103,17 @@ pub async fn launch_instance(
             .await?
         }
         LoaderKind::NeoForge => {
-            let nv = cfg
-                .loader_version
-                .clone()
-                .ok_or("neoforge_version missing")?;
+            let nv = match cfg.loader_version.clone() {
+                Some(v) if !v.is_empty() => v,
+                _ => {
+                    emit(&app, "Подбор версии NeoForge…", 50, 100);
+                    let mut vers = loaders::neoforge::list_versions(&cfg.mc_version).await.unwrap_or_default();
+                    vers.retain(|v| !v.is_empty());
+                    vers.first().cloned().ok_or_else(|| format!(
+                        "Не удалось найти версию NeoForge для {}", cfg.mc_version
+                    ))?
+                }
+            };
             loaders::neoforge::install_neoforge(&nv, &inst_dir, &app).await?
         }
     };
@@ -111,6 +125,18 @@ pub async fn launch_instance(
 
     // 5. Смержить профили (vanilla + loader).
     let merged = merge_profile(&inst_dir, &version_id)?;
+
+    // 5b. Распаковать native-библиотеки (.dll/.so/.dylib) из native-classifier
+    // jar'ов в natives_dir. Критично для mac/linux (UnsatisfiedLinkError без этого);
+    // на Windows тоже надежнее, чем полагаться на lazy-extract LWJGL в temp.
+    let natives_dir = inst_dir.join("natives");
+    if !merged.natives.is_empty() {
+        emit(&app, "Распаковка natives…", 80, 100);
+        if let Err(e) = loaders::extract_natives(&merged.natives, &natives_dir) {
+            eprintln!("[extract_natives] {}", e);
+        }
+    }
+
     let resolved = resolve_placeholders(
         &merged,
         &cfg,
@@ -128,26 +154,41 @@ pub async fn launch_instance(
 
     let mut cmd = Command::new(&java_path);
 
-    // На Windows подавляем создание отдельного окна консоли.
-    // Без этого флага каждый spawn открывает cmd.exe → куча окон.
+    // На Windows открываем отдельное окно консоли для игры, чтобы пользователь
+    // видел логи Minecraft. CREATE_NEW_CONSOLE даёт живое окно, которое живёт,
+    // пока жив процесс Java (или остаётся, если добавить pause — но тут не надо).
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.creation_flags(0x00000010); // CREATE_NEW_CONSOLE
+    }
+
+    // На unix (mac/linux) запускаем Java в ОТДЕЛЬНОЙ process group (setsid),
+    // чтобы: (а) корректно убивать всё дерево процесса через killpg — эквивалент
+    // Win32 Job Object; (б) Java не получала SIGINT от терминала лаунчера;
+    // (в) survive закрытия/краша лаунчера как настоящий daemon.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                // Создаём новую сессию + process group.
+                libc::setsid();
+                Ok(())
+            });
+        }
     }
 
     apply_jvm_args(&mut cmd, &resolved, &cfg, &inst_dir);
     cmd.arg(&resolved.main_class);
     cmd.args(&resolved.game_args);
     cmd.current_dir(&inst_dir);
+
+    // stdout/stderr в pipe, чтобы дублировать вывод в лог-файл (tee).
     cmd.stdin(Stdio::null());
-    cmd.stdout(Stdio::from(
-        std::fs::File::create(log_dir.join("latest.log")).map_err(|e| e.to_string())?,
-    ));
-    cmd.stderr(Stdio::from(
-        std::fs::File::create(log_dir.join("stderr.log")).map_err(|e| e.to_string())?,
-    ));
-    let child = cmd.spawn().map_err(|e| format!("spawn java: {}", e))?;
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| format!("spawn java: {}", e))?;
     let pid = child.id();
 
     // Сохранить pid для single-launch проверки.
@@ -158,11 +199,60 @@ pub async fn launch_instance(
     cfg.last_played = Some(now_secs());
     let _ = instance::save(&cfg);
 
-    // Не ждём завершения — отдаём pid родителю.
-    std::mem::forget(child);
+    // Tee-поток: пишем stdout/stderr Java в лог-файлы, не блокируя запуск.
+    // Вывод идёт в файлы logs/latest.log и logs/stderr.log для дебага.
+    // Окно консоли (CREATE_NEW_CONSOLE на Windows) тоже показывает вывод.
+    if let Some(stdout) = child.stdout.take() {
+        let path = log_dir.join("latest.log");
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader, Write};
+            let mut file = match std::fs::File::create(&path) {
+                Ok(f) => f,
+                Err(_) => return,
+            };
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                let _ = writeln!(file, "{}", line);
+                let _ = file.flush();
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let path = log_dir.join("stderr.log");
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader, Write};
+            let mut file = match std::fs::File::create(&path) {
+                Ok(f) => f,
+                Err(_) => return,
+            };
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                let _ = writeln!(file, "{}", line);
+                let _ = file.flush();
+            }
+        });
+    }
+
+    // На unix нужен reaper-поток: wait() на Java, иначе после выхода остаётся
+    // зомби до закрытия лаунчера. Заодно чистим pid-файл.
+    // На Windows forget безопасен (нет зомби-модели).
+    #[cfg(unix)]
+    {
+        let pid_file_clone = pid_file.clone();
+        std::thread::spawn(move || {
+            // wait() блокирует пока Java не завершится; убирает зомби.
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&pid_file_clone);
+        });
+    }
+    #[cfg(not(unix))]
+    {
+        // Не ждём завершения — отдаём pid родителю.
+        std::mem::forget(child);
+    }
 
     emit(&app, "Запущено", 100, 100);
-    Ok(())
+    Ok(format!("{} запущен (pid={})", cfg.name, pid))
 }
 
 /// Раскрытые placeholders в args + собранный classpath.
@@ -178,6 +268,38 @@ fn now_secs() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// Фильтрует game_args: выкидывает пары `--флаг значение`, где значение пустое
+/// или осталось нераскрытым (`${...}`). Также выкидывает одиночные `${...}` токены.
+/// Это чинит падения MC на `--width ${resolution_width}` и quickPlay-аргументах.
+fn filter_unresolved_args(args: &[String]) -> Vec<String> {
+    let is_unresolved = |s: &str| -> bool {
+        let t = s.trim();
+        t.is_empty() || (t.starts_with("${") && t.ends_with("}"))
+    };
+    let mut out: Vec<String> = Vec::new();
+    let mut skip_next = false;
+    for (i, arg) in args.iter().enumerate() {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        // Одиночный нераскрытый токен.
+        if is_unresolved(arg) {
+            continue;
+        }
+        // Пара: `--флаг` + следующий токен нераскрыт/пуст → выкинуть оба.
+        if arg.starts_with("--") && i + 1 < args.len() {
+            if is_unresolved(&args[i + 1]) {
+                // Спец-флаги MC которые требуют значения; пропускаем пару.
+                skip_next = true;
+                continue;
+            }
+        }
+        out.push(arg.clone());
+    }
+    out
 }
 
 /// Подставить ${...} placeholders в args и собрать classpath.
@@ -241,6 +363,18 @@ fn resolve_placeholders(
             "${natives_directory}",
             natives_dir.to_string_lossy().to_string(),
         ),
+        // Разрешение окна (плейсхолдеры MC 1.13+).
+        ("${resolution_width}", "854".to_string()),
+        ("${resolution_height}", "480".to_string()),
+        // Опциональные поля (новые версии Mojang) — пустые, фильтруются ниже.
+        ("${clientid}", String::new()),
+        ("${auth_xuid}", String::new()),
+        ("${user_properties}", "{}".to_string()),
+        ("${quickPlayPath}", String::new()),
+        ("${quickPlaySingleplayer}", String::new()),
+        ("${quickPlayMultiplayer}", String::new()),
+        ("${quickPlayRealms}", String::new()),
+        ("${profile_properties}", "{}".to_string()),
     ];
 
     let subst = |s: &str| -> String {
@@ -251,8 +385,17 @@ fn resolve_placeholders(
         out
     };
 
-    let jvm_args: Vec<String> = merged.jvm_args.iter().map(|s| subst(s)).collect();
-    let game_args: Vec<String> = merged.game_args.iter().map(|s| subst(s)).collect();
+    let raw_jvm_args: Vec<String> = merged.jvm_args.iter().map(|s| subst(s)).collect();
+    let jvm_args = filter_unresolved_args(&raw_jvm_args);
+    // Для game_args: фильтруем пары `--флаг ${...}`, где значение после подстановки
+    // пустое или осталось нераскрытым (${...}). Иначе MC падает на NumberFormatException
+    // при парсинге --width ${resolution_width} и т.п.
+    // Также выкидываем --demo (ломает запуск в offline-режиме).
+    let raw_game_args: Vec<String> = merged.game_args.iter().map(|s| subst(s)).collect();
+    let game_args = filter_unresolved_args(&raw_game_args)
+        .into_iter()
+        .filter(|a| a != "--demo")
+        .collect();
 
     ResolvedLaunch {
         jvm_args,
@@ -279,21 +422,18 @@ fn apply_jvm_args(
         cmd.arg(a);
     }
 
-    // Все jvm_args из профиля (там уже подставлены placeholders).
-    // Отфильтруем те, что содержат ${classpath} — мы их заменим на wrapped-jar.
-    let mut has_classpath_arg = false;
+    // Профильные jvm_args (placeholders уже подставлены).
+    // Если профиль сам задаёт -cp / -p (module-path) — не добавляем свой -cp,
+    // иначе Forge BootstrapLauncher воспримет classpath как main class.
+    let profile_has_cp = resolved.jvm_args.iter().any(|a| a == "-cp" || a == "-p" || a == "--module-path");
     for a in &resolved.jvm_args {
-        if a.contains("${classpath}") || a.trim_start_matches('-').starts_with("cp") && a.contains("${classpath}") {
-            // пропустим — обработаем отдельно ниже.
-            continue;
-        }
-        if a == "-cp" {
-            has_classpath_arg = true;
-            continue;
-        }
         cmd.arg(a);
     }
-    let _ = has_classpath_arg;
+
+    if profile_has_cp {
+        // Профиль сам управляет classpath (Forge/NeoForge с BootstrapLauncher).
+        return;
+    }
 
     // Classpath: оцениваем длину. На Windows лимит ~32k для cmd, но CreateProcess
     // держит ~32767. Перестраховываемся на >16k → wrapped-manifest jar.

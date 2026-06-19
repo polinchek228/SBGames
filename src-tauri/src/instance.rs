@@ -72,21 +72,24 @@ fn default_kind() -> String {
 pub struct InstanceConfig {
     pub id: String,
     pub name: String,
+    #[serde(alias = "mcVersion")]
     pub mc_version: String,
     pub loader: LoaderKind,
-    #[serde(default)]
+    #[serde(default, alias = "loaderVersion")]
     pub loader_version: Option<String>,
+    #[serde(alias = "javaVersion")]
     pub java_version: u8,
-    #[serde(default = "default_min_ram")]
+    #[serde(default = "default_min_ram", alias = "minRamMb")]
     pub min_ram_mb: u32,
-    #[serde(default = "default_max_ram")]
+    #[serde(default = "default_max_ram", alias = "maxRamMb")]
     pub max_ram_mb: u32,
-    #[serde(default)]
+    #[serde(default, alias = "jvmArgs")]
     pub jvm_args: Vec<String>,
     #[serde(default)]
     pub mods: Vec<ModEntry>,
+    #[serde(default, alias = "createdAt")]
     pub created_at: i64,
-    #[serde(default)]
+    #[serde(default, alias = "lastPlayed")]
     pub last_played: Option<i64>,
     #[serde(default)]
     pub icon: Option<String>,

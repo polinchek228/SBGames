@@ -41,14 +41,14 @@ pub async fn install_forge(
     app: &AppHandle,
 ) -> Result<String, String> {
     let (_maj, minor, _patch) = parse_mc_version(mc_version);
-    // Версии < 1.13 — legacy. 1.13–1.17 — modern (headless installer).
-    // 1.18+ — new (извлечение из zip).
+    // Версии < 1.13 — legacy (ручное извлечение install_profile.json).
+    // 1.13+ — modern headless installer (java -jar installer.jar --installClient).
+    // Installer сам: создаёт version.json, генерирует srg/extra/client jar
+    // через деобфускацию vanilla client.jar, скачивает libraries.
     if minor <= 12 {
         install_forge_legacy(mc_version, forge_version, instance_dir, app).await
-    } else if minor <= 17 {
-        install_forge_modern(mc_version, forge_version, instance_dir, app).await
     } else {
-        install_forge_new(mc_version, forge_version, instance_dir, app).await
+        install_forge_modern(mc_version, forge_version, instance_dir, app).await
     }
 }
 
@@ -379,20 +379,64 @@ async fn install_forge_modern(
 ) -> Result<String, String> {
     let installer = download_installer(mc_version, forge_version, instance_dir, app).await?;
 
-    // Нужна Java 8 для запуска installer.jar (legacy installer не запустится на 17).
-    // Сначала пробуем системную Java из find_java(), иначе качаем 8.
+    // Для запуска installer.jar нужна Java подходящей версии:
+    //  - MC 1.13–1.16.5: installer совместим с Java 8
+    //  - MC 1.17+: installer требует Java 17+
+    // Пробуем системную Java, потом локальную нужной версии.
+    let (_mj, minor, _pt) = parse_mc_version(mc_version);
+    let want_java = if minor >= 17 { 17 } else { 8 };
     let java = crate::find_java()
-        .or_else(|| crate::java::find_local_java(8))
+        .or_else(|| crate::java::find_local_java(want_java))
         .ok_or("java not found for forge installer")?;
 
     emit(app, "Запуск Forge installer (headless)…", 0, 1);
+    // Forge installer требует файл launcher_profiles.json в целевой папке —
+    // он регистрирует версию в официальном лаунчере через него. Без него падает
+    // с "There is no minecraft launcher profile, you need to run the launcher first!".
+    // Создаём минимальный валидный профиль.
+    let profiles_path = instance_dir.join("launcher_profiles.json");
+    let profiles = serde_json::json!({
+        "profiles": {},
+        "selectedProfile": ""
+    });
+    let _ = std::fs::write(&profiles_path, profiles.to_string());
+
+    // Очистка forge-специфичных артефактов перед переустановкой.
+    // Installer падает с "Could not delete file" если slim/extra/srg/client.jar
+    // уже существуют от предыдущей попытки.
+    let forge_artifacts = ["net/minecraft/client", "net/minecraftforge/forge"];
+    for art in &forge_artifacts {
+        let p = instance_dir.join("libraries").join(art);
+        if p.exists() {
+            let _ = std::fs::remove_dir_all(&p);
+        }
+    }
+    // Старая forge-версия тоже может мешать.
+    let old_version_id = format!("{}-forge-{}", mc_version, forge_version);
+    let old_version_dir = instance_dir.join("versions").join(&old_version_id);
+    if old_version_dir.exists() {
+        let _ = std::fs::remove_dir_all(&old_version_dir);
+    }
+
     // Forge installer пишет профиль прямо в gameDir/versions/ при --installClient.
-    let status = std::process::Command::new(&java)
+    // --installClient запускается неинтерактивно (без GUI).
+    let mut installer_cmd = std::process::Command::new(&java);
+    installer_cmd
         .arg("-jar")
         .arg(&installer)
         .arg("--installClient")
-        .arg(instance_dir)
-        .current_dir(instance_dir)
+        .arg(instance_dir);
+    installer_cmd.current_dir(instance_dir);
+    installer_cmd.stdin(std::process::Stdio::null());
+
+    // На Windows не показываем окно консоли installer'а.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        installer_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let status = installer_cmd
         .output()
         .map_err(|e| format!("forge installer spawn: {}", e))?;
 

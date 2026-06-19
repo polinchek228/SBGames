@@ -64,9 +64,12 @@
       "timestampUrl": ""
     },
     "macOS": {
-      "minimumSystemVersion": "10.15",
-      "signingIdentity": null,
-      "entitlements": "entitlements.plist"
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": "-",
+      "entitlements": "entitlements.plist",
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": "SBGames"
     },
     "linux": {
       "deb": {

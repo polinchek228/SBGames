@@ -235,6 +235,31 @@ pub fn merge_profile(instance_dir: &Path, version_id: &str) -> Result<MergedProf
         }
     }
 
+    // ВАЖНО: сам файл версии (versions/<id>/<id>.jar) НЕ входит в libraries профиля
+    // — это подразумевается официальным лаунчером. Fabric Knot (и vanilla Main)
+    // ищут minecraft-классы именно в нём. Без этого — "couldn't locate the game".
+    // Добавляем jar КАЖДОГО профиля в цепочке (vanilla client.jar обязателен).
+    let mut version_jars: Vec<PathBuf> = Vec::new();
+    for prof in chain.iter() {
+        let vid = prof
+            .get("id")
+            .and_then(|i| i.as_str())
+            .unwrap_or("");
+        if vid.is_empty() {
+            continue;
+        }
+        let jar = instance_dir
+            .join("versions")
+            .join(vid)
+            .join(format!("{}.jar", vid));
+        if jar.exists() && !version_jars.iter().any(|p| p == &jar) {
+            version_jars.push(jar);
+        }
+    }
+    // version_jars идут ПЕРВЫМИ в classpath (приоритет у самой версии).
+    version_jars.extend(libraries);
+    let libraries = version_jars;
+
     Ok(MergedProfile {
         libraries,
         natives,
@@ -418,26 +443,51 @@ pub async fn ensure_profile_libraries(
     }
 
     let total = all.len();
-    for (i, lib) in all.iter().enumerate() {
-        if !lib_allowed_for_os(lib, our_os) {
-            continue;
-        }
-        if let Err(e) = ensure_one_library(lib, our_os, &libs_dir, app).await {
-            eprintln!("[ensure_profile_libraries] skip lib: {}", e);
-        }
-        if i % 5 == 0 {
-            let _ = app.emit(
-                "download_progress",
-                DownloadProgress {
-                    file: format!("Библиотеки: {}/{}", i, total),
-                    downloaded: i as u64,
-                    total: total as u64,
-                    speed_kbs: 0,
-                },
-            );
+    // Параллельная загрузка: 8 одновременных запросов как у TLauncher/офиц. лаунчера.
+    // Каждый lib — отдельная Future, ensure_one_library сам проверяет if !exists().
+    use futures_util::stream::{self, StreamExt};
+
+    // Фильтруем libs под нашу OS ДО параллельного запуска (чтобы знать total).
+    // Берём owned clone чтобы избежать lifetime-проблем в async stream.
+    let allowed: Vec<Value> = all.into_iter()
+        .filter(|lib| lib_allowed_for_os(lib, our_os))
+        .collect();
+    let allowed_total = allowed.len();
+
+    let results: Vec<Result<(), String>> = stream::iter(allowed.into_iter())
+        .map(|lib| ensure_one_library_owned(lib, our_os.to_string(), libs_dir.clone(), app))
+        .buffer_unordered(8)
+        .collect()
+        .await;
+
+    let failed = results.iter().filter(|r| r.is_err()).count();
+    for (i, r) in results.iter().enumerate() {
+        if let Err(e) = r {
+            eprintln!("[ensure_profile_libraries] skip lib #{}: {}", i, e);
         }
     }
+    let _ = app.emit(
+        "download_progress",
+        DownloadProgress {
+            file: format!("Библиотеки: {}/{}", allowed_total - failed, allowed_total),
+            downloaded: (allowed_total - failed) as u64,
+            total: allowed_total as u64,
+            speed_kbs: 0,
+        },
+    );
+    let _ = total;
     Ok(())
+}
+
+/// То же что ensure_one_library, но принимает owned Value + PathBuf —
+/// нужно для параллельного запуска в buffer_unordered (без borrow lifetime).
+async fn ensure_one_library_owned(
+    lib: Value,
+    our_os: String,
+    libs_dir: PathBuf,
+    app: &AppHandle,
+) -> Result<(), String> {
+    ensure_one_library(&lib, &our_os, &libs_dir, app).await
 }
 
 /// Скачать одну library (artifact + native classifiers), если отсутствует.
@@ -501,6 +551,71 @@ async fn ensure_one_library(
 /// Проверить, поддерживает ли загрузчик моды (vanilla — нет).
 pub fn supports_mods(loader: &LoaderKind) -> bool {
     !matches!(loader, LoaderKind::Vanilla)
+}
+
+/// Распаковать native-библиотеки (.dll/.so/.dylib) из native-classifier jar'ов
+/// в natives_dir. Без этого Minecraft падает на mac/linux (UnsatisfiedLinkError),
+/// а на Windows работает только потому, что LWJGL сам экстрактит в java.io.tmpdir.
+///
+/// Каждый native-jar содержит флаг META-INF/versions — LWJGL 3 expects extraction.
+/// Кроссплатформенно: фильтруем по расширению под текущую ОС.
+pub fn extract_natives(native_jars: &[PathBuf], natives_dir: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(natives_dir).map_err(|e| format!("mkdir natives: {}", e))?;
+
+    // Расширение native-библиотек под текущую ОС.
+    let native_ext = if cfg!(target_os = "windows") {
+        "dll"
+    } else if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+
+    use std::io::Read;
+    for jar_path in native_jars {
+        if !jar_path.exists() {
+            continue;
+        }
+        let file = match std::fs::File::open(jar_path) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let mut zip = match zip::ZipArchive::new(file) {
+            Ok(z) => z,
+            Err(_) => continue,
+        };
+
+        // Проходим по всем записям, извлекаем только native-библиотеки.
+        // Пропускаем META-INF/ (манифесты, сигнатуры) — они не нужны.
+        for i in 0..zip.len() {
+            let mut entry = match zip.by_index(i) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let name = entry.name().to_string();
+            if name.starts_with("META-INF/") {
+                continue;
+            }
+            // Берём файлы с расширением .dll/.so/.dylib под нашу ОС.
+            // На mac также могут быть .jnilib — извлекаем тоже.
+            let is_native = name.ends_with(&format!(".{}", native_ext))
+                || (cfg!(target_os = "macos") && name.ends_with(".jnilib"));
+            if !is_native {
+                continue;
+            }
+            // Имя файла без директории.
+            let fname = std::path::Path::new(&name)
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| name.clone());
+            let dest = natives_dir.join(&fname);
+            // Извлекаем, перезаписывая (jar мог обновиться).
+            if let Ok(mut out) = std::fs::File::create(&dest) {
+                let _ = std::io::copy(&mut entry, &mut out);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Игнор unused — для API, который использует внешние вызовы.

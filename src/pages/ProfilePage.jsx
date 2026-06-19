@@ -229,7 +229,8 @@ function ProfileTab({ user, equip }) {
       <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto w-full px-8 pt-8 pb-6 gap-6">
         {/* ═══ HEADER ═══ */}
         <div className="relative flex-shrink-0 px-6 pt-8 pb-6">
-          <div className="flex items-end gap-5">
+          <div className="flex items-start justify-between gap-5">
+            <div className="flex items-start gap-5">
             {/* Avatar — larger */}
             <div className="relative cursor-pointer group flex-shrink-0" onClick={() => setShowAvatarPicker(true)}>
               {frameColor && frameItem?.image ? (
@@ -260,27 +261,8 @@ function ProfileTab({ user, equip }) {
                 style={{ background: "#22c55e", border: "2.5px solid #0d0d12", zIndex: 15 }} />
             </div>
 
-            {/* SBT badge — same size as avatar */}
-            <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
-              style={{ background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
-              <img src="/money.png" alt="" className="w-7 h-7 object-contain"
-                style={{ filter: "drop-shadow(0 0 6px rgba(250,204,21,0.6))" }}
-                onError={(e) => { e.currentTarget.style.display = "none"; }} />
-              <span className="text-[22px] font-black text-white tabular-nums leading-none">
-                {(user?.balance ?? 0).toLocaleString("ru-RU")}
-              </span>
-              <span className="text-[10px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
-            </div>
-
-            {/* LVL badge — same size as avatar */}
-            <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
-              style={{ background: "rgba(37,99,235,0.1)", border: "2px solid rgba(59,130,246,0.2)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
-              <span className="text-[28px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
-              <span className="text-[10px] font-bold tracking-wider" style={{ color: "rgba(96,165,250,0.6)" }}>LVL</span>
-            </div>
-
             {/* Name + info */}
-            <div className="flex-1 min-w-0 pb-1">
+            <div className="min-w-0 pb-1">
 
               {/* Row 1: Ник + теги + Telegram */}
               <div className="flex items-center gap-2.5 flex-wrap">
@@ -361,6 +343,30 @@ function ProfileTab({ user, equip }) {
                 )}
               </div>
 
+            </div>
+            </div>
+
+            {/* Balance + LVL — right side */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {/* SBT badge — same size as avatar */}
+              <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
+                style={{ background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+                <img src="/money.png" alt="" className="w-7 h-7 object-contain"
+                  style={{ filter: "drop-shadow(0 0 6px rgba(250,204,21,0.6))" }}
+                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                <span className="text-[22px] font-black text-white tabular-nums leading-none">
+                  {(user?.balance ?? 0).toLocaleString("ru-RU")}
+                </span>
+                <span className="text-[10px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
+              </div>
+
+              {/* LVL badge — same size as avatar */}
+              <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
+                style={{ background: "rgba(37,99,235,0.1)", border: "2px solid rgba(59,130,246,0.2)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+                <Zap size={22} style={{ color: "#60a5fa" }} />
+                <span className="text-[28px] font-black tabular-nums leading-none" style={{ color: "#60a5fa" }}>1</span>
+                <span className="text-[10px] font-bold tracking-wider" style={{ color: "rgba(96,165,250,0.6)" }}>LVL</span>
+              </div>
             </div>
           </div>
 

@@ -895,13 +895,7 @@ async fn launch_minecraft(
     // -DmergeModules для JNA
     cmd.arg("-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar");
 
-    // Write embedded sbg-bootstrap.jar from memory
-    let bootstrap_bytes = include_bytes!("../../public/sbg-bootstrap.jar");
-    let bootstrap_path = mc_dir.join("sbg-bootstrap.jar");
-    std::fs::write(&bootstrap_path, bootstrap_bytes)
-        .map_err(|e| format!("Failed to write sbg-bootstrap.jar: {}", e))?;
-
-    // Generate wrapped sbg-classpath.jar
+    // Generate wrapped sbg-classpath.jar (BootstrapLauncher is loaded via --module-path).
     let classpath_jar_path = mc_dir.join("sbg-classpath.jar");
     generate_wrapped_classpath_manifest(&classpath_jar_path, &rest_classpath, &mc_dir)?;
 
@@ -920,11 +914,12 @@ async fn launch_minecraft(
 
     write_mod_hash_manifest_from_whitelist(&mc_dir)?;
 
-    // Point -cp strictly to sbg-bootstrap.jar and sbg-classpath.jar
-    cmd.arg("-cp").arg(format!("sbg-bootstrap.jar{}sbg-classpath.jar", cp_sep));
+    // Classpath: только sbg-classpath.jar (wraps rest_classpath JAR'ы в манифесте).
+    // BootstrapLauncher доступен через --module-path (boot_modules).
+    cmd.arg("-cp").arg("sbg-classpath.jar");
 
-    // Main class — custom security bootstrapper instead of CPW bootstraplauncher
-    cmd.arg("com.sbgames.bootstrap.SBGBootstrap");
+    // Main class — Forge BootstrapLauncher напрямую (SBGBootstrap прослойка убрана).
+    cmd.arg("cpw.mods.bootstraplauncher.BootstrapLauncher");
 
     cmd.arg("--username").arg(&username);
     cmd.arg("--version").arg(format!("1.20.1-forge-{}", forge_version));
@@ -963,7 +958,7 @@ async fn launch_minecraft(
     let log_out = std::fs::File::create(&java_log);  // перезаписываем для stdout
     let log_err = std::fs::File::create(&java_err).ok();
 
-    cmd.stdin(Stdio::piped());
+    cmd.stdin(Stdio::null());
     cmd.stdout(if let Ok(f) = log_out { Stdio::from(f) } else { Stdio::null() });
     cmd.stderr(if let Some(f) = log_err { Stdio::from(f) } else { Stdio::null() });
     cmd.current_dir(&mc_dir);
@@ -1012,13 +1007,9 @@ async fn launch_minecraft(
         });
     }
 
-    // Secure key handoff via stdin pipe
-    let session_key = generate_secure_random_key();
-    if let Some(mut stdin) = child.stdin.take() {
-        use std::io::Write as _;
-        let _ = writeln!(stdin, "{}", session_key);
-        let _ = stdin.flush();
-    }
+    // Secure key handoff больше не нужен: SBGBootstrap прослойка убрана,
+    // BootstrapLauncher не читает stdin. stdin оставляем piped только если
+    // нужно для управления — но пока просто закрываем.
 
     // Очищаем предыдущий guard-trigger (если был)
     let _ = std::fs::remove_file(mc_dir.join(".guard-trigger"));
@@ -1432,8 +1423,12 @@ async fn launch_minecraft(
                                         let _ = std::process::Command::new("taskkill")
                                             .args(["/PID", &pid_b.to_string(), "/F", "/T"]).output();
                                     }
-                                    #[cfg(target_os = "linux")]
+                                    #[cfg(unix)]
                                     {
+                                        // mac + linux: kill -9 процесса. На mac нет отдельной ветки,
+                                        // но unix cfg покрывает обе. Дерево убивается т.к. Java в своей
+                                        // process group (setsid в launcher) — killpg надёжнее, но
+                                        // kill -9 pid тоже сработает.
                                         let _ = std::process::Command::new("kill").arg("-9").arg(pid_b.to_string()).output();
                                     }
                                     let _ = std::fs::remove_file(mc_dir_b.join(".minecraft.pid"));
@@ -1549,11 +1544,18 @@ async fn kill_minecraft() -> Result<(), String> {
                 .arg("/F").arg("/T")
                 .output();
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(unix)]
         {
-            let _ = std::process::Command::new("kill")
-                .arg("-9").arg(pid.to_string())
-                .output();
+            // Java запущена в своей process group (setsid в launcher), pid == pgid.
+            // killpg убивает всё дерево (эквивалент Win32 /T и Job Object kill).
+            // Сначала SIGTERM (мягко), потом SIGKILL если не умер.
+            unsafe {
+                libc::killpg(pid as i32, libc::SIGTERM);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            unsafe {
+                libc::killpg(pid as i32, libc::SIGKILL);
+            }
         }
     }
     let _ = std::fs::remove_file(minecraft_dir().join(".minecraft.pid"));
@@ -2083,9 +2085,10 @@ pub(crate) fn find_java() -> Option<PathBuf> {
         let p = PathBuf::from(jh).join(if cfg!(target_os = "windows") { "bin/java.exe" } else { "bin/java" });
         if p.exists() { return Some(p); }
     }
-    // 2. PATH
+    // 2. PATH через системный which/where (where = Windows, which = unix).
     let exe = if cfg!(target_os = "windows") { "java.exe" } else { "java" };
-    if let Ok(out) = std::process::Command::new("where").arg(exe).output() {
+    let lookup = if cfg!(target_os = "windows") { "where" } else { "which" };
+    if let Ok(out) = std::process::Command::new(lookup).arg(exe).output() {
         if out.status.success() {
             let s = String::from_utf8_lossy(&out.stdout);
             if let Some(line) = s.lines().next() {
@@ -2094,13 +2097,56 @@ pub(crate) fn find_java() -> Option<PathBuf> {
             }
         }
     }
-    // 3. Common locations
-    let candidates = [
-        r"C:\Program Files\Java\jdk-17\bin\java.exe",
-        r"C:\Program Files\Java\jdk-21\bin\java.exe",
-        r"C:\Program Files\Eclipse Adoptium\jdk-17.0.10.7-hotspot\bin\java.exe",
-        "/usr/bin/java", "/usr/local/bin/java", "/opt/java/bin/java",
-    ];
+    // 3. Common locations — кроссплатформенно.
+    let mut candidates: Vec<String> = Vec::new();
+    if cfg!(target_os = "windows") {
+        candidates.extend([
+            r"C:\Program Files\Java\jdk-17\bin\java.exe".to_string(),
+            r"C:\Program Files\Java\jdk-21\bin\java.exe".to_string(),
+            r"C:\Program Files\Eclipse Adoptium\jdk-17.0.10.7-hotspot\bin\java.exe".to_string(),
+        ]);
+    } else if cfg!(target_os = "macos") {
+        // macOS: JDK лежат в /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home.
+        // /usr/libexec/java_home возвращает текущий активный JDK.
+        if let Ok(out) = std::process::Command::new("/usr/libexec/java_home").output() {
+            if out.status.success() {
+                let home = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !home.is_empty() {
+                    candidates.push(format!("{}/bin/java", home));
+                }
+            }
+        }
+        // Сканируем установленные JDK (Temurin, Oracle, Corretto, Zulu).
+        if let Ok(rd) = std::fs::read_dir("/Library/Java/JavaVirtualMachines") {
+            let mut jdks: Vec<String> = rd.flatten().filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                // Преференсы: jdk-17, temurin-17, corretto-17, zulu-17 — приоритет 17 для MC 1.17+.
+                if name.contains("17") || name.contains("21") {
+                    Some(format!("/Library/Java/JavaVirtualMachines/{}/Contents/Home/bin/java", name))
+                } else {
+                    None
+                }
+            }).collect();
+            jdks.sort();
+            candidates.extend(jdks);
+        }
+        // Homebrew (Apple Silicon + Intel).
+        candidates.push("/opt/homebrew/opt/openjdk@17/bin/java".to_string());
+        candidates.push("/opt/homebrew/opt/openjdk@21/bin/java".to_string());
+        candidates.push("/opt/homebrew/opt/openjdk/bin/java".to_string());
+        candidates.push("/usr/local/opt/openjdk@17/bin/java".to_string());
+    } else {
+        // Linux: системные пакеты + ручные установки.
+        candidates.extend([
+            "/usr/bin/java".to_string(),
+            "/usr/local/bin/java".to_string(),
+            "/opt/java/bin/java".to_string(),
+            "/usr/lib/jvm/java-17-openjdk/bin/java".to_string(),
+            "/usr/lib/jvm/java-17-openjdk-amd64/bin/java".to_string(),
+            "/usr/lib/jvm/java-21-openjdk/bin/java".to_string(),
+            "/usr/lib/jvm/default-java/bin/java".to_string(),
+        ]);
+    }
     for c in candidates.iter() {
         let p = PathBuf::from(c);
         if p.exists() { return Some(p); }
@@ -2222,10 +2268,19 @@ pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri
 
     std::fs::create_dir_all(dest.parent().unwrap()).ok();
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(45))
-        .build()
-        .map_err(|e| format!("Client build error: {}", e))?;
+    // Переиспользуем общий HTTP-клиент с пулом соединений (keep-alive) —
+    // критично для скорости при параллельной загрузке десятков библиотек.
+    // Создание клиента на каждый файл = ~100ms оверхед на TLS-handshake.
+    static SHARED_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = SHARED_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .pool_max_idle_per_host(16)
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    });
 
     let mut urls = vec![url.to_string()];
     if url.contains("libraries.minecraft.net") {
@@ -2247,14 +2302,14 @@ pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri
                 Ok(r) => r,
                 Err(e) => {
                     last_err = e.to_string();
-                    std::thread::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1)));
+                    tokio::time::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1))).await;
                     continue;
                 }
             };
 
             if !res.status().is_success() {
                 last_err = format!("HTTP {}", res.status());
-                std::thread::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1)));
+                tokio::time::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1))).await;
                 continue;
             }
 
@@ -2640,7 +2695,7 @@ pub(crate) fn generate_wrapped_classpath_manifest(path: &std::path::Path, rest_c
 
     let mut manifest = String::new();
     manifest.push_str("Manifest-Version: 1.0\r\n");
-    manifest.push_str("Main-Class: com.sbgames.bootstrap.SBGBootstrap\r\n");
+    manifest.push_str("Main-Class: cpw.mods.bootstraplauncher.BootstrapLauncher\r\n");
     
     let mut cp_value = String::new();
     for p in rest_classpath {

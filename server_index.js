@@ -34,29 +34,40 @@ setInterval(() => { const now = Date.now(); for (const [k, v] of googlePending) 
 const SSL_KEY  = process.env.SSL_KEY  || "/etc/ssl/private/sbgames.key";
 const SSL_CERT = process.env.SSL_CERT || "/etc/ssl/certs/sbgames.crt";
 
-// GцЗGцЗGцЗ Redis GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Redis ────────────────────────────────────────────────────────────────────
 const redis = new Redis({ host: "127.0.0.1", port: 6379, lazyConnect: true });
 redis.connect().catch(() => console.warn("[redis] not available, using memory"));
 
-// ????????? ??? ?????????? ????????????? JWT_SECRET
+// Загрузка стабильного JWT-секрета.
+// ВАЖНО: вызывается через await ДО старта HTTP/WS (см. конец файла).
+// Без этого первый запрос /auth/tg-login мог прийти ДО загрузки секрета из
+// Redis → токен подписывался эфемерным секретом, который тут же менялся →
+// юзер получал невалидный токен и при перезаходе снова видел экран логина.
 async function loadJwtSecret() {
+  // 1) Если секрет явно задан в env — используем его синхронно. Это даёт
+  //    стабильность токенов между рестартами/деплоями даже без Redis.
+  if (process.env.JWT_SECRET) {
+    JWT_SECRET = process.env.JWT_SECRET;
+    console.log("[jwt] secret loaded from env");
+    return;
+  }
+  // 2) Иначе тянем/генерим через Redis (стабильно между рестартами при наличии Redis).
   try {
     const stored = await redis.get("sbgames:jwt_secret");
     if (stored) { JWT_SECRET = stored; }
     else {
-      JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(48).toString("hex");
+      JWT_SECRET = crypto.randomBytes(48).toString("hex");
       await redis.set("sbgames:jwt_secret", JWT_SECRET);
     }
-    console.log("[jwt] secret loaded");
-  } catch { console.warn("[jwt] redis unavailable, using ephemeral secret"); }
+    console.log("[jwt] secret loaded from redis");
+  } catch { console.warn("[jwt] redis unavailable, using ephemeral secret — tokens WILL invalidate on restart"); }
 }
-loadJwtSecret();
 
 const redisAccounts = { _map: new Map(),
   async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
   async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
   values()        { return this._map.values(); },
-  // ????? ?? ???? ????????? ? Redis + memory
+  // Поиск по части имени в Redis + memory
   async search(q, limit = 30) {
     if (!q || q.length < 2) return [];
     const ql = q.toLowerCase();
@@ -65,7 +76,7 @@ const redisAccounts = { _map: new Map(),
     for (const acc of this._map.values()) {
       if (acc.username?.toLowerCase().includes(ql)) results.push(acc);
     }
-    // Redis scan (?? ?????? ???? ? memory ???, ? ? redis ????)
+    // Redis scan (на случай если нет в memory, но есть в redis)
     if (results.length < limit) {
       try {
         const stream = redis.scanStream({ match: "acc:*", count: 200 });
@@ -89,22 +100,22 @@ const redisAccounts = { _map: new Map(),
 
 const app = express();
 
-// GцЗGцЗGцЗ Trust proxy (nginx) GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Trust proxy (nginx) ──────────────────────────────────────────────────────
 app.set("trust proxy", 1);
 
-// GцЗGцЗGцЗ Static: backgrounds (video files) GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Static: backgrounds (video files) ────────────────────────────────────────
 app.use("/backgrounds", express.static(
   require("path").join(__dirname, "backgrounds"),
   { maxAge: "7d", etag: true, lastModified: true }
 ));
 
-// GцЗGцЗGцЗ Static: frames (PNG images) GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Static: frames (PNG images) ──────────────────────────────────────────────
 app.use("/frames", express.static(
   require("path").join(__dirname, "frames"),
   { maxAge: "7d", etag: true, lastModified: true }
 ));
 
-// GцЗGцЗGцЗ Static: icons (PNG images) GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Static: icons (PNG images) ───────────────────────────────────────────────
 app.use("/icons", express.static(
   require("path").join(__dirname, "icons"),
   { maxAge: "7d", etag: true, lastModified: true }
@@ -116,7 +127,7 @@ app.use("/servers", express.static(
   { maxAge: "7d", etag: true, lastModified: true }
 ));
 
-// GцЗGцЗGцЗ Security headers GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Security headers ─────────────────────────────────────────────────────────
 // CSP is intentionally minimal GЗц this is an API server, not serving HTML pages.
 // The strict CSP was causing Mac/webview clients to fail loading resources.
 app.use(helmet({
@@ -131,7 +142,7 @@ app.use(helmet({
   permittedCrossDomainPolicies: { permittedPolicies: "none" },
 }));
 
-// GцЗGцЗGцЗ CORS GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── CORS ─────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = new Set([
   "https://api.hyperionsearch.xyz",
   "https://api.sbgames.hyperionsearch.xyz:8443",
@@ -159,15 +170,15 @@ app.use(cors({
   maxAge: 86400,
 }));
 
-// GцЗGцЗGцЗ Body limits GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Body limits ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: "16kb" }));
 
-// GцЗGцЗGцЗ IP blocklist (Redis-backed, in-memory fallback) GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
-const blockedIPs     = new Map(); // ip GеЖ unblock timestamp
-const failedAttempts = new Map(); // ip GеЖ { count, firstAt }
-const BLOCK_AFTER    = 8;         // ????????? ???????
-const BLOCK_TTL      = 15 * 60 * 1000; // 15 ?????
-const ATTEMPT_WINDOW = 10 * 60 * 1000; // ???? ????????
+// ─── IP blocklist (Redis-backed, in-memory fallback) ─────────────────────────
+const blockedIPs     = new Map(); // ip → unblock timestamp
+const failedAttempts = new Map(); // ip → { count, firstAt }
+const BLOCK_AFTER    = 8;         // неудачных попыток
+const BLOCK_TTL      = 15 * 60 * 1000; // 15 минут
+const ATTEMPT_WINDOW = 10 * 60 * 1000; // окно подсчёта
 
 function getIP(req) {
   const forwarded = req.headers && req.headers["x-forwarded-for"];
@@ -207,27 +218,27 @@ function recordFailure(ip) {
 
 function blockMiddleware(req, res, next) {
   const ip = getIP(req);
-  if (isBlocked(ip)) return res.status(429).json({ message: "??????? ????? ???????. ?????????? ?????." });
+  if (isBlocked(ip)) return res.status(429).json({ message: "Слишком много попыток. Попробуйте позже." });
   next();
 }
 
-// GцЗGцЗGцЗ Rate limiters GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Rate limiters ────────────────────────────────────────────────────────────
 const makeLimit = (windowMs, max, msg) => rateLimit({
   windowMs, max,
-  message:        { message: msg || "??????? ????? ????????" },
+  message:        { message: msg || "Слишком много запросов" },
   standardHeaders: true,
   legacyHeaders:  false,
   keyGenerator:   req => getIP(req),
   skip:           req => isAdmin(req.body?.username) || isAdminId(String(req.body?.tgUser?.id || "")),
 });
 
-const authLimiter      = makeLimit(60_000, 30,  "??????? ????? ??????? ?????");
-const apiLimiter       = makeLimit(60_000, 100, "??????? ????? ????????");
-const strictLimiter    = makeLimit(60_000, 3,   "???????? ????? ????????");
+const authLimiter      = makeLimit(60_000, 30,  "Слишком много попыток входа");
+const apiLimiter       = makeLimit(60_000, 100, "Слишком много запросов");
+const strictLimiter    = makeLimit(60_000, 3,   "Превышен лимит запросов");
 
 app.use("/auth/tg-login",    blockMiddleware, authLimiter);
 app.use("/auth/widget-login", blockMiddleware, authLimiter);
-// create-code ? check-code — ??? ???????, ??? ?????????? ????????
+// create-code и check-code — без лимитов, это безобидные операции
 app.use("/payments",         blockMiddleware, strictLimiter);
 app.use("/admin",            blockMiddleware);
 app.use("/api",              apiLimiter);
@@ -363,7 +374,7 @@ app.get("/downloads/latest.json", (_req, res) => {
 });
 
 
-// GцЗGцЗGцЗ Request ID & logging GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Request ID & logging ─────────────────────────────────────────────────────
 app.use((req, _res, next) => {
   req.reqId = uuidv4().slice(0, 8);
   next();
@@ -404,7 +415,7 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-// GцЗGцЗGцЗ Stores GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Stores ───────────────────────────────────────────────────────────────────
 const tickets        = new Map();
 const friendships    = new Map();
 const friendRequests = new Map();
@@ -423,9 +434,9 @@ function sendToUser(userId, data) {
   for (const c of wsClients.values()) { if (c.userId === userId) send(c.ws, data); }
 }
 
-// GцЗGцЗGцЗ REST GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── REST ─────────────────────────────────────────────────────────────────────
 
-// ???? ????? Telegram Widget (? ???????????? ????)
+// Вход через Telegram Widget (с верификацией хэша)
 function verifyTelegramAuth(data) {
   const { hash, ...fields } = data;
   if (!hash) return false;
@@ -439,9 +450,9 @@ function verifyTelegramAuth(data) {
 
 app.post("/auth/widget-login", async (req, res) => {
   const tgData = req.body;
-  if (!tgData || !tgData.hash) return res.status(400).json({ message: "??? ??????" });
+  if (!tgData || !tgData.hash) return res.status(400).json({ message: "Нет данных" });
 
-  if (!verifyTelegramAuth(tgData)) return res.status(401).json({ message: "???????? ??????? Telegram" });
+  if (!verifyTelegramAuth(tgData)) return res.status(401).json({ message: "Неверная подпись Telegram" });
 
   const tgId = String(tgData.id);
   let account = await redisAccounts.get(tgId);
@@ -459,21 +470,21 @@ app.post("/auth/widget-login", async (req, res) => {
   res.json({ user: account, token: signToken(tgId) });
 });
 
-// ?????????? ??????????? (???) — ???????????? desktop flow
+// Завершение регистрации (ник) — поддерживает desktop flow
 app.post("/auth/tg-login", async (req, res) => {
   const ip = getIP(req);
   const { tgUser, username } = req.body;
   if (!tgUser) {
     recordFailure(ip);
-    return res.status(400).json({ message: "???????????? ???? ???????????" });
+    return res.status(400).json({ message: "Обязательные поля отсутствуют" });
   }
   const tgId = String(tgUser.id);
   if (!tgUser.id || tgUser.id <= 0) {
     recordFailure(ip);
-    return res.status(401).json({ message: "?????????? ????????????" });
+    return res.status(401).json({ message: "Невалидный пользователь" });
   }
 
-  // Desktop flow: ???? ??????? ??? ???? — ?????? ??????? ??? ??????? ????
+  // Desktop flow: если аккаунт уже есть — просто логиним без запроса ника
   let account = await redisAccounts.get(tgId);
   if (account) {
     account.telegram = tgUser.username || account.telegram;
@@ -484,12 +495,12 @@ app.post("/auth/tg-login", async (req, res) => {
 
   // ????? ???????????? — ??? ??????????
   if (!username) {
-    return res.status(400).json({ needNick: true, message: "???????? ??????? ???" });
+    return res.status(400).json({ needNick: true, message: "Придумай игровой ник" });
   }
   const cleanNick = sanitize(username).replace(/^@/, "");
   if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) {
     recordFailure(ip);
-    return res.status(400).json({ message: "???: 3–16 ????????, ?????/?????/_" });
+    return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
   }
 
   const adminRole = isAdmin(tgUser.username || cleanNick) || isAdminId(tgId) ? "admin" : "user";
@@ -517,12 +528,12 @@ app.get("/auth/google/init", (req, res) => {
 app.get("/auth/google/callback", async (req, res) => {
   const { code, state, error } = req.query;
   if (error || !code || !state) {
-    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">?????? ????? ????? Google</p><p style="color:rgba(255,255,255,0.5);font-size:14px">${error || "??? ???? ???????????"}</p></div></body></html>`);
+    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Ошибка входа через Google</p><p style="color:rgba(255,255,255,0.5);font-size:14px">${error || "Нет кода авторизации"}</p></div></body></html>`);
   }
 
   const pending = googlePending.get(state);
   if (!pending) {
-    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">?????????? ??????</p><p style="color:rgba(255,255,255,0.5);font-size:14px">???????? ????? ??????</p></div></body></html>`);
+    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Устаревшая ссылка</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Попробуй войти заново</p></div></body></html>`);
   }
 
   try {
@@ -540,15 +551,15 @@ app.get("/auth/google/callback", async (req, res) => {
     if (account) {
       const token = signToken(googleId);
       googlePending.set(state, { step: "done", token, user: account });
-      return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#4ade80;margin-bottom:8px">???? ????????!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">?????? ??????? ??? ???????</p></div></body></html>`);
+      return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#4ade80;margin-bottom:8px">Вход выполнен!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Можешь закрыть эту вкладку</p></div></body></html>`);
     }
 
     // New user — need nickname
     googlePending.set(state, { step: "need_nick", googleId, email, name, avatar, expiresAt: Date.now() + 300_000 });
-    return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#60a5fa;margin-bottom:8px">Google-??????? ???????????!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">?????? ??????? ??? ??????? ? ????????? ???</p></div></body></html>`);
+    return res.send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:22px;font-weight:800;color:#60a5fa;margin-bottom:8px">Google-аккаунт подтверждён!</p><p style="color:rgba(255,255,255,0.5);font-size:14px">Можешь закрыть эту вкладку и придумать ник</p></div></body></html>`);
   } catch (e) {
     console.error("[Google OAuth] callback error:", e.message);
-    return res.status(500).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="color:#f87171;font-size:18px;font-weight:700">?????? ???????</p></div></body></html>`);
+    return res.status(500).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="color:#f87171;font-size:18px;font-weight:700">Ошибка сервера</p></div></body></html>`);
   }
 });
 
@@ -568,18 +579,18 @@ app.get("/auth/google/check", (req, res) => {
 // Step 4: Register nickname for new Google user
 app.post("/auth/google/register", authLimiter, async (req, res) => {
   const { state, username } = req.body;
-  if (!state || !username) return res.status(400).json({ message: "???????????? ???? ???????????" });
+  if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
   const pending = googlePending.get(state);
-  if (!pending || pending.step !== "need_nick") return res.status(400).json({ message: "???????????????? ??????" });
+  if (!pending || pending.step !== "need_nick") return res.status(400).json({ message: "Недействительный запрос" });
 
   const cleanNick = sanitize(username).replace(/^@/, "");
   if (!/^[a-zA-Z0-9_]{3,16}$/.test(cleanNick)) {
-    return res.status(400).json({ message: "???: 3–16 ????????, ?????/?????/_" });
+    return res.status(400).json({ message: "Ник: 3–16 символов, буквы/цифры/_" });
   }
 
   // Check nick taken
   const taken = [...redisAccounts._map.values()].find(a => a.username?.toLowerCase() === cleanNick.toLowerCase());
-  if (taken) return res.status(400).json({ message: "??? ??? ?????" });
+  if (taken) return res.status(400).json({ message: "Ник уже занят" });
 
   const { googleId, email, name, avatar } = pending;
   const account = {
@@ -593,7 +604,7 @@ app.post("/auth/google/register", authLimiter, async (req, res) => {
   res.json({ user: account, token });
 });
 
-// ?????? ????? ????? ?????? CSP
+// Прокси скина чтобы обойти CSP
 app.get("/skin-proxy/:username", async (req, res) => {
   try {
     const r = await fetch(`https://minotar.net/skin/${encodeURIComponent(req.params.username)}`);
@@ -672,7 +683,7 @@ app.get("/support/tickets", (req, res) => {
 
 app.get("/support/ticket/:id", (req, res) => {
   const t = tickets.get(Number(req.params.id));
-  if (!t) return res.status(404).json({ message: "????? ?? ??????" });
+  if (!t) return res.status(404).json({ message: "Тикет не найден" });
   res.json(t);
 });
 
@@ -682,10 +693,10 @@ app.post("/support/ticket", (req, res) => {
   const rawUsername = sanitize(req.body.username || "Player", 32);
   const userId      = sanitize(req.body.userId || "anon", 64);
   if (!rawCategory || !rawMessage || rawMessage.length < 5)
-    return res.status(400).json({ message: "????????? ??? ???? (??????? 5 ????????)" });
+    return res.status(400).json({ message: "Заполните все поля (минимум 5 символов)" });
   const ticketId = ++ticketCounter;
   const ticket = { id: ticketId, userId, username: rawUsername, category: rawCategory, preview: rawMessage.slice(0, 60), status: "open", unread: 0, createdAt: Date.now(), messages: [
-    { id: uuidv4(), from: "system", text: `????? #${ticketId} ??????.`, time: Date.now() },
+    { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан.`, time: Date.now() },
     { id: uuidv4(), from: userId, username: rawUsername, text: rawMessage, time: Date.now() },
   ]};
   tickets.set(ticketId, ticket);
@@ -694,9 +705,9 @@ app.post("/support/ticket", (req, res) => {
   res.json({ ticketId });
 });
 
-// GцЗGцЗGцЗ Admin API GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Admin API ────────────────────────────────────────────────────────────────
 
-// ??? ?????? ????????????? ?????? ???? admin ???? ?? ADMIN_TG_IDS
+// При старте принудительно ставим роль admin всем из ADMIN_TG_IDS
 async function syncAdminRoles() {
   for (const tgId of ADMIN_TG_IDS) {
     const acc = await redisAccounts.get(tgId);
@@ -714,9 +725,9 @@ async function requireAdmin(req, res) {
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ message: "Unauthorized" }); return null; }
   const tgId = payload.sub;
-  // ?????? ?????? ID ?????? ??????????
+  // Жёстко вшитые ID всегда пропускаем
   if (isAdminId(tgId)) return tgId;
-  // ????? ????????? ???? ? Redis
+  // Иначе проверяем роль в Redis
   const acc = await redisAccounts.get(tgId);
   if (!acc || acc.role !== "admin") { res.status(403).json({ message: "Forbidden" }); return null; }
   return tgId;
@@ -771,14 +782,14 @@ app.post("/admin/ticket/:id/status", async (req, res) => {
   const { status } = req.body;
   if (!["open", "in_progress", "answered", "closed"].includes(status)) return res.status(400).json({ message: "Bad status" });
   t.status = status;
-  t.messages.push({ id: uuidv4(), from: "system", text: `?????? ???????: ${STATUS_LABELS[status] || status}`, time: Date.now() });
+  t.messages.push({ id: uuidv4(), from: "system", text: `Статус изменён: ${STATUS_LABELS[status] || status}`, time: Date.now() });
   broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(t) });
   broadcastToTicket(t.id, null, { type: "ticket_update", ticket: ticketSummary(t) });
   if (status === "closed") broadcastToTicket(t.id, null, { type: "ticket_closed", ticketId: t.id });
   res.json({ ok: true });
 });
 
-const STATUS_LABELS = { open: "??????", in_progress: "? ??????", answered: "????????", closed: "??????" };
+const STATUS_LABELS = { open: "Открыт", in_progress: "В работе", answered: "Ответили", closed: "Закрыт" };
 
 app.post("/admin/ticket/:id/close", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
@@ -790,15 +801,15 @@ app.post("/admin/ticket/:id/close", async (req, res) => {
   res.json({ ok: true });
 });
 
-// GцЗGцЗGцЗ Payments GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Payments ─────────────────────────────────────────────────────────────────
 
-const METHOD_NAMES = { card_ru: "????? ???", card_ua: "????? Master/Visa", crypto: "????????????", sbp: "???" };
+const METHOD_NAMES = { card_ru: "Карта МИР", card_ua: "Карта Master/Visa", crypto: "Криптовалюта", sbp: "СБП" };
 
 app.post("/payments/create", async (req, res) => {
   const token  = (req.headers.authorization || "").replace("Bearer ", "");
   const amount = parseInt(req.body.amount, 10);
   const method = req.body.method || "card_ru";
-  if (!amount || amount < 50) return res.status(400).json({ message: "??????????? ????? — 50 ???" });
+  if (!amount || amount < 50) return res.status(400).json({ message: "Минимальная сумма — 50 СБТ" });
   let userId = null;
   if (token) { const p = verifyToken(token); if (p) userId = p.sub; }
   const invoiceId = invoiceCounter++;
@@ -806,7 +817,7 @@ app.post("/payments/create", async (req, res) => {
   res.json({ url: `https://t.me/${BOT_USERNAME}?start=pay_${invoiceId}_${amount}_${method}` });
 });
 
-// GцЗGцЗGцЗ Auth middleware GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Auth middleware ───────────────────────────────────────────────────────────
 function optionalAuth(req, _res, next) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
@@ -815,21 +826,21 @@ function optionalAuth(req, _res, next) {
 }
 function requireAuth(req, res, next) {
   optionalAuth(req, res, () => {
-    if (!req.userId) return res.status(401).json({ message: "?????????? ???????????" });
+    if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
     next();
   });
 }
 
-// GцЗGцЗGцЗ Shop Catalog GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Shop Catalog ─────────────────────────────────────────────────────────────
 const SHOP_CATALOG = [
   { id: "frame_basic_gray",  type: "frame",    name: "Torn",                  price: 0,    preview: "#6b7280" },
-  { id: "badge_heart",       type: "badge",    name: "??????",                price: 0,    preview: "#f43f5e" },
+  { id: "badge_heart",       type: "badge",    name: "Сердце",                price: 0,    preview: "#f43f5e" },
   { id: "frame_basic_blue",  type: "frame",    name: "Sketched Memory",      price: 200,  preview: "#3b82f6" },
   { id: "frame_neon",        type: "frame",    name: "Bewitching Frame",     price: 500,  preview: "#a855f7" },
   { id: "frame_gold",        type: "frame",    name: "oil",                  price: 1500, preview: "#facc15" },
-  { id: "frame_galaxy",      type: "frame",    name: "???? ? ????",          price: 3000, preview: "linear-gradient(135deg,#6366f1,#a855f7,#ec4899)" },
+  { id: "frame_galaxy",      type: "frame",    name: "Элли у окна",          price: 3000, preview: "linear-gradient(135deg,#6366f1,#a855f7,#ec4899)" },
   { id: "frame_fire",        type: "frame",    name: "Husk Frame",           price: 2000, preview: "linear-gradient(135deg,#dc2626,#f97316,#facc15)" },
-  { id: "frame_ice",         type: "frame",    name: "???????",              price: 2000, preview: "linear-gradient(135deg,#0ea5e9,#38bdf8,#e0f2fe)" },
+  { id: "frame_ice",         type: "frame",    name: "Ледяная",              price: 2000, preview: "linear-gradient(135deg,#0ea5e9,#38bdf8,#e0f2fe)" },
   { id: "bg_fon1",           type: "background", name: "Lilywhite & Lilyblack", price: 0,  preview: "#3b82f6" },
   { id: "bg_fon2",           type: "background", name: "Miss Neko 2",        price: 500,  preview: "#8b5cf6" },
   { id: "bg_fon3",           type: "background", name: "Muse Dash",          price: 800,  preview: "#ec4899" },
@@ -837,31 +848,31 @@ const SHOP_CATALOG = [
   { id: "bg_fon5",           type: "background", name: "Circle of Hell",     price: 1500, preview: "#eab308" },
   { id: "bg_fon6",           type: "background", name: "Black Hole",         price: 2000, preview: "#22c55e" },
   { id: "bg_fon7",           type: "background", name: "noir-anime2",        price: 2500, preview: "#06b6d4" },
-  { id: "anim_pulse",        type: "avatar_animated", name: "???????",     price: 1200, preview: "#60a5fa" },
-  { id: "anim_flame",        type: "avatar_animated", name: "?????",       price: 1200, preview: "#f97316" },
-  { id: "anim_neon",         type: "avatar_animated", name: "????",        price: 1500, preview: "#a855f7" },
-  { id: "badge_diamond",     type: "badge",    name: "?????????",           price: 800,  preview: "#38bdf8" },
-  { id: "badge_flame",       type: "badge",    name: "?????",               price: 600,  preview: "#f97316" },
-  { id: "badge_star",        type: "badge",    name: "??????",              price: 500,  preview: "#facc15" },
-  { id: "badge_skull",       type: "badge",    name: "?????",               price: 1000, preview: "#ef4444" },
+  { id: "anim_pulse",        type: "avatar_animated", name: "Импульс",     price: 1200, preview: "#60a5fa" },
+  { id: "anim_flame",        type: "avatar_animated", name: "Пламя",       price: 1200, preview: "#f97316" },
+  { id: "anim_neon",         type: "avatar_animated", name: "Неон",        price: 1500, preview: "#a855f7" },
+  { id: "badge_diamond",     type: "badge",    name: "Бриллиант",           price: 800,  preview: "#38bdf8" },
+  { id: "badge_flame",       type: "badge",    name: "Пламя",               price: 600,  preview: "#f97316" },
+  { id: "badge_star",        type: "badge",    name: "Звезда",              price: 500,  preview: "#facc15" },
+  { id: "badge_skull",       type: "badge",    name: "Череп",               price: 1000, preview: "#ef4444" },
 ];
 
 const MARKET_CATALOG = [
-  { id: "m_cosmic_chest",   type: "chest",      name: "??????????? ????",  preview: "linear-gradient(135deg,#1e1b4b,#7c3aed,#ec4899)" },
-  { id: "m_saber_relic",    type: "relic",      name: "???????? ????",     preview: "linear-gradient(135deg,#0c4a6e,#0ea5e9,#22d3ee)" },
-  { id: "m_dragon_scale",   type: "material",   name: "???????? ?????",    preview: "linear-gradient(135deg,#7f1d1d,#dc2626,#fb923c)" },
-  { id: "m_ghost_cape",     type: "skin",       name: "?????????? ????",   preview: "linear-gradient(135deg,#1e293b,#475569,#94a3b8)" },
-  { id: "m_ember_token",    type: "token",      name: "???????? ?????",    preview: "linear-gradient(135deg,#7f1d1d,#ea580c)" },
-  { id: "m_neon_disc",      type: "disc",       name: "???????? ????",     preview: "linear-gradient(135deg,#581c87,#a855f7,#22d3ee)" },
-  { id: "m_void_pearl",     type: "pearl",      name: "????????? ??????",  preview: "linear-gradient(135deg,#020617,#1e1b4b,#0ea5e9)" },
-  { id: "m_aurora_shard",   type: "shard",      name: "??????? ??????",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
+  { id: "m_cosmic_chest",   type: "chest",      name: "Космический кейс",  preview: "linear-gradient(135deg,#1e1b4b,#7c3aed,#ec4899)" },
+  { id: "m_saber_relic",    type: "relic",      name: "Реликвия Силы",     preview: "linear-gradient(135deg,#0c4a6e,#0ea5e9,#22d3ee)" },
+  { id: "m_dragon_scale",   type: "material",   name: "Драконья чешуя",    preview: "linear-gradient(135deg,#7f1d1d,#dc2626,#fb923c)" },
+  { id: "m_ghost_cape",     type: "skin",       name: "Призрачный плащ",   preview: "linear-gradient(135deg,#1e293b,#475569,#94a3b8)" },
+  { id: "m_ember_token",    type: "token",      name: "Угольный жетон",    preview: "linear-gradient(135deg,#7f1d1d,#ea580c)" },
+  { id: "m_neon_disc",      type: "disc",       name: "Неоновый диск",     preview: "linear-gradient(135deg,#581c87,#a855f7,#22d3ee)" },
+  { id: "m_void_pearl",     type: "pearl",      name: "Жемчужина Бездны",  preview: "linear-gradient(135deg,#020617,#1e1b4b,#0ea5e9)" },
+  { id: "m_aurora_shard",   type: "shard",      name: "Осколок Авроры",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
 ];
 
-// GцЗGцЗGцЗ Public profile GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Public profile ───────────────────────────────────────────────────────────
 app.get("/api/user/:id", async (req, res) => {
   const id = sanitize(req.params.id, 64);
   const acc = await redisAccounts.get(id);
-  if (!acc) return res.status(404).json({ message: "????? ?? ??????" });
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const online = [...wsClients.values()].some(c => c.userId === id);
   const friendCount = getFriends(id).size;
   res.json({
@@ -890,7 +901,7 @@ app.get("/api/user/:id/activity", requireAuth, (req, res) => {
   res.json({ totalSec, byServer, lastSessionAt: lastSession || null, recent: list.slice(-10).reverse() });
 });
 
-// GцЗGцЗGцЗ Profile comments GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Profile comments ─────────────────────────────────────────────────────────
 const profileComments = new Map();
 const lastCommentAt   = new Map();
 const commentHourly   = new Map();
@@ -907,14 +918,14 @@ app.get("/api/user/:id/comments", (req, res) => {
 
 app.post("/api/user/:id/comments", requireAuth, (req, res) => {
   const id = sanitize(req.params.id, 64);
-  if (id === req.userId) return res.status(400).json({ message: "?????? ?????????????? ???? ???????" });
+  if (id === req.userId) return res.status(400).json({ message: "Нельзя комментировать свой профиль" });
   const text = sanitize(req.body.text || "", 200);
-  if (text.length < 2) return res.status(400).json({ message: "??????? ???????? ???????????" });
+  if (text.length < 2) return res.status(400).json({ message: "Слишком короткий комментарий" });
   const now = Date.now();
   const last = lastCommentAt.get(req.userId) || 0;
-  if (now - last < 10_000) return res.status(429).json({ message: "??????? 10 ??????" });
+  if (now - last < 10_000) return res.status(429).json({ message: "Подожди 10 секунд" });
   const hourly = (commentHourly.get(req.userId) || []).filter(t => now - t < 3600_000);
-  if (hourly.length >= 5) return res.status(429).json({ message: "??????? ????? ????????????" });
+  if (hourly.length >= 5) return res.status(429).json({ message: "Слишком много комментариев" });
   lastCommentAt.set(req.userId, now);
   commentHourly.set(req.userId, [...hourly, now]);
   let fromUsername = "Player";
@@ -944,7 +955,7 @@ app.delete("/api/user/:id/comments/:cid", requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// GцЗGцЗGцЗ Bio GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Bio ──────────────────────────────────────────────────────────────────────
 app.get("/api/user/bio", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
   res.json({ bio: acc?.bio || "" });
@@ -953,13 +964,13 @@ app.get("/api/user/bio", requireAuth, async (req, res) => {
 app.put("/api/user/bio", requireAuth, async (req, res) => {
   const bio = sanitize(req.body.bio || "", 300);
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   acc.bio = bio;
   await redisAccounts.set(req.userId, acc);
   res.json({ ok: true, bio: acc.bio });
 });
 
-// GцЗGцЗGцЗ Inventory GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Inventory ────────────────────────────────────────────────────────────────
 app.get("/api/inventory/catalog", (_req, res) => res.json({ items: SHOP_CATALOG }));
 
 app.get("/api/inventory", requireAuth, async (req, res) => {
@@ -973,12 +984,12 @@ app.get("/api/inventory", requireAuth, async (req, res) => {
 app.post("/api/inventory/buy", requireAuth, async (req, res) => {
   const itemId = sanitize(req.body.itemId || "", 64);
   const item = SHOP_CATALOG.find(i => i.id === itemId);
-  if (!item) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
-  if (owned.includes(itemId)) return res.status(400).json({ message: "??? ???????" });
-  if ((acc.balance || 0) < item.price) return res.status(400).json({ message: "???????????? ???", need: item.price, have: acc.balance || 0 });
+  if (owned.includes(itemId)) return res.status(400).json({ message: "Уже куплено" });
+  if ((acc.balance || 0) < item.price) return res.status(400).json({ message: "Недостаточно СБТ", need: item.price, have: acc.balance || 0 });
   acc.balance = (acc.balance || 0) - item.price;
   acc.inventory = [...owned, itemId];
   await redisAccounts.set(req.userId, acc);
@@ -988,11 +999,11 @@ app.post("/api/inventory/buy", requireAuth, async (req, res) => {
 app.post("/api/inventory/equip", requireAuth, async (req, res) => {
   const itemId = sanitize(req.body.itemId || "", 64);
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
-  if (!owned.includes(itemId)) return res.status(400).json({ message: "??????? ???? ???????" });
+  if (!owned.includes(itemId)) return res.status(400).json({ message: "Сначала купи предмет" });
   const item = SHOP_CATALOG.find(i => i.id === itemId);
-  if (!item) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
   acc.equip = { ...(acc.equip || {}), [item.type]: itemId };
   await redisAccounts.set(req.userId, acc);
   res.json({ ok: true, equip: acc.equip });
@@ -1000,21 +1011,21 @@ app.post("/api/inventory/equip", requireAuth, async (req, res) => {
 
 app.post("/api/inventory/unequip", requireAuth, async (req, res) => {
   const type = sanitize(req.body.type || "", 32);
-  if (!["frame","background","avatar_animated","badge"].includes(type)) return res.status(400).json({ message: "???????? ???" });
+  if (!["frame","background","avatar_animated","badge"].includes(type)) return res.status(400).json({ message: "Неверный тип" });
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   acc.equip = { ...(acc.equip || {}) };
   delete acc.equip[type];
   await redisAccounts.set(req.userId, acc);
   res.json({ ok: true, equip: acc.equip });
 });
 
-// GцЗGцЗGцЗ Activity GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Activity ─────────────────────────────────────────────────────────────────
 const activityStore = new Map();
 
 app.post("/api/activity", requireAuth, (req, res) => {
   const { serverId, startedAt, endedAt, durationSec } = req.body || {};
-  if (!serverId || typeof startedAt !== "number" || typeof endedAt !== "number") return res.status(400).json({ message: "???????? ????" });
+  if (!serverId || typeof startedAt !== "number" || typeof endedAt !== "number") return res.status(400).json({ message: "Неверные поля" });
   const dur = Math.max(0, Math.min(86400, Math.floor(durationSec || (endedAt - startedAt) / 1000)));
   const list = activityStore.get(req.userId) || [];
   list.push({ serverId: sanitize(serverId, 32), startedAt, endedAt, durationSec: dur });
@@ -1034,7 +1045,7 @@ app.get("/api/activity", requireAuth, (req, res) => {
   res.json({ totalSec, byServer, lastSessionAt: lastSession || null, recent: list.slice(-10).reverse() });
 });
 
-// GцЗGцЗGцЗ Marketplace GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Marketplace ──────────────────────────────────────────────────────────────
 const listings = new Map();
 let listingCounter = 0;
 
@@ -1057,13 +1068,13 @@ app.get("/api/market/catalog", (_req, res) => res.json({ items: MARKET_CATALOG }
 
 app.post("/api/market/grant", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
-  if (!acc || acc.role !== "admin") return res.status(403).json({ message: "?????? ?????" });
+  if (!acc || acc.role !== "admin") return res.status(403).json({ message: "Только админ" });
   const targetId = sanitize(req.body.userId || "", 64);
   const itemId = sanitize(req.body.itemId || "", 64);
   const target = await redisAccounts.get(targetId);
-  if (!target) return res.status(404).json({ message: "????? ?? ??????" });
+  if (!target) return res.status(404).json({ message: "Игрок не найден" });
   const item = MARKET_CATALOG.find(i => i.id === itemId);
-  if (!item) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
   target.market_inventory = Array.isArray(target.market_inventory) ? [...target.market_inventory, itemId] : [itemId];
   await redisAccounts.set(targetId, target);
   res.json({ ok: true, market: target.market_inventory });
@@ -1073,16 +1084,16 @@ app.post("/api/market/sell", requireAuth, async (req, res) => {
   const { itemId, price } = req.body || {};
   const cleanId = sanitize(String(itemId || ""), 64);
   const priceNum = parseInt(price, 10);
-  if (!cleanId) return res.status(400).json({ message: "?? ?????? ???????" });
-  if (!Number.isFinite(priceNum) || priceNum < 10 || priceNum > 100000) return res.status(400).json({ message: "????: 10–100000 ???" });
+  if (!cleanId) return res.status(400).json({ message: "Не указан предмет" });
+  if (!Number.isFinite(priceNum) || priceNum < 10 || priceNum > 100000) return res.status(400).json({ message: "Цена: 10–100000 СБТ" });
   const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const marketOwn = Array.isArray(acc.market_inventory) ? acc.market_inventory : [];
-  if (!marketOwn.includes(cleanId)) return res.status(400).json({ message: "??? ????? ????????" });
+  if (!marketOwn.includes(cleanId)) return res.status(400).json({ message: "Нет этого предмета" });
   const item = MARKET_CATALOG.find(i => i.id === cleanId);
-  if (!item) return res.status(404).json({ message: "??????? ?? ??????" });
+  if (!item) return res.status(404).json({ message: "Предмет не найден" });
   const hasActive = [...listings.values()].some(l => l.status === "active" && l.sellerId === req.userId && l.itemId === cleanId);
-  if (hasActive) return res.status(400).json({ message: "??? ?????????" });
+  if (hasActive) return res.status(400).json({ message: "Уже выставлен" });
   acc.market_inventory = marketOwn.filter(x => x !== cleanId);
   await redisAccounts.set(req.userId, acc);
   const id = String(++listingCounter);
@@ -1095,14 +1106,14 @@ app.post("/api/market/sell", requireAuth, async (req, res) => {
 app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
   const id = sanitize(req.params.id, 32);
   const listing = listings.get(id);
-  if (!listing) return res.status(404).json({ message: "??????? ?? ??????" });
-  if (listing.status !== "active") return res.status(400).json({ message: "??? ????????" });
-  if (listing.sellerId === req.userId) return res.status(400).json({ message: "?????? ?????? ????" });
+  if (!listing) return res.status(404).json({ message: "Листинг не найден" });
+  if (listing.status !== "active") return res.status(400).json({ message: "Уже завершён" });
+  if (listing.sellerId === req.userId) return res.status(400).json({ message: "Нельзя купить свой" });
   const buyer = await redisAccounts.get(req.userId);
-  if (!buyer) return res.status(404).json({ message: "??????? ?? ??????" });
-  if ((buyer.balance || 0) < listing.price) return res.status(400).json({ message: "???????????? ???" });
+  if (!buyer) return res.status(404).json({ message: "Аккаунт не найден" });
+  if ((buyer.balance || 0) < listing.price) return res.status(400).json({ message: "Недостаточно СБТ" });
   const seller = await redisAccounts.get(listing.sellerId);
-  if (!seller) return res.status(404).json({ message: "???????? ?? ??????" });
+  if (!seller) return res.status(404).json({ message: "Продавец не найден" });
   buyer.balance = (buyer.balance || 0) - listing.price;
   seller.balance = (seller.balance || 0) + listing.price;
   buyer.market_inventory = Array.isArray(buyer.market_inventory) ? [...buyer.market_inventory, listing.itemId] : [listing.itemId];
@@ -1119,9 +1130,9 @@ app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
 app.delete("/api/market/:id", requireAuth, async (req, res) => {
   const id = sanitize(req.params.id, 32);
   const listing = listings.get(id);
-  if (!listing) return res.status(404).json({ message: "??????? ?? ??????" });
-  if (listing.sellerId !== req.userId) return res.status(403).json({ message: "?? ????" });
-  if (listing.status !== "active") return res.status(400).json({ message: "??? ????????" });
+  if (!listing) return res.status(404).json({ message: "Листинг не найден" });
+  if (listing.sellerId !== req.userId) return res.status(403).json({ message: "Не твой" });
+  if (listing.status !== "active") return res.status(400).json({ message: "Уже завершён" });
   const acc = await redisAccounts.get(req.userId);
   if (acc) { acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId]; await redisAccounts.set(req.userId, acc); }
   listing.status = "cancelled";
@@ -1130,7 +1141,7 @@ app.delete("/api/market/:id", requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// GцЗGцЗGцЗ Groups GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Groups ───────────────────────────────────────────────────────────────────
 const groups = new Map(), groupMessages = new Map(), groupInvites = new Map();
 const groupJoinRequests = new Map(); // groupId -> [{ userId, username, time }]
 let groupCounter = 0;
@@ -1508,10 +1519,10 @@ app.get("/api/groups", requireAuth, async (req, res) => {
 
 app.post("/api/groups", requireAuth, async (req, res) => {
   const name = sanitize(req.body.name || "", 40);
-  if (name.length < 2 || name.length > 40) return res.status(400).json({ message: "????????: 2–40 ????????" });
+  if (name.length < 2 || name.length > 40) return res.status(400).json({ message: "Название: 2–40 символов" });
   const description = sanitize(req.body.description || "", 200);
   if ([...groups.values()].some(g => g.members.has(req.userId))) {
-    return res.status(400).json({ message: "?? ??? ???????? ? ?????. ?????? ???, ????? ??????? ?????" });
+    return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы создать новый" });
   }
   const id = String(++groupCounter);
   const g = { id, name, description, ownerId: req.userId, members: new Set([req.userId]), memberRoles: {}, closed: false, playHours: {}, createdAt: Date.now() };
@@ -1523,15 +1534,15 @@ app.post("/api/groups", requireAuth, async (req, res) => {
 app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "?????? ?? ???????" });
-  if (!g.members.has(req.userId)) return res.status(403).json({ message: "?? ?? ? ??????" });
-  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `???????? ${GROUP_MAX}` });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!g.members.has(req.userId)) return res.status(403).json({ message: "Ты не в группе" });
+  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Максимум ${GROUP_MAX}` });
   const targetNick = sanitize(req.body.username || "", 32).toLowerCase();
   const target = [...redisAccounts._map.values()].find(a => (a.username || "").toLowerCase() === targetNick);
-  if (!target) return res.status(404).json({ message: "????? ?? ??????" });
-  if (g.members.has(target.id)) return res.status(400).json({ message: "??? ? ??????" });
+  if (!target) return res.status(404).json({ message: "Игрок не найден" });
+  if (g.members.has(target.id)) return res.status(400).json({ message: "Уже в группе" });
   const list = groupInvites.get(gid) || [];
-  if (list.find(i => i.toId === target.id)) return res.status(400).json({ message: "??? ?????????" });
+  if (list.find(i => i.toId === target.id)) return res.status(400).json({ message: "Уже приглашён" });
   const from = wsClientsByUserId(req.userId);
   const invite = { toId: target.id, fromId: req.userId, fromUsername: from?.username || "Player", groupId: gid, groupName: g.name, time: Date.now() };
   list.push(invite); groupInvites.set(gid, list);
@@ -1543,13 +1554,13 @@ app.post("/api/groups/:id/invite", requireAuth, (req, res) => {
 app.post("/api/groups/:id/respond", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "?????? ?? ???????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
   const accept = !!req.body.accept;
   groupInvites.set(gid, (groupInvites.get(gid) || []).filter(i => i.toId !== req.userId));
   if (accept) {
-    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "??????" });
+    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: "Полная" });
     if ([...groups.values()].some(other => other.id !== gid && other.members.has(req.userId))) {
-      return res.status(400).json({ message: "?? ??? ???????? ? ?????? ?????" });
+      return res.status(400).json({ message: "Ты уже состоишь в другом клане" });
     }
     g.members.add(req.userId);
     const pub = await publicGroup(g);
@@ -1561,8 +1572,8 @@ app.post("/api/groups/:id/respond", requireAuth, async (req, res) => {
 app.post("/api/groups/:id/leave", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "???? ?? ??????" });
-  if (!g.members.has(req.userId)) return res.status(403).json({ message: "?? ?? ? ?????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!g.members.has(req.userId)) return res.status(403).json({ message: "Ты не в группе" });
   g.members.delete(req.userId);
   if (g.members.size === 0) {
     groups.delete(gid); groupMessages.delete(gid); groupInvites.delete(gid); deleteGroupFromRedis(gid);
@@ -1578,7 +1589,7 @@ app.post("/api/groups/:id/leave", requireAuth, async (req, res) => {
 app.get("/api/groups/:id/messages", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g || !g.members.has(req.userId)) return res.status(403).json({ message: "??? ???????" });
+  if (!g || !g.members.has(req.userId)) return res.status(403).json({ message: "Нет доступа" });
   res.json({ messages: (groupMessages.get(gid) || []).slice(-100) });
 });
 
@@ -1617,15 +1628,15 @@ app.get("/api/groups/browse", requireAuth, async (req, res) => {
 app.post("/api/groups/:id/apply", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "???? ?? ??????" });
-  if (g.members.has(req.userId)) return res.status(400).json({ message: "?? ??? ? ???? ?????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (g.members.has(req.userId)) return res.status(400).json({ message: "Ты уже в этом клане" });
   if ([...groups.values()].some(other => other.members.has(req.userId))) {
-    return res.status(400).json({ message: "?? ??? ???????? ? ?????. ?????? ???, ????? ???????? ? ??????" });
+    return res.status(400).json({ message: "Ты уже состоишь в клане. Покинь его, чтобы вступить в другой" });
   }
-  if (g.closed) return res.status(400).json({ message: "???? ??????. ?????????? ?????? ?? ???????????" });
-  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `???? ???????? (???????? ${GROUP_MAX})` });
+  if (g.closed) return res.status(400).json({ message: "Клан закрыт. Вступление только по приглашению" });
+  if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Клан заполнен (максимум ${GROUP_MAX})` });
   const list = groupJoinRequests.get(gid) || [];
-  if (list.find(r => r.userId === req.userId)) return res.status(400).json({ message: "?????? ??? ??????????" });
+  if (list.find(r => r.userId === req.userId)) return res.status(400).json({ message: "Заявка уже отправлена" });
   const from = wsClientsByUserId(req.userId);
   const acc = [...redisAccounts._map.values()].find(a => a && a.id === req.userId);
   const username = from?.username || acc?.username || "Player";
@@ -1640,8 +1651,8 @@ app.post("/api/groups/:id/apply", requireAuth, (req, res) => {
 app.get("/api/groups/:id/requests", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "???? ?? ??????" });
-  if (!canManageRequests(g, req.userId)) return res.status(403).json({ message: "?????? ????????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
   res.json({ requests: groupJoinRequests.get(gid) || [] });
 });
 
@@ -1650,17 +1661,17 @@ app.post("/api/groups/:id/requests/:userId", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const applicantId = sanitize(req.params.userId, 64);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "???? ?? ??????" });
-  if (!canManageRequests(g, req.userId)) return res.status(403).json({ message: "?????? ????????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
   const accept = !!req.body.accept;
   const list = groupJoinRequests.get(gid) || [];
-  if (!list.find(r => r.userId === applicantId)) return res.status(404).json({ message: "?????? ?? ???????" });
+  if (!list.find(r => r.userId === applicantId)) return res.status(404).json({ message: "Заявка не найдена" });
   groupJoinRequests.set(gid, list.filter(r => r.userId !== applicantId));
   saveGroupJoinRequests(gid);
   if (accept) {
-    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `???? ???????? (???????? ${GROUP_MAX})` });
+    if (g.members.size >= GROUP_MAX) return res.status(400).json({ message: `Клан заполнен (максимум ${GROUP_MAX})` });
     if ([...groups.values()].some(other => other.id !== gid && other.members.has(applicantId))) {
-      return res.status(400).json({ message: "????? ??? ??????? ? ?????? ????" });
+      return res.status(400).json({ message: "Ты уже состоишь в другом клане" });
     }
     g.members.add(applicantId);
     saveGroup(g);
@@ -1677,8 +1688,8 @@ app.post("/api/groups/:id/requests/:userId", requireAuth, async (req, res) => {
 app.put("/api/groups/:id/description", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "?????? ?? ???????" });
-  if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "??? ????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
   g.description = sanitize(req.body.description || "", 200);
   saveGroup(g);
   const pub = await publicGroup(g);
@@ -1689,8 +1700,8 @@ app.put("/api/groups/:id/description", requireAuth, async (req, res) => {
 app.put("/api/groups/:id/avatar", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "?????? ?? ???????" });
-  if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "??? ????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
   g.avatar = sanitize(req.body.avatar || "", 500);
   saveGroup(g);
   const pub = await publicGroup(g);
@@ -1702,14 +1713,14 @@ app.put("/api/groups/:id/avatar", requireAuth, async (req, res) => {
 app.put("/api/groups/:id/role", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "?????? ?? ???????" });
-  if (g.ownerId !== req.userId) return res.status(403).json({ message: "?????? ???????? ????? ????????? ??????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (g.ownerId !== req.userId) return res.status(403).json({ message: "Только владелец может назначать звания" });
   const targetId = sanitize(req.body.userId || "", 64);
   const role = sanitize(req.body.role || "", 16);
-  if (!g.members.has(targetId)) return res.status(400).json({ message: "???????????? ?? ? ?????" });
-  if (targetId === g.ownerId) return res.status(400).json({ message: "?????? ???????? ???? ?????????" });
+  if (!g.members.has(targetId)) return res.status(400).json({ message: "Пользователь не в клане" });
+  if (targetId === g.ownerId) return res.status(400).json({ message: "Нельзя изменить роль владельца" });
   if (![ROLE_LEADER, ROLE_ELDER, ROLE_MEMBER].includes(role)) {
-    return res.status(400).json({ message: "???????? ????" });
+    return res.status(400).json({ message: "Неверная роль" });
   }
   if (role === ROLE_MEMBER) {
     delete g.memberRoles[targetId];
@@ -1726,8 +1737,8 @@ app.put("/api/groups/:id/role", requireAuth, async (req, res) => {
 app.put("/api/groups/:id/closed", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "?????? ?? ???????" });
-  if (g.ownerId !== req.userId) return res.status(403).json({ message: "?????? ???????? ????? ??????? ????" });
+  if (!g) return res.status(404).json({ message: "Группа не найдена" });
+  if (g.ownerId !== req.userId) return res.status(403).json({ message: "Только владелец может назначать звания" });
   g.closed = !!req.body.closed;
   saveGroup(g);
   const pub = await publicGroup(g);
@@ -1739,10 +1750,10 @@ app.get("/online", (_, res) => {
   res.json({ users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username })) });
 });
 
-// GцЗGцЗGцЗ WebSocket GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
-const WS_MAX_PER_IP    = 5;    // ???? ?????????? ? ?????? IP
-const WS_AUTH_TIMEOUT  = 10_000; // 10? ?? ???????????
-const WS_MSG_LIMIT     = 120;  // ????????? ? ??????
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+const WS_MAX_PER_IP    = 5;    // макс соединений с одного IP
+const WS_AUTH_TIMEOUT  = 10_000; // 10с на авторизацию
+const WS_MSG_LIMIT     = 120;  // сообщений в минуту
 const WS_MSG_WINDOW    = 60_000;
 const wsIPCount        = new Map(); // ip GеЖ count
 
@@ -1750,7 +1761,7 @@ wss.on("connection", (ws, req) => {
   const clientId = uuidv4();
   const ip = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
 
-  // ????? ?????????? per IP
+  // Лимит соединений per IP
   const ipCount = (wsIPCount.get(ip) || 0) + 1;
   wsIPCount.set(ip, ipCount);
   if (ipCount > WS_MAX_PER_IP || isBlocked(ip)) {
@@ -1782,12 +1793,12 @@ wss.on("connection", (ws, req) => {
       if (!client) return;
       client.lastActive = Date.now();
 
-      // Rate limit ?????????
+      // Rate limit сообщений
       const now = Date.now();
       if (now - client.msgWindowStart > WS_MSG_WINDOW) { client.msgCount = 0; client.msgWindowStart = now; }
       client.msgCount++;
       if (client.msgCount > WS_MSG_LIMIT) {
-        send(ws, { type: "error", text: "??????? ????? ?????????" });
+        send(ws, { type: "error", text: "Слишком много сообщений" });
         return;
       }
 
@@ -1801,7 +1812,7 @@ wss.on("connection", (ws, req) => {
           }
           if (!userId) {
             recordFailure(ip);
-            send(ws, { type: "auth_error", message: "?????????? ???????????" });
+            send(ws, { type: "auth_error", message: "Необходима авторизация" });
             setTimeout(() => {
               try { ws.close(1008, "Unauthorized"); } catch {}
             }, 100);
@@ -1844,11 +1855,11 @@ wss.on("connection", (ws, req) => {
               }
             } catch {}
           }
-          if (!target)                              { send(ws, { type: "friend_error", message: "???????????? ?? ??????" }); break; }
-          if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "?????? ???????? ????" }); break; }
-          if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "??? ? ???????" }); break; }
+          if (!target)                              { send(ws, { type: "friend_error", message: "Пользователь не найден" }); break; }
+          if (target.id === client.userId)          { send(ws, { type: "friend_error", message: "Нельзя добавить себя" }); break; }
+          if (areFriends(client.userId, target.id)) { send(ws, { type: "friend_error", message: "Уже в друзьях" }); break; }
           const existing = getPendingRequests(target.id);
-          if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "?????? ??? ??????????" }); break; }
+          if (existing.find(r => r.fromId === client.userId)) { send(ws, { type: "friend_error", message: "Заявка уже отправлена" }); break; }
           const reqData = { fromId: client.userId, fromUsername: client.username, time: Date.now() };
           friendRequests.set(target.id, [...existing, reqData]);
           saveFriendRequests(target.id);
@@ -1910,11 +1921,11 @@ wss.on("connection", (ws, req) => {
             ticket.unread = 0; ticket.status = "answered";
             broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
             broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
-            // ??????? ? TG ???? ???????????? ?? ????
+            // Форвард в TG если пользователь из бота
             if (ticket.tgChatId) {
               try {
                 await bot.sendMessage(ticket.tgChatId,
-                  `?? *????? ?? ?????? #${ticket.id}*\n\n${cleanText}`,
+                  `💬 *Ответ по тикету #${ticket.id}*\n\n${cleanText}`,
                   { parse_mode: "Markdown", reply_markup: USER_KB }
                 );
               } catch (e) { console.error("[ws message tg forward]", e.message); }
@@ -1932,7 +1943,7 @@ wss.on("connection", (ws, req) => {
           if (ticket && client.role === "admin") { ticket.status = "closed"; broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
           break;
         }
-        // ????? ?????????? ????????? ????? ??????? ? ????????? ? TG
+        // Админ отправляет реквизиты через лаунчер → форвардим в TG
         case "send_requisites": {
           if (client.role !== "admin") break;
           const ticket = tickets.get(Number(msg.ticketId));
@@ -1946,12 +1957,12 @@ wss.on("connection", (ws, req) => {
           broadcastToAdmins({ type: "message", ticketId: ticket.id, message });
           broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
           broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
-          // ?????????? ? TG ???? tgChatId ????????
+          // Отправляем в TG если tgChatId известен
           if (ticket.tgChatId) {
             try {
               await bot.sendMessage(ticket.tgChatId,
-                `?? *????????? ??? ??????*\n\n${cleanText}\n\n????? ?????? ????? ?????? ? ???????? ???.`,
-                { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "? ????????? ???", callback_data: `send_receipt_${ticket.id}` }]] } }
+                `💳 *Реквизиты для оплаты*\n\n${cleanText}\n\nПосле оплаты нажми кнопку и прикрепи чек.`,
+                { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "✅ Отправить чек", callback_data: `send_receipt_${ticket.id}` }]] } }
               );
             } catch (e) { console.error("[ws send_requisites tg]", e.message); }
           }
@@ -1966,10 +1977,10 @@ wss.on("connection", (ws, req) => {
           const amount = parseInt(msg.amount, 10);
           if (!amount || amount <= 0) break;
           const acc = await redisAccounts.get(ticket.userId);
-          if (!acc) { send(ws, { type: "error", text: "??????? ?????? ?? ??????" }); break; }
+          if (!acc) { send(ws, { type: "error", text: "Аккаунт игрока не найден" }); break; }
           acc.balance = (acc.balance || 0) + amount;
           await redisAccounts.set(ticket.userId, acc);
-          const sysMsg = { id: uuidv4(), from: "system", text: `?????? ????????????. +${amount} ??? ?????????.`, time: Date.now() };
+          const sysMsg = { id: uuidv4(), from: "system", text: `Оплата подтверждена. +${amount} СБТ зачислено.`, time: Date.now() };
           ticket.messages.push(sysMsg);
           ticket.status = "closed";
           broadcastToAdmins({ type: "message", ticketId: ticket.id, message: sysMsg });
@@ -1978,11 +1989,11 @@ wss.on("connection", (ws, req) => {
           broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id });
           sendToUser(ticket.userId, { type: "balance_update", balance: acc.balance });
           send(ws, { type: "payment_confirmed", ticketId: ticket.id, newBalance: acc.balance });
-          // ??????????? ? TG
+          // Уведомление в TG
           if (ticket.tgChatId) {
             try {
               await bot.sendMessage(ticket.tgChatId,
-                `? *?????? ????????????!*\n\n+*${amount} ???* ????????? ?? ??? ???????.\n??????? ??????: *${acc.balance.toLocaleString("ru-RU")} ???*`,
+                `✅ *Оплата подтверждена!*\n\n+*${amount} СБТ* зачислено на ваш аккаунт.\nТекущий баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`,
                 { parse_mode: "Markdown", reply_markup: USER_KB }
               );
             } catch (e) { console.error("[ws confirm_payment tg]", e.message); }
@@ -1998,9 +2009,9 @@ wss.on("connection", (ws, req) => {
         case "group_send": {
           const gid = sanitize(msg.groupId || "", 32);
           const g = groups.get(gid);
-          if (!g || !g.members.has(client.userId)) { send(ws, { type: "group_error", text: "?? ?? ? ???? ?????" }); break; }
+          if (!g || !g.members.has(client.userId)) { send(ws, { type: "group_error", text: "Ты не в этом клане" }); break; }
           const gtext = sanitize(msg.text || "", 1000);
-          if (!gtext) { send(ws, { type: "group_error", text: "?????? ?????????" }); break; }
+          if (!gtext) { send(ws, { type: "group_error", text: "Пустое сообщение" }); break; }
           const m = { id: uuidv4(), fromId: client.userId, fromUsername: client.username || "Player", text: gtext, time: Date.now() };
           const list = groupMessages.get(gid) || [];
           list.push(m);
@@ -2017,8 +2028,8 @@ wss.on("connection", (ws, req) => {
           const g = groups.get(gid);
           if (!g || !canKick(g, client.userId) || !g.members.has(targetUserId) || targetUserId === client.userId) break;
           const targetRole = getMemberRole(g, targetUserId);
-          if (targetRole === ROLE_OWNER) break; // ????????? ??????? ?????? ???????
-          if (targetRole === ROLE_LEADER && getMemberRole(g, client.userId) !== ROLE_OWNER) break; // ?????? ??????? ?????? ????????
+          if (targetRole === ROLE_OWNER) break; // владельца кикнуть нельзя никогда
+          if (targetRole === ROLE_LEADER && getMemberRole(g, client.userId) !== ROLE_OWNER) break; // лидера снимает только владелец
           delete g.memberRoles[targetUserId];
           g.members.delete(targetUserId);
           sendToUser(targetUserId, { type: "group_kicked", groupId: gid, groupName: g.name });
@@ -2105,7 +2116,7 @@ wss.on("connection", (ws, req) => {
         }
         // --- Parties (temporary play sessions) ------------------------------------
         case "party_create": {
-          const pname = sanitize(msg.name || "", 40) || "??????";
+          const pname = sanitize(msg.name || "", 40) || "Группа";
           const id = String(++partyCounter);
           const p = { id, name: pname, leaderId: client.userId, members: new Set([client.userId]), createdAt: Date.now() };
           parties.set(id, p);
@@ -2195,7 +2206,7 @@ wss.on("connection", (ws, req) => {
     } catch (err) {
       console.error("[WS Message Error]:", err);
       try {
-        send(ws, { type: "error", text: "?????????? ?????? ???????" });
+        send(ws, { type: "error", text: "Слишком много сообщений" });
       } catch (wsErr) {}
     }
   });
@@ -2229,7 +2240,7 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// GцЗGцЗGцЗ WebSocket Ping/Pong Keepalive GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── WebSocket Ping/Pong Keepalive ──────────────────────────────────────────
 // Prevents nginx/proxy from killing idle WS connections
 const WS_PING_INTERVAL = 25_000; // 25s (nginx default timeout is 60s)
 setInterval(() => {
@@ -2265,10 +2276,10 @@ setInterval(async () => {
   }
   if (activeUserIds.size === 0) return;
 
-  const leveledUp = []; // ?????, ? ??????? ??????? ???????? ???????
+  const leveledUp = []; // кланы, у которых реально сменился уровень
   for (const [, g] of groups.entries()) {
     let groupUpdated = false;
-    const oldLvl = calcClanLevel(g); // ??????? ?? ?????????? ?????
+    const oldLvl = calcClanLevel(g); // уровень ДО начисления часов
     for (const mid of g.members) {
       if (!activeUserIds.has(mid)) continue;
       if (!g.playHours) g.playHours = {};
@@ -2276,14 +2287,14 @@ setInterval(async () => {
       groupUpdated = true;
     }
     if (groupUpdated) {
-      const newLvl = calcClanLevel(g); // ??????? ?????
+      const newLvl = calcClanLevel(g); // уровень ПОСЛЕ
       if (newLvl !== oldLvl) leveledUp.push({ g, oldLvl, newLvl });
     }
   }
 
   // ????????? ?????????? ?????? ??? ??????, ? ??????? ???????? ???????
   for (const { g, oldLvl, newLvl } of leveledUp) {
-    saveGroup(g); // ????? ?????????, ????? ??????? ?? ????????? ?? ????????? ??????????
+    saveGroup(g); // сразу персистим, чтобы уровень не потерялся до планового сохранения
     const pub = await publicGroup(g);
     for (const memberId of g.members) {
       sendToUser(memberId, { type: "group_update", group: pub });
@@ -2305,7 +2316,7 @@ function broadcastToTicket(ticketId, excludeUserId, data) {
 }
 function ticketSummary(t) { return { id: t.id, category: t.category, username: t.username, status: t.status, createdAt: t.createdAt, preview: t.preview, unread: t.unread || 0, paymentAmount: t.paymentAmount || null, tgChatId: t.tgChatId || null, userId: t.userId }; }
 
-// GцЗGцЗGцЗ News GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── News ─────────────────────────────────────────────────────────────────────
 let newsCache = [], newsCacheTime = 0;
 
 async function fetchNewsPublic() {
@@ -2335,7 +2346,7 @@ async function fetchNewsPublic() {
       }
       const dateStr = pubDate ? new Date(pubDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
       const link    = `https://t.me/sb7games/${postId}`;
-      items.push({ id: parseInt(postId) || items.length + 1, title: text.split("\n")[0].slice(0, 80) || "???????", text: text.slice(0, 400), date: dateStr, photo, link });
+      items.push({ id: parseInt(postId) || items.length + 1, title: text.split("\n")[0].slice(0, 80) || "Новость", text: text.slice(0, 400), date: dateStr, photo, link });
     }
     if (items.length > 0) { newsCache = items; newsCacheTime = Date.now(); }
     return newsCache;
@@ -2362,7 +2373,7 @@ setInterval(() => {
   for (const [, g] of groups.entries()) saveGroup(g);
 }, 300_000);
 
-// GцЗGцЗGцЗ Telegram Bot GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Telegram Bot ──────────────────────────────────────────────────────────────
 const TelegramBot = require("node-telegram-bot-api");
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
@@ -2371,16 +2382,16 @@ const botSessions = new Map(); // chatId -> { state, ... }
 // ??????????
 const USER_KB = {
   keyboard: [
-    [{ text: "???????" },       { text: "????????? ??????" }],
-    [{ text: "??? ?????????" }, { text: "????? ?????????"  }],
+    [{ text: "Профиль" },       { text: "Пополнить баланс" }],
+    [{ text: "Мои обращения" }, { text: "Новое обращение"  }],
   ],
   resize_keyboard: true, persistent: true,
 };
 
 const ADMIN_KB = {
   keyboard: [
-    [{ text: "??????" },  { text: "???????" }],
-    [{ text: "?????? ?????????" }],
+    [{ text: "Тикеты" },  { text: "Профиль" }],
+    [{ text: "Баланс участника" }],
   ],
   resize_keyboard: true, persistent: true,
 };
@@ -2389,18 +2400,18 @@ function getKb(account) {
   return account?.role === "admin" ? ADMIN_KB : USER_KB;
 }
 
-const TICKET_STATUS_LABELS = { open: "??????", in_progress: "? ??????", answered: "????????", closed: "??????" };
+const TICKET_STATUS_LABELS = { open: "открыт", in_progress: "в работе", answered: "ответили", closed: "закрыт" };
 
-// GцЗGцЗGцЗ Helpers GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function mainMenu(chatId, account) {
-  const name  = account?.username || "?????";
+  const name  = account?.username || "игрок";
   const bal   = (account?.balance ?? 0).toLocaleString("ru-RU");
   const isAdm = account?.role === "admin";
   bot.sendMessage(chatId,
-    `??????, *${name}*!\n\n` +
-    `??????: *${bal} ???*` +
-    (isAdm ? "\n\n????? ??????????????." : ""),
+    `Привет, *${name}*!\n\n` +
+    `Баланс: *${bal} СБТ*` +
+    (isAdm ? "\n\nРежим администратора." : ""),
     { parse_mode: "Markdown", reply_markup: getKb(account) }
   );
 }
@@ -2416,24 +2427,24 @@ async function showAdminTicketList(chatId, filter = "open") {
 
   const filterBtns = [
     [
-      { text: filter === "open"     ? "· ???????? ·" : "????????",     callback_data: "admin_filter_open"     },
-      { text: filter === "answered" ? "· ???????? ·" : "????????",     callback_data: "admin_filter_answered" },
-      { text: filter === "all"      ? "· ??? ·"       : "???",          callback_data: "admin_filter_all"      },
+      { text: filter === "open"     ? "· Активные ·" : "Активные",     callback_data: "admin_filter_open"     },
+      { text: filter === "answered" ? "· Ответили ·" : "Ответили",     callback_data: "admin_filter_answered" },
+      { text: filter === "all"      ? "· Все ·"       : "Все",          callback_data: "admin_filter_all"      },
     ],
   ];
 
   if (list.length === 0) {
-    return bot.sendMessage(chatId, "??? ??????? ? ???? ?????????.", {
+    return bot.sendMessage(chatId, "Нет тикетов в этой категории.", {
       reply_markup: { inline_keyboard: filterBtns }
     });
   }
 
   const ticketBtns = list.map(t => [{
-    text: `#${t.id} [${TICKET_STATUS_LABELS[t.status] || t.status}] ${t.username} — ${t.category.slice(0, 20)}${t.unread ? ` (${t.unread} ?????)` : ""}`,
+    text: `#${t.id} [${TICKET_STATUS_LABELS[t.status] || t.status}] ${t.username} — ${t.category.slice(0, 20)}${t.unread ? ` (${t.unread} новых)` : ""}`,
     callback_data: `admin_ticket_${t.id}`,
   }]);
 
-  bot.sendMessage(chatId, `*??????* (${list.length}):`, {
+  bot.sendMessage(chatId, `*Тикеты* (${list.length}):`, {
     parse_mode: "Markdown",
     reply_markup: { inline_keyboard: [...filterBtns, ...ticketBtns] }
   });
@@ -2442,12 +2453,12 @@ async function showAdminTicketList(chatId, filter = "open") {
 // ???????? ?????????? ?????
 async function showAdminTicket(chatId, ticketId) {
   const t = tickets.get(ticketId);
-  if (!t) { bot.sendMessage(chatId, "????? ?? ??????."); return; }
+  if (!t) { bot.sendMessage(chatId, "Тикет не найден."); return; }
 
   const lastMsgs = t.messages
     .filter(m => m.from !== "system")
     .slice(-5)
-    .map(m => `${m.role === "admin" ? "?????" : m.username}: ${m.text.slice(0, 80)}`)
+    .map(m => `${m.role === "admin" ? "Админ" : m.username}: ${m.text.slice(0, 80)}`)
     .join("\n");
 
   const statusBtns = Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => ({
@@ -2456,25 +2467,25 @@ async function showAdminTicket(chatId, ticketId) {
   }));
 
   bot.sendMessage(chatId,
-    `*????? #${t.id}*\n` +
-    `?????: ${t.username}\n` +
-    `?????????: ${t.category}\n` +
-    `??????: ${TICKET_STATUS_LABELS[t.status] || t.status}\n\n` +
-    (lastMsgs ? `????????? ?????????:\n${lastMsgs}\n\n` : "") +
-    (t.status !== "closed" ? "??????? ????????? ??????? (reply) ?? ??? ?????????." : "????? ??????."),
+    `*Тикет #${t.id}*\n` +
+    `Игрок: ${t.username}\n` +
+    `Категория: ${t.category}\n` +
+    `Статус: ${TICKET_STATUS_LABELS[t.status] || t.status}\n\n` +
+    (lastMsgs ? `Последние сообщения:\n${lastMsgs}\n\n` : "") +
+    (t.status !== "closed" ? "Отправь сообщение ответом (reply) на это сообщение." : "Тикет закрыт."),
     {
       parse_mode: "Markdown",
       reply_markup: {
         inline_keyboard: [
           statusBtns,
-          [{ text: "????? ? ??????", callback_data: "admin_filter_open" }],
+          [{ text: "Назад к списку", callback_data: "admin_filter_open" }],
         ]
       }
     }
   );
 }
 
-// GцЗGцЗGцЗ /start GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
+// ─── /start ───────────────────────────────────────────────────────────────────
 
 bot.onText(/\/start(.*)/, async (msg, match) => {
   const tgId    = String(msg.from.id);
@@ -2484,12 +2495,12 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
   if (param.startsWith("auth_")) {
     const code  = param.slice(5).toUpperCase();
     const entry = authCodes.get(code);
-    if (!entry) { bot.sendMessage(msg.chat.id, "??? ?????????????? ??? ?????. ???????? ????? ? ????????.", { reply_markup: getKb(account) }); return; }
+    if (!entry) { bot.sendMessage(msg.chat.id, "Код недействителен или истёк. Попробуй снова в лаунчере.", { reply_markup: getKb(account) }); return; }
     entry.confirmed = true;
     entry.tgUser = { id: msg.from.id, first_name: msg.from.first_name || "", last_name: msg.from.last_name || "", username: msg.from.username || null, auth_date: Math.floor(Date.now() / 1000) };
     const msgText = account
-      ? "??????????? ????????????! ??????? ? ???????."
-      : "??????????? ????????????! ??????? ? ??????? ? ???????? ???.";
+      ? "Авторизация подтверждена! Возвращаемся в меню."
+      : "Авторизация подтверждена! Возвращаемся в меню и придумай ник.";
     bot.sendMessage(msg.chat.id, msgText, { reply_markup: getKb(account) });
     return;
   }
@@ -2509,12 +2520,12 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
     const ticket = {
       id: ticketId, userId: tgId, tgChatId: String(msg.chat.id), username,
-      category: "?????????? ???????", preview: `${amount} ??? · ${methodLabel}`,
+      category: "Пополнение баланса", preview: `${amount} СБТ · ${methodLabel}`,
       paymentAmount: amount,
       status: "open", unread: 1, invoiceId, createdAt: Date.now(),
       messages: [
-        { id: uuidv4(), from: "system", text: `????? #${ticketId} ?????? ??? ?????????? ????? ????.`, time: Date.now() },
-        { id: uuidv4(), from: tgId, username, text: `??????????: ${amount} ??? · ${methodLabel}`, time: Date.now() },
+        { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан при пополнении через сайт.`, time: Date.now() },
+        { id: uuidv4(), from: tgId, username, text: `Пополнение: ${amount} СБТ · ${methodLabel}`, time: Date.now() },
       ],
     };
     tickets.set(ticketId, ticket);
@@ -2523,15 +2534,15 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     if (inv) inv.ticketId = ticketId;
 
     bot.sendMessage(msg.chat.id,
-      `*?????? ?? ?????????? — ????? #${ticketId}*\n\n` +
-      `???????: \`${username}\`\n` +
-      `?????: *${amount} ???* (${amount} ?)\n` +
-      `??????: ${methodLabel}\n` +
-      `????: ${dateStr}\n\n` +
-      `????????????? ??????? ????? ? ??????? ?????????. ????? ?????? ????? ?????? ? ???????? ???????? ????.`,
+      `*Заявка на пополнение — тикет #${ticketId}*\n\n` +
+      `Аккаунт: \`${username}\`\n` +
+      `Сумма: *${amount} СБТ* (${amount} СБТ)\n` +
+      `Способ: ${methodLabel}\n` +
+      `Дата: ${dateStr}\n\n` +
+      `Администратор ответит здесь и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "????????? ???",        callback_data: `send_receipt_${ticketId}` }],
-        [{ text: "???????? ? ?????????", callback_data: "new_ticket_cb"            }],
+        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
       ]}}
     );
     return;
@@ -2543,7 +2554,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     if (target) {
       target.telegramId = tgId; target.telegram = msg.from.username || null; delete target.linkCode;
       await redisAccounts.set(target.id, target);
-      bot.sendMessage(msg.chat.id, `Telegram ???????? ? ???????? \`${target.username}\`.`, { parse_mode: "Markdown", reply_markup: getKb(account) });
+      bot.sendMessage(msg.chat.id, `Telegram привязан к аккаунту \`${target.username}\`.`, { parse_mode: "Markdown", reply_markup: getKb(account) });
       return;
     }
   }
@@ -2564,20 +2575,20 @@ bot.on("text", async (msg) => {
 
   // -- ????? --
   if (isAdm) {
-    if (msg.text === "??????") {
+    if (msg.text === "Тикеты") {
       await showAdminTicketList(chatId, "open");
       return;
     }
-    if (msg.text === "???????") {
+    if (msg.text === "Профиль") {
       bot.sendMessage(chatId,
-        `*???????*\n\n???: \`${account?.username || "—"}\`\nID: \`${tgId}\`\n????: ?????????????\n??????: ${(account?.balance ?? 0).toLocaleString("ru-RU")} ???`,
+        `*Профиль*\n\nНик: \`${account?.username || "—"}\`\nID: \`${tgId}\`\nРоль: администратор\nБаланс: ${(account?.balance ?? 0).toLocaleString("ru-RU")} СБТ`,
         { parse_mode: "Markdown", reply_markup: ADMIN_KB }
       );
       return;
     }
-    if (msg.text === "?????? ?????????") {
+    if (msg.text === "Баланс участника") {
       botSessions.set(chatId, { state: "admin_awaiting_balance_nick" });
-      bot.sendMessage(chatId, "????? ??? ??? TG ID ?????????:");
+      bot.sendMessage(chatId, "Введи ник или TG ID участника:");
       return;
     }
     return;
@@ -2585,44 +2596,44 @@ bot.on("text", async (msg) => {
 
   // -- ???????????? --
   switch (msg.text) {
-    case "???????": {
-      if (!account) { bot.sendMessage(chatId, "??????? ?? ??????. ????? ? ??????? ????? Telegram.", { reply_markup: USER_KB }); return; }
+    case "Профиль": {
+      if (!account) { bot.sendMessage(chatId, "Аккаунт не найден. Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
       const regDate = new Date(account.createdAt).toLocaleDateString("ru-RU");
       bot.sendMessage(chatId,
-        `*???????*\n\n???: \`${account.username}\`\nID: \`${account.id}\`\n??????: *${(account.balance ?? 0).toLocaleString("ru-RU")} ???*\n????: ${account.role === "admin" ? "?????????????" : "????????????"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "?? ????????"}\n???? ???.: ${regDate}`,
+        `*Профиль*\n\nНик: \`${account.username}\`\nID: \`${account.id}\`\nБаланс: *${(account.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${account.role === "admin" ? "администратор" : "пользователь"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "не привязан"}\nДата рег.: ${regDate}`,
         { parse_mode: "Markdown", reply_markup: USER_KB }
       );
       return;
     }
-    case "????????? ??????": {
-      bot.sendMessage(chatId, "*?????????? ???????*\n\n?????? ?????:", {
+    case "Пополнить баланс": {
+      bot.sendMessage(chatId, "*Пополнение баланса*\n\nВыбери сумму:", {
         parse_mode: "Markdown",
         reply_markup: { inline_keyboard: [
-          [{ text: "50 Gй+",   callback_data: "topup_50"   }, { text: "100 Gй+",  callback_data: "topup_100"  }, { text: "200 Gй+",  callback_data: "topup_200"  }],
-          [{ text: "500 Gй+",  callback_data: "topup_500"  }, { text: "1000 Gй+", callback_data: "topup_1000" }, { text: "2000 Gй+", callback_data: "topup_2000" }],
-          [{ text: "?????? ?????", callback_data: "topup_custom" }],
+          [{ text: "50 СБТ",   callback_data: "topup_50"   }, { text: "100 СБТ",  callback_data: "topup_100"  }, { text: "200 СБТ",  callback_data: "topup_200"  }],
+          [{ text: "500 СБТ",  callback_data: "topup_500"  }, { text: "1000 СБТ", callback_data: "topup_1000" }, { text: "2000 СБТ", callback_data: "topup_2000" }],
+          [{ text: "Другая сумма", callback_data: "topup_custom" }],
         ]}
       });
       return;
     }
-    case "??? ?????????": {
+    case "Мои обращения": {
       const list = [...tickets.values()].filter(t => t.userId === tgId).sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
-      if (list.length === 0) { bot.sendMessage(chatId, "*?????????*\n\n? ???? ???? ??? ?????????.", { parse_mode: "Markdown", reply_markup: USER_KB }); return; }
-      const STATUS = { open: "??????", in_progress: "? ??????", answered: "????????", closed: "??????" };
+      if (list.length === 0) { bot.sendMessage(chatId, "*Обращения*\n\nУ тебя пока нет обращений.", { parse_mode: "Markdown", reply_markup: USER_KB }); return; }
+      const STATUS = { open: "открыт", in_progress: "в работе", answered: "ответили", closed: "закрыт" };
       const lines = list.map(t => `*#${t.id}*  [${STATUS[t.status] || t.status}]  ${t.category}\n${t.preview?.slice(0, 55)}`).join("\n\n");
-      bot.sendMessage(chatId, `*?????????*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
+      bot.sendMessage(chatId, `*Обращения*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
       return;
     }
-    case "????? ?????????": {
+    case "Новое обращение": {
       botSessions.set(chatId, { state: "awaiting_ticket_desc", category: null });
-      bot.sendMessage(chatId, "?????? ????????? ?????????:", {
+      bot.sendMessage(chatId, "Выбери категорию обращения:", {
         reply_markup: { inline_keyboard: [
-          [{ text: "??????????? ????????", callback_data: "tcat_tech"    }],
-          [{ text: "?????? ?? ????????",   callback_data: "tcat_account" }],
-          [{ text: "?????? ?? ???????",     callback_data: "tcat_pay"     }],
-          [{ text: "??? ??? ??????",        callback_data: "tcat_bug"     }],
-          [{ text: "?????? ?? ??????",      callback_data: "tcat_report"  }],
-          [{ text: "??????",                callback_data: "tcat_other"   }],
+          [{ text: "Технические проблемы", callback_data: "tcat_tech"    }],
+          [{ text: "Вопрос по аккаунту",   callback_data: "tcat_account" }],
+          [{ text: "Вопрос по покупке",     callback_data: "tcat_pay"     }],
+          [{ text: "Баг или ошибка",        callback_data: "tcat_bug"     }],
+          [{ text: "Жалоба на игрока",      callback_data: "tcat_report"  }],
+          [{ text: "Другое",                callback_data: "tcat_other"   }],
         ]}
       });
       return;
@@ -2630,7 +2641,7 @@ bot.on("text", async (msg) => {
   }
 });
 
-// --- Callback ?????? ----------------------------------------------------------
+// ─── Callback кнопки ──────────────────────────────────────────────────────────
 
 bot.on("callback_query", async (q) => {
   const tgId    = String(q.from.id);
@@ -2666,14 +2677,14 @@ bot.on("callback_query", async (q) => {
     const t = tickets.get(ticketId);
     if (t) {
       t.status = status;
-      t.messages.push({ id: uuidv4(), from: "system", text: `?????? ???????: ${TICKET_STATUS_LABELS[status] || status}`, time: Date.now() });
+      t.messages.push({ id: uuidv4(), from: "system", text: `Статус изменён: ${STATUS_LABELS[status] || status}`, time: Date.now() });
       broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(t) });
       broadcastToTicket(ticketId, null, { type: "ticket_update", ticket: ticketSummary(t) });
       // ????????? ????????????
       if (status === "answered") {
-        try { await bot.sendMessage(t.userId, `?? ?????? ?????? \`#${ticketId}\` ?????? ?????. ??????? ?? ????? ??? ????? "??? ?????????".`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+        try { await bot.sendMessage(t.userId, `По твоему тикету \`#${ticketId}\` пришёл ответ. Проверь на сайте или нажми "Мои обращения".`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
       }
-      bot.answerCallbackQuery(q.id, { text: `??????: ${TICKET_STATUS_LABELS[status]}`, show_alert: false });
+      bot.answerCallbackQuery(q.id, { text: `Статус: ${TICKET_STATUS_LABELS[status]}`, show_alert: false });
       await showAdminTicket(chatId, ticketId);
     }
     return;
@@ -2684,52 +2695,52 @@ bot.on("callback_query", async (q) => {
     const sub = q.data.split("_")[1];
     if (sub === "custom") {
       botSessions.set(chatId, { state: "awaiting_topup_amount" });
-      bot.sendMessage(chatId, "????? ????? ?????????? ? ??????:", { reply_markup: { force_reply: true, input_field_placeholder: "????????: 350" } });
+      bot.sendMessage(chatId, "Введи сумму пополнения в рублях:", { reply_markup: { force_reply: true, input_field_placeholder: "Например: 350" } });
       return;
     }
     const amount = parseInt(sub, 10);
-    if (!account) { bot.sendMessage(chatId, "????? ? ??????? ????? Telegram.", { reply_markup: USER_KB }); return; }
+    if (!account) { bot.sendMessage(chatId, "Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
     const ticketId = ++ticketCounter;
     const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "?????????? ???????", preview: `${amount} ??? · ????? ????`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
-      { id: uuidv4(), from: "system", text: `????? #${ticketId} ?????? ????? ????.`, time: Date.now() },
-      { id: uuidv4(), from: tgId, username: account.username, text: `?????????? ?? ${amount} ???`, time: Date.now() },
+    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "Пополнение баланса", preview: `${amount} СБТ · через бота`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан через бота.`, time: Date.now() },
+      { id: uuidv4(), from: tgId, username: account.username, text: `Пополнение на ${amount} СБТ`, time: Date.now() },
     ]};
     tickets.set(ticketId, t);
     saveTicket(t);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
     bot.sendMessage(chatId,
-      `*?????? ?? ?????????? — ????? #${ticketId}*\n\n???????: \`${account.username}\`\n?????: *${amount} ???* (${amount} ?)\n????: ${dateStr}\n\n????????????? ??????? ? ??????? ?????????. ????? ?????? ????? ?????? ? ???????? ???????? ????.`,
+      `*Заявка на пополнение — тикет #${ticketId}*\n\nАккаунт: \`${account.username}\`\nСумма: *${amount} СБТ* (${amount} СБТ)\nДата: ${dateStr}\n\nАдминистратор ответит и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "????????? ???",        callback_data: `send_receipt_${ticketId}` }],
-        [{ text: "???????? ? ?????????", callback_data: "new_ticket_cb"            }],
+        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
       ]}}
     );
     return;
   }
 
-  // -- ????? ????????? inline --
+  // ── Новое обращение inline ──
   if (q.data === "new_ticket_cb") {
     botSessions.set(chatId, { state: "awaiting_ticket_desc", category: null });
-    bot.sendMessage(chatId, "?????? ????????? ?????????:", {
+    bot.sendMessage(chatId, "Выбери категорию обращения:", {
       reply_markup: { inline_keyboard: [
-        [{ text: "??????????? ????????", callback_data: "tcat_tech"    }],
-        [{ text: "?????? ?? ????????",   callback_data: "tcat_account" }],
-        [{ text: "?????? ?? ???????",     callback_data: "tcat_pay"     }],
-        [{ text: "??? ??? ??????",        callback_data: "tcat_bug"     }],
-        [{ text: "?????? ?? ??????",      callback_data: "tcat_report"  }],
-        [{ text: "??????",                callback_data: "tcat_other"   }],
+        [{ text: "Технические проблемы", callback_data: "tcat_tech"    }],
+        [{ text: "Вопрос по аккаунту",   callback_data: "tcat_account" }],
+        [{ text: "Вопрос по покупке",     callback_data: "tcat_pay"     }],
+        [{ text: "Баг или ошибка",        callback_data: "tcat_bug"     }],
+        [{ text: "Жалоба на игрока",      callback_data: "tcat_report"  }],
+        [{ text: "Другое",                callback_data: "tcat_other"   }],
       ]}
     });
     return;
   }
 
   // -- ????????? ?????? --
-  const CAT_MAP = { tcat_tech: "??????????? ????????", tcat_account: "?????? ?? ????????", tcat_pay: "?????? ?? ???????", tcat_bug: "??? ??? ??????", tcat_report: "?????? ?? ??????", tcat_other: "??????" };
+  const CAT_MAP = { tcat_tech: "Технические проблемы", tcat_account: "Вопрос по аккаунту", tcat_pay: "Вопрос по покупке", tcat_bug: "Баг или ошибка", tcat_report: "Жалоба на игрока", tcat_other: "Другое" };
   if (q.data in CAT_MAP) {
     const category = CAT_MAP[q.data];
     botSessions.set(chatId, { state: "awaiting_ticket_desc", category });
-    bot.sendMessage(chatId, `?????????: *${category}*\n\n????? ???????? ????????:`, { parse_mode: "Markdown" });
+    bot.sendMessage(chatId, `Категория: *${category}*\n\nОпиши проблему подробно:`, { parse_mode: "Markdown" });
     return;
   }
 
@@ -2737,54 +2748,54 @@ bot.on("callback_query", async (q) => {
   if (q.data.startsWith("send_receipt_")) {
     const ticketId = parseInt(q.data.split("_")[2], 10);
     botSessions.set(chatId, { state: "awaiting_receipt", ticketId });
-    bot.sendMessage(chatId, `????? \`#${ticketId}\` — ???????? ???????? ??? ???? ???? ????????? ??????????.`,
-      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "??????", callback_data: "cancel_input" }]] } }
+    bot.sendMessage(chatId, `Тикет \`#${ticketId}\` — прикрепи скриншот или фото чека следующим сообщением.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "Отмена", callback_data: "cancel_input" }]] } }
     );
     return;
   }
 
   // -- ???????????/????????? ?????? --
   if (q.data.startsWith("confirm_pay_")) {
-    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "??? ????.", show_alert: true }); return; }
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
     const parts    = q.data.split("_");
     const ticketId = parseInt(parts[2], 10);
     const userId   = parts[3];
     const ticket   = tickets.get(ticketId);
-    // ?????: ???????? ???????? — ????? (paymentAmount), callback_data — ???????? ???????.
+    // Сумма: надёжный источник — тикет (paymentAmount), callback_data — запасной вариант.
     let amount = Number(ticket?.paymentAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      const fromCb = parseInt(parts[4], 10); // ? callback_data ????? ????????? "?" ? NaN
+      const fromCb = parseInt(parts[4], 10); // в callback_data могло прилететь "?" → NaN
       amount = Number.isFinite(fromCb) ? fromCb : NaN;
     }
     if (!Number.isFinite(amount) || amount <= 0) {
-      bot.answerCallbackQuery(q.id, { text: "?? ??????? ?????????? ????? ??????????. ????????? ???????.", show_alert: true });
+      bot.answerCallbackQuery(q.id, { text: "Не удалось определить сумму пополнения. Зачислите вручную.", show_alert: true });
       return;
     }
     const acc = await redisAccounts.get(userId);
     if (!acc) {
-      bot.answerCallbackQuery(q.id, { text: "??????? ?? ??????.", show_alert: true });
+      bot.answerCallbackQuery(q.id, { text: "Аккаунт не найден.", show_alert: true });
       return;
     }
     acc.balance = (acc.balance || 0) + amount;
     await redisAccounts.set(userId, acc);
-    if (ticket) { ticket.status = "closed"; ticket.messages.push({ id: uuidv4(), from: "system", text: `?????? ????????????. ????????? ${amount} ???.`, time: Date.now() }); saveTicket(ticket); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
-    try { await bot.sendMessage(userId, `?????? ????????????.\n+*${amount} ???* ?????????. ??????: *${acc.balance.toLocaleString("ru-RU")} ???*`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+    if (ticket) { ticket.status = "closed"; ticket.messages.push({ id: uuidv4(), from: "system", text: `Оплата подтверждена. Зачислено ${amount} СБТ.`, time: Date.now() }); saveTicket(ticket); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+    try { await bot.sendMessage(userId, `Оплата подтверждена.\n+*${amount} СБТ* зачислено. Баланс: *${acc.balance.toLocaleString("ru-RU")} СБТ*`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
     sendToUser(userId, { type: "balance_update", balance: acc.balance });
     bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
-    bot.answerCallbackQuery(q.id, { text: `+${amount} ??? ?????????`, show_alert: true });
+    bot.answerCallbackQuery(q.id, { text: `+${amount} СБТ зачислено`, show_alert: true });
     return;
   }
 
   if (q.data.startsWith("reject_pay_")) {
-    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "??? ????.", show_alert: true }); return; }
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
     const parts    = q.data.split("_");
     const ticketId = parseInt(parts[2], 10);
     const userId   = parts[3];
     const ticket   = tickets.get(ticketId);
-    if (ticket) { ticket.status = "open"; ticket.messages.push({ id: uuidv4(), from: "system", text: "?????? ?????????.", time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
-    try { await bot.sendMessage(userId, `?????? ?? ?????? \`#${ticketId}\` ?? ????????????. ???????? ? ?????????.`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+    if (ticket) { ticket.status = "open"; ticket.messages.push({ id: uuidv4(), from: "system", text: "Оплата отклонена.", time: Date.now() }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+    try { await bot.sendMessage(userId, `Оплата по тикету \`#${ticketId}\` не подтверждена. Напишите в поддержку.`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
     bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
-    bot.answerCallbackQuery(q.id, { text: "?????? ?????????.", show_alert: true });
+    bot.answerCallbackQuery(q.id, { text: "Оплата отклонена.", show_alert: true });
     return;
   }
 
@@ -2805,7 +2816,7 @@ bot.on("message", async (msg) => {
   const session = botSessions.get(chatId);
   const isAdm   = account?.role === "admin" || isAdminId(tgId);
 
-  // -- ?????: reply ?? ????? --
+  // ── АДМИН: reply на тикет ──
   if (!session && isAdm && msg.reply_to_message) {
     const replyText = msg.reply_to_message.caption || msg.reply_to_message.text || "";
     const match     = replyText.match(/ticket[:\s#]+(\d+)/i);
@@ -2821,8 +2832,8 @@ bot.on("message", async (msg) => {
         ticket.unread  = 0;
         broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
         broadcastToTicket(ticketId, tgId, { type: "message", ticketId, message });
-        try { await bot.sendMessage(ticket.userId, `????? ?? ?????? \`#${ticketId}\`:\n\n${text}`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
-        bot.sendMessage(chatId, `????? ????????? ? ????? \`#${ticketId}\`.`, { parse_mode: "Markdown" });
+        try { await bot.sendMessage(ticket.userId, `Ответ по тикету \`#${ticketId}\`:\n\n${text}`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
+        bot.sendMessage(chatId, `Категория: *${category}*\n\nОпиши проблему подробно:`, { parse_mode: "Markdown" });
         return;
       }
     }
@@ -2836,63 +2847,63 @@ bot.on("message", async (msg) => {
     const text = msg.text.trim();
 
     // ???????????????? ??????
-    if (text === "???????") {
-      if (!account) return bot.sendMessage(chatId, "??????? ?? ??????. ????? ? ??????? ????? Telegram.", { reply_markup: USER_KB });
+    if (text === "Профиль") {
+      if (!account) return bot.sendMessage(chatId, "Аккаунт не найден. Войди в лаунчер через Telegram.", { reply_markup: USER_KB });
       const isAdm2 = account.role === "admin";
       return bot.sendMessage(chatId,
-        `*${account.username}*\n\nID: \`${account.id}\`\n??????: *${(account.balance ?? 0).toLocaleString("ru-RU")} ???*\n????: ${isAdm2 ? "?????????????" : "?????"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "—"}`,
+        `*${account.username}*\n\nID: \`${account.id}\`\nБаланс: *${(account.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${isAdm2 ? "администратор" : "игрок"}\nTelegram: ${account.telegram ? `@${account.telegram}` : "—"}`,
         { parse_mode: "Markdown", reply_markup: getKb(account) }
       );
     }
 
-    if (text === "????????? ??????") {
-      return bot.sendMessage(chatId, "?? *?????????? ???????*\n\n?????? ?????:", {
+    if (text === "Пополнить баланс") {
+      return bot.sendMessage(chatId, "💰 *Пополнение баланса*\n\nВыбери сумму:", {
         parse_mode: "Markdown",
         reply_markup: { inline_keyboard: [
-          [{ text: "50 ???",  callback_data: "topup_50"  }, { text: "100 ???", callback_data: "topup_100" }],
-          [{ text: "250 ???", callback_data: "topup_250" }, { text: "500 ???", callback_data: "topup_500" }],
-          [{ text: "1000 ???", callback_data: "topup_1000" }],
-          [{ text: "?????? ?????", callback_data: "topup_custom" }],
+          [{ text: "50 СБТ",  callback_data: "topup_50"  }, { text: "100 СБТ", callback_data: "topup_100" }],
+          [{ text: "250 СБТ", callback_data: "topup_250" }, { text: "500 СБТ", callback_data: "topup_500" }],
+          [{ text: "1000 СБТ", callback_data: "topup_1000" }],
+          [{ text: "Другая сумма", callback_data: "topup_custom" }],
         ]}
       });
     }
 
-    if (text === "??? ?????????") {
+    if (text === "Мои обращения") {
       const userTickets = [...tickets.values()]
         .filter(t => t.userId === tgId || (account && t.userId === account.id))
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 10);
       if (userTickets.length === 0) {
-        return bot.sendMessage(chatId, "?? ??? ?????????.", { reply_markup: USER_KB });
+        return bot.sendMessage(chatId, "🎫 Нет обращений.", { reply_markup: USER_KB });
       }
       const lines = userTickets.map(t => {
-        const emoji = { open: "=ѓѓн", answered: "=ѓѓу", closed: "GЬЅ", in_progress: "=ѓц¦" }[t.status] || "GЬ¬";
-        return `${emoji} *#${t.id}* GЗц ${t.category}\nGцц _${t.preview?.slice(0, 50)}_`;
+        const emoji = { open: "🔴", answered: "🟢", closed: "⚫", in_progress: "🟡" }[t.status] || "⚪";
+        return `${emoji} *#${t.id}* — ${t.category}\n└ _${t.preview?.slice(0, 50)}_`;
       }).join("\n\n");
-      return bot.sendMessage(chatId, `?? *???? ?????????:*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
+      return bot.sendMessage(chatId, `🎫 *Твои обращения:*\n\n${lines}`, { parse_mode: "Markdown", reply_markup: USER_KB });
     }
 
-    if (text === "????? ?????????") {
-      return bot.sendMessage(chatId, "?????? ????????? ?????????:", {
+    if (text === "Новое обращение") {
+      return bot.sendMessage(chatId, "Выбери категорию обращения:", {
         reply_markup: { inline_keyboard: [
-          [{ text: "?? ???. ????????",  callback_data: "tcat_tech"    }],
-          [{ text: "?? ???????",         callback_data: "tcat_account" }],
-          [{ text: "?? ???????",         callback_data: "tcat_pay"     }],
-          [{ text: "?? ??? / ??????",    callback_data: "tcat_bug"     }],
-          [{ text: "?? ??????",          callback_data: "tcat_report"  }],
-          [{ text: "? ??????",           callback_data: "tcat_other"   }],
+          [{ text: "🔧 Тех. проблемы",  callback_data: "tcat_tech"    }],
+          [{ text: "👤 Аккаунт",         callback_data: "tcat_account" }],
+          [{ text: "💳 Покупка",         callback_data: "tcat_pay"     }],
+          [{ text: "🐛 Баг / ошибка",    callback_data: "tcat_bug"     }],
+          [{ text: "⚠️ Жалоба",          callback_data: "tcat_report"  }],
+          [{ text: "❓ Другое",           callback_data: "tcat_other"   }],
         ]}
       });
     }
 
     // ????????? ??????
-    if (isAdm && text === "??????") {
+    if (isAdm && text === "Тикеты") {
       return showAdminTicketList(chatId, "open");
     }
 
-    if (isAdm && text === "?????? ?????????") {
+    if (isAdm && text === "Баланс участника") {
       botSessions.set(chatId, { state: "admin_awaiting_balance_nick" });
-      return bot.sendMessage(chatId, "????? ??? ??? TG ID ?????????:");
+      return bot.sendMessage(chatId, "Введи ник или TG ID участника:");
     }
   }
 
@@ -2902,22 +2913,22 @@ bot.on("message", async (msg) => {
   if (session.state === "awaiting_topup_amount") {
     const amount = parseInt(msg.text?.trim(), 10);
     botSessions.delete(chatId);
-    if (!amount || amount < 50 || amount > 100000) { bot.sendMessage(chatId, "????? ?????? ???? ?? 50 ?? 100 000 ??????.", { reply_markup: USER_KB }); return; }
-    if (!account) { bot.sendMessage(chatId, "????? ? ??????? ????? Telegram.", { reply_markup: USER_KB }); return; }
+    if (!amount || amount < 50 || amount > 100000) { bot.sendMessage(chatId, "Сумма должна быть от 50 до 100 000 СБТ.", { reply_markup: USER_KB }); return; }
+    if (!account) { bot.sendMessage(chatId, "Войди в лаунчер через Telegram.", { reply_markup: USER_KB }); return; }
     const ticketId = ++ticketCounter;
     const dateStr  = new Date().toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "?????????? ???????", preview: `${amount} ??? · ????? ????`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
-      { id: uuidv4(), from: "system", text: `????? #${ticketId} ?????? ????? ????.`, time: Date.now() },
-      { id: uuidv4(), from: tgId, username: account.username, text: `?????????? ?? ${amount} ???`, time: Date.now() },
+    const t = { id: ticketId, userId: tgId, tgChatId: String(chatId), username: account.username, category: "Пополнение баланса", preview: `${amount} СБТ · через бота`, paymentAmount: amount, status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан через бота.`, time: Date.now() },
+      { id: uuidv4(), from: tgId, username: account.username, text: `Пополнение на ${amount} СБТ`, time: Date.now() },
     ]};
     tickets.set(ticketId, t);
     saveTicket(t);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(t) });
     bot.sendMessage(chatId,
-      `*?????? ?? ?????????? — ????? #${ticketId}*\n\n???????: \`${account.username}\`\n?????: *${amount} ???* (${amount} ?)\n????: ${dateStr}\n\n????????????? ??????? ? ??????? ?????????. ????? ?????? ????? ?????? ? ???????? ???????? ????.`,
+      `*Заявка на пополнение — тикет #${ticketId}*\n\nАккаунт: \`${account.username}\`\nСумма: *${amount} СБТ* (${amount} СБТ)\nДата: ${dateStr}\n\nАдминистратор ответит и пришлёт реквизиты. После оплаты нажми кнопку и прикрепи скриншот чека.`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "????????? ???",        callback_data: `send_receipt_${ticketId}` }],
-        [{ text: "???????? ? ?????????", callback_data: "new_ticket_cb"            }],
+        [{ text: "Отправить чек",        callback_data: `send_receipt_${ticketId}` }],
+        [{ text: "Написать в поддержку", callback_data: "new_ticket_cb"            }],
       ]}}
     );
     return;
@@ -2932,13 +2943,13 @@ bot.on("message", async (msg) => {
       a.telegram?.toLowerCase() === q.replace("@","").toLowerCase() ||
       a.id === q
     );
-    if (!found) { bot.sendMessage(chatId, "???????????? ?? ??????.", { reply_markup: ADMIN_KB }); return; }
+    if (!found) { bot.sendMessage(chatId, "Пользователь не найден.", { reply_markup: ADMIN_KB }); return; }
     bot.sendMessage(chatId,
-      `*${found.username}*\nID: \`${found.id}\`\nTelegram: ${found.telegram ? `@${found.telegram}` : "—"}\n??????: *${(found.balance ?? 0).toLocaleString("ru-RU")} ???*\n????: ${found.role}`,
+      `*${found.username}*\nID: \`${found.id}\`\nTelegram: ${found.telegram ? `@${found.telegram}` : "—"}\nБаланс: *${(found.balance ?? 0).toLocaleString("ru-RU")} СБТ*\nРоль: ${found.role}`,
       { parse_mode: "Markdown", reply_markup: { inline_keyboard: [
-        [{ text: "???????? 100 ???",  callback_data: `bal_add_${found.id}_100`  },
-         { text: "???????? 500 ???",  callback_data: `bal_add_${found.id}_500`  }],
-        [{ text: "???????? ??????",   callback_data: `bal_zero_${found.id}`     }],
+        [{ text: "Добавить 100 СБТ",  callback_data: `bal_add_${found.id}_100`  },
+         { text: "Добавить 500 СБТ",  callback_data: `bal_add_${found.id}_500`  }],
+        [{ text: "Обнулить баланс",   callback_data: `bal_zero_${found.id}`     }],
       ]}
     });
     return;
@@ -2950,11 +2961,11 @@ bot.on("message", async (msg) => {
     const ticket   = tickets.get(ticketId);
     const hasPhoto = msg.photo?.length > 0;
     const hasDoc   = !!msg.document;
-    if (!hasPhoto && !hasDoc) { bot.sendMessage(chatId, "?????? ???? ??? ???????? (????)."); return; }
+    if (!hasPhoto && !hasDoc) { bot.sendMessage(chatId, "Пришли фото или скриншот (файл)."); return; }
     botSessions.delete(chatId);
     if (ticket) {
       const fileId = hasPhoto ? msg.photo[msg.photo.length - 1].file_id : msg.document.file_id;
-      ticket.messages.push({ id: uuidv4(), from: tgId, username: account?.username || "Telegram", text: `[???, file_id: ${fileId}]`, time: Date.now() });
+      ticket.messages.push({ id: uuidv4(), from: tgId, username: account?.username || "Telegram", text: `[чек, file_id: ${fileId}]`, time: Date.now() });
       ticket.unread = (ticket.unread || 0) + 1; ticket.status = "open";
       broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
     }
@@ -2964,26 +2975,26 @@ bot.on("message", async (msg) => {
         const inv       = ticket ? [...invoices.values()].find(i => i.ticketId === ticketId) : null;
         const invAmount = inv?.amount || "?";
         const invMethod = inv ? (METHOD_NAMES[inv.method] || inv.method) : "?";
-        const caption   = `??? ?? ??????????\n\n?????: ${account?.username || tgId}\n?????: ${invAmount} ???\n??????: ${invMethod}\n?????: #${ticketId}`;
+        const caption   = `Чек на пополнение\n\nИгрок: ${account?.username || tgId}\nСумма: ${invAmount} СБТ\nСпособ: ${invMethod}\nТикет: #${ticketId}`;
         const rm        = { inline_keyboard: [[
-          { text: "???????????", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
-          { text: "?????????",   callback_data: `reject_pay_${ticketId}_${tgId}`               },
+          { text: "Подтвердить", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
+          { text: "Подтвердить", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
         ]]};
         if (hasPhoto) await bot.sendPhoto(tid, msg.photo[msg.photo.length - 1].file_id, { caption, reply_markup: rm });
         else          await bot.sendDocument(tid, msg.document.file_id, { caption, reply_markup: rm });
       } catch (e) { console.error("[admin notify]", e.message); }
     }
-    bot.sendMessage(chatId, `??? ???????. ????? \`#${ticketId}\` ???????? — ????????????? ???????? ?????? ? ???????? ??????.`, { parse_mode: "Markdown", reply_markup: USER_KB });
+    bot.sendMessage(chatId, `Чек получен. Тикет \`#${ticketId}\` обновлён — администратор проверит оплату и зачислит баланс.`, { parse_mode: "Markdown", reply_markup: USER_KB });
     return;
   }
 
   // ???????? ??????
   if (session.state === "awaiting_ticket_desc") {
     const text = msg.text?.trim();
-    if (!text || text.length < 5) { bot.sendMessage(chatId, "??????? ???????? ????????. ?????? ?????????."); return; }
+    if (!text || text.length < 5) { bot.sendMessage(chatId, "Слишком короткое описание. Напиши подробнее."); return; }
     const ticketId = ++ticketCounter;
-    const ticket = { id: ticketId, userId: tgId, username: account?.username || msg.from.username || "Telegram", category: session.category || "??????", preview: text.slice(0, 60), status: "open", unread: 1, createdAt: Date.now(), messages: [
-      { id: uuidv4(), from: "system", text: `????? #${ticketId} ??????.`, time: Date.now() },
+    const ticket = { id: ticketId, userId: tgId, username: account?.username || msg.from.username || "Telegram", category: session.category || "Другое", preview: text.slice(0, 60), status: "open", unread: 1, createdAt: Date.now(), messages: [
+      { id: uuidv4(), from: "system", text: `Тикет #${ticketId} создан.`, time: Date.now() },
       { id: uuidv4(), from: tgId, username: account?.username || "Telegram", text, time: Date.now() },
     ]};
     tickets.set(ticketId, ticket);
@@ -2991,18 +3002,18 @@ bot.on("message", async (msg) => {
     botSessions.delete(chatId);
     broadcastToAdmins({ type: "new_ticket", ticket: ticketSummary(ticket) });
     bot.sendMessage(chatId,
-      `????????? ???????.\n\n????? \`#${ticketId}\` — ${ticket.category}.\n??????? ??? ????? ??????.`,
+      `Обращение создано.\n\nТикет \`#${ticketId}\` — ${ticket.category}.\nОтветим как можно скорее.`,
       { parse_mode: "Markdown", reply_markup: USER_KB }
     );
   }
 });
 
-// -- ?????? ????????? (inline, ??? admin) --
+// ── Баланс участника (inline, для admin) ──
 bot.on("callback_query", async (q) => {});
-// ?????????????? listener ??? bal_ ????????? — ??? ????????? ????, ??????? inline
-// ????? ??????????? bal_ ? ???????? callback handler — ??????? ????? cancel_input
+// Дополнительный listener для bal_ коллбеков — уже обработан выше, добавим inline
+// Нужно перехватить bal_ в основном callback handler — добавим перед cancel_input
 
-// ????: ?????? ??? ???? listener ??? bal_
+// Патч: вешаем ещё один listener для bal_
 const origListeners = bot.listeners("callback_query").slice();
 bot.removeAllListeners("callback_query");
 bot.on("callback_query", async (q) => {
@@ -3011,23 +3022,23 @@ bot.on("callback_query", async (q) => {
   const isAdm  = isAdminId(tgId) || (await redisAccounts.get(tgId))?.role === "admin";
 
   if (q.data.startsWith("bal_")) {
-    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "??? ????.", show_alert: true }); return; }
+    if (!isAdm) { bot.answerCallbackQuery(q.id, { text: "Нет прав.", show_alert: true }); return; }
     const parts  = q.data.split("_");
     const action = parts[1]; // add | zero
     const userId = parts[2];
     const amount = parseInt(parts[3] || "0", 10);
     const acc    = await redisAccounts.get(userId);
-    if (!acc) { bot.answerCallbackQuery(q.id, { text: "???????????? ?? ??????.", show_alert: true }); return; }
+    if (!acc) { bot.answerCallbackQuery(q.id, { text: "Пользователь не найден.", show_alert: true }); return; }
     if (action === "add") acc.balance = (acc.balance || 0) + amount;
     if (action === "zero") acc.balance = 0;
     await redisAccounts.set(userId, acc);
     sendToUser(userId, { type: "balance_update", balance: acc.balance });
-    bot.answerCallbackQuery(q.id, { text: `??????: ${acc.balance} ???`, show_alert: true });
+    bot.answerCallbackQuery(q.id, { text: `Баланс: ${acc.balance} СБТ`, show_alert: true });
     bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: q.message.message_id }).catch(() => {});
     return;
   }
 
-  // ???????? ????????? listeners
+  // Передаём остальным listeners
   for (const fn of origListeners) fn(q);
 });
 
@@ -3045,15 +3056,25 @@ if (fs.existsSync(websiteDir)) {
   });
 }
 
-// GцЗGцЗGцЗ Start GцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗGцЗ
-server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
+// ─── Start ──────────────────────────────────────────────────────────────────
+// Сначала дожидаемся загрузки JWT-секрета, ТОЛЬКО потом поднимаем серверы.
+// Иначе первый запрос /auth/tg-login мог прийти до загрузки секрета из Redis
+// и получить токен, подписанный эфемерным секретом, который сразу инвалидируется.
+;(async () => {
+  await loadJwtSecret();
 
-try {
-  const sslOpts = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };
-  const httpsServer = https.createServer(sslOpts, app);
-  const wssSSL = new WebSocketServer({ server: httpsServer });
-  wssSSL.on("connection", (ws, req) => wss.emit("connection", ws, req));
-  httpsServer.listen(PORT_SSL, "0.0.0.0", () => console.log(`SBGames HTTPS :${PORT_SSL}`));
-} catch (e) {
-  console.warn("HTTPS not started:", e.message);
-}
+  server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
+
+  try {
+    const sslOpts = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };
+    const httpsServer = https.createServer(sslOpts, app);
+    const wssSSL = new WebSocketServer({ server: httpsServer });
+    wssSSL.on("connection", (ws, req) => wss.emit("connection", ws, req));
+    httpsServer.listen(PORT_SSL, "0.0.0.0", () => console.log(`SBGames HTTPS :${PORT_SSL}`));
+  } catch (e) {
+    console.warn("HTTPS not started:", e.message);
+  }
+})().catch(err => {
+  console.error("[startup] failed:", err);
+  process.exit(1);
+});

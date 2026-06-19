@@ -6,6 +6,20 @@ export async function invoke(cmd, args = {}) {
   return await tauriInvoke(cmd, args);
 }
 
+// safeInvoke — обёртка для «фоновых» команд (Discord presence, tray state,
+// уведомления), чей краш НЕ должен валить рендер. Любая ошибка пишется в
+// console.warn и проглатывается. UI-critical команды (запуск игры, апдейтер)
+// используют обычный invoke, чтобы ошибку было видно.
+export async function safeInvoke(cmd, args = {}) {
+  if (!isTauri) return undefined;
+  try {
+    return await invoke(cmd, args);
+  } catch (e) {
+    console.warn(`[safeInvoke] ${cmd} failed:`, e);
+    return undefined;
+  }
+}
+
 export async function listen(event, handler) {
   try {
     const { listen: tauriListen } = await import("@tauri-apps/api/event");
@@ -86,11 +100,23 @@ export async function notifyDesktop(title, body, type = "system") {
 }
 
 export async function setDiscordPresence(details, status, largeImage = "sbgames") {
-  return invoke("set_discord_presence", { details, status, largeImage });
+  // Discord RPC — фоновая фича. Если плагин падает (особенно на macOS, где
+  // discord IPC-сокет может быть недоступен), не валим рендер.
+  try {
+    return await invoke("set_discord_presence", { details, status, largeImage });
+  } catch (e) {
+    console.warn("[setDiscordPresence] failed:", e);
+    return undefined;
+  }
 }
 
 export async function clearDiscordPresence() {
-  return invoke("clear_discord_presence");
+  try {
+    return await invoke("clear_discord_presence");
+  } catch (e) {
+    console.warn("[clearDiscordPresence] failed:", e);
+    return undefined;
+  }
 }
 
 export async function getMinecraftStatus() {

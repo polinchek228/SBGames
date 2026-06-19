@@ -1108,7 +1108,7 @@ function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, onl
 
 // ─── GroupsPanel ─────────────────────────────────────────────────────────────
 function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCreate, onAcceptInvite, onDeclineInvite }) {
-  const [subTab, setSubTab] = useState("browse");
+  const [subTab, setSubTab] = useState("join");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -1120,6 +1120,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
   const [appliedIds, setAppliedIds] = useState(new Set());
   const [applyingId, setApplyingId] = useState(null);
   const [viewingGroup, setViewingGroup] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const inAnyClan = groups.length > 0;
   const myClan = groups[0] || null;
@@ -1148,7 +1149,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
   }, []);
 
   useEffect(() => {
-    if (subTab === "browse") loadBrowse();
+    if (subTab === "join" || subTab === "browse") loadBrowse();
   }, [subTab, loadBrowse]);
 
   const apply = async (gid) => {
@@ -1294,7 +1295,6 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 
   /* ── Tab buttons ── */
   const tabs = [
-    { id: "browse", label: "Все кланы" },
     { id: "join",   label: "Вступить" },
     { id: "my",     label: "Мой клан" },
   ];
@@ -1311,76 +1311,8 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
         ))}
       </div>
 
-      {/* ── Все кланы ── */}
-      {subTab === "browse" && (
-        <>
-          {browseLoading ? (
-            <div className="flex flex-col items-center py-10 gap-3">
-              <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(168,85,247,0.2)", borderTopColor: "rgba(168,85,247,0.7)" }} />
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузка...</p>
-            </div>
-          ) : browseList.length === 0 ? (
-            <div className="flex flex-col items-center py-10 gap-3">
-              <Users size={28} weight="thin" style={{ color: "rgba(255,255,255,0.15)" }} />
-              <p className="text-[12px] text-center" style={{ color: "rgba(255,255,255,0.3)" }}>
-                Нет доступных кланов.
-              </p>
-            </div>
-          ) : (
-            browseList.map((g, idx) => {
-              const lvl = g.levelInfo?.level || 1;
-              const isApplied = appliedIds.has(g.id);
-              const isMember = (g.members || []).includes(user?.id);
-              return (
-                <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.03 }} className="mb-2">
-                  <button onClick={() => setViewingGroup(g)}
-                    className="w-full text-left px-3 py-3 rounded-xl transition-all"
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                    <div className="flex items-center gap-3">
-                      <div className="relative flex-shrink-0">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                          style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 15 }}>
-                          {g.name.slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black"
-                          style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
-                          {lvl}
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-[13px] font-semibold text-white truncate">{g.name}</p>
-                          {g.closed && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
-                              style={{ background: "rgba(239,68,68,0.12)", color: "rgba(239,68,68,0.7)" }}>ЗАКРЫТ</span>
-                          )}
-                        </div>
-                        <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                          {g.memberCount || (g.members || []).length} чел &middot; {g.ownerName ? `@${g.ownerName}` : ""}
-                        </p>
-                      </div>
-                      {isApplied && (
-                        <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
-                          style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.8)" }}>
-                          Заявка
-                        </span>
-                      )}
-                      {isMember && (
-                        <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
-                          style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.8)" }}>
-                          Участник
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                </motion.div>
-              );
-            })
-          )}
-        </>
-      )}
+      {/* ── Все кланы (legacy, redirect to join) ── */}
+      {subTab === "browse" && null}
 
       {/* ── Вступить (создать / вступить) ── */}
       {subTab === "join" && (
@@ -1399,20 +1331,107 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             </div>
           ) : (
             <>
-              <p className="text-[10px] uppercase tracking-widest px-2 py-2 mb-2"
+              <p className="text-[10px] uppercase tracking-widest px-2 py-2"
+                style={{ color: "rgba(255,255,255,0.35)" }}>
+                Список кланов
+              </p>
+              {/* Search */}
+              <div className="mb-3 px-1">
+                <input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Поиск клана..."
+                  className="w-full rounded-xl px-4 py-2.5 text-[11px] outline-none transition-all"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onFocus={e => e.currentTarget.style.borderColor = "rgba(168,85,247,0.4)"}
+                  onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
+                />
+              </div>
+              {browseLoading ? (
+                <div className="flex flex-col items-center py-8 gap-3">
+                  <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(168,85,247,0.2)", borderTopColor: "rgba(168,85,247,0.7)" }} />
+                  <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузка...</p>
+                </div>
+              ) : (() => {
+                const filtered = browseList.filter(g =>
+                  g.name.toLowerCase().includes(searchQuery.toLowerCase())
+                );
+                if (filtered.length === 0) return (
+                  <div className="flex flex-col items-center py-6 gap-2">
+                    <Users size={24} weight="thin" style={{ color: "rgba(255,255,255,0.12)" }} />
+                    <p className="text-[11px] text-center" style={{ color: "rgba(255,255,255,0.25)" }}>
+                      {searchQuery ? "Ничего не найдено" : "Нет доступных кланов"}
+                    </p>
+                  </div>
+                );
+                return filtered.map((g, idx) => {
+                  const lvl = g.levelInfo?.level || 1;
+                  const isApplied = appliedIds.has(g.id);
+                  const isMember = (g.members || []).includes(user?.id);
+                  return (
+                    <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.03 }} className="mb-2">
+                      <button onClick={() => setViewingGroup(g)}
+                        className="w-full text-left px-3 py-3 rounded-xl transition-all"
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        <div className="flex items-center gap-3">
+                          <div className="relative flex-shrink-0">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                              style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 15 }}>
+                              {g.name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black"
+                              style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
+                              {lvl}
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[13px] font-semibold text-white truncate">{g.name}</p>
+                              {g.closed && (
+                                <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
+                                  style={{ background: "rgba(239,68,68,0.12)", color: "rgba(239,68,68,0.7)" }}>ЗАКРЫТ</span>
+                              )}
+                            </div>
+                            <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                              {g.memberCount || (g.members || []).length} чел &middot; {g.ownerName ? `@${g.ownerName}` : ""}
+                            </p>
+                          </div>
+                          {isApplied && (
+                            <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
+                              style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.8)" }}>
+                              Заявка
+                            </span>
+                          )}
+                          {isMember && (
+                            <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
+                              style={{ background: "rgba(168,85,247,0.15)", color: "rgba(168,85,247,0.8)" }}>
+                              Участник
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </motion.div>
+                  );
+                });
+              })()}
+
+              {/* ── Создать клан (внизу) ── */}
+              <p className="text-[10px] uppercase tracking-widest px-2 py-2 mt-5 mb-2"
                 style={{ color: "rgba(168,85,247,0.7)" }}>
                 Создать клан
               </p>
               {!creating ? (
                 <button onClick={() => setCreating(true)}
-                  className="w-full mb-5 py-3 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 text-white transition-all"
+                  className="w-full py-3 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 text-white transition-all"
                   style={{ background: "rgba(99,102,241,0.15)", border: "1px dashed rgba(99,102,241,0.3)" }}
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,0.25)"}
                   onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,0.15)"}>
                   <Plus size={14} /> Создать клан
                 </button>
               ) : (
-                <div className="mb-5 rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
                   <input value={name} onChange={e => setName(e.target.value)} maxLength={40} autoFocus
                     placeholder="Название клана..."
                     onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
@@ -1433,16 +1452,6 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                   {err && <p className="text-[11px] mt-2" style={{ color: "#fca5a5" }}>{err}</p>}
                 </div>
               )}
-
-              <p className="text-[10px] uppercase tracking-widest px-2 py-2"
-                style={{ color: "rgba(255,255,255,0.35)" }}>
-                Или выберите клан во вкладке &laquo;Все кланы&raquo;
-              </p>
-              <div className="rounded-xl p-4 mt-1" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                <p className="text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  Перейдите во вкладку &laquo;Все кланы&raquo;, чтобы найти клан и подать заявку на вступление. После подтверждения руководителем вы попадёте в клан.
-                </p>
-              </div>
             </>
           )}
         </>

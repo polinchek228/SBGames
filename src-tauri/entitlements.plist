@@ -2,9 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- Сеть: исходящий HTTPS к Mojang API / Modrinth / games.sb-capital.group,
+       входящий WebSocket для онлайна/новостей. -->
   <key>com.apple.security.network.client</key>
   <true/>
   <key>com.apple.security.network.server</key>
+  <true/>
+
+  <!-- JVM/Java требует JIT-компиляцию (Hotspot C2) и unsigned memory для classloading.
+       Без этих entitlements Minecraft падает на старте под hardened runtime. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- DYLD env vars нужны для LWJGL/native library loading. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
   <true/>
 </dict>
 </plist>

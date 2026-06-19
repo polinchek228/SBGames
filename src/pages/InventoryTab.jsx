@@ -2,16 +2,25 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, Sword, PawPrint, Sparkle, Star,
-  Loader2, Package, Check, X, Search, Filter,
+  Loader2, Package, Check, X, Search, Filter, Palette,
 } from "lucide-react";
 import { authedFetch } from "../lib/api.js";
+import { CATALOG_BY_ID, RARITIES, LIBRARY_CATALOG } from "./catalog.js";
+
+const COSMETIC_TYPE_META = {
+  frame:            { label: "Рамка",     color: "#3b82f6" },
+  background:       { label: "Фон",       color: "#6366f1" },
+  avatar_animated:  { label: "Анимация",  color: "#f59e0b" },
+  badge:            { label: "Бейдж",     color: "#ef4444" },
+};
 
 const CATEGORY_META = {
-  all:      { label: "Все",         icon: Package, color: "#94a3b8" },
-  armor:    { label: "Броня",       icon: ShieldCheck, color: "#3b82f6" },
-  weapon:   { label: "Оружие",      icon: Sword,  color: "#ef4444" },
-  pet:      { label: "Питомцы",     icon: PawPrint, color: "#a855f7" },
-  effect:   { label: "Эффекты",     icon: Sparkle, color: "#f59e0b" },
+  all:        { label: "Все",           icon: Package,    color: "#94a3b8" },
+  armor:      { label: "Броня",         icon: ShieldCheck, color: "#3b82f6" },
+  weapon:     { label: "Оружие",        icon: Sword,      color: "#ef4444" },
+  pet:        { label: "Питомцы",       icon: PawPrint,   color: "#a855f7" },
+  effect:     { label: "Эффекты",       icon: Sparkle,    color: "#f59e0b" },
+  cosmetic:   { label: "Кастомизация",  icon: Palette,    color: "#14b8a6" },
 };
 
 const RARITY = {
@@ -245,6 +254,11 @@ export default function InventoryTab({ user }) {
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState(null);
 
+  // Купленные элементы кастомизации (рамки, фоны, бейджи, анимации)
+  const [cosmeticItems, setCosmeticItems] = useState([]);
+  const [cosmeticEquip, setCosmeticEquip] = useState({});
+  const isAdmin = user?.role === "admin";
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -255,7 +269,18 @@ export default function InventoryTab({ user }) {
       const equippedVal = data.equipped || {};
       setItems(itemsVal);
       setEquipped(equippedVal);
-      localStorage.setItem("sbg_game_inventory", JSON.stringify({ gameItems: itemsVal, equipped: equippedVal }));
+
+      // Купленная косметика (рамки, фоны, бейджи, анимации)
+      // Для админа показываем весь каталог как купленный (как в LibraryTab)
+      const ownedIds = data.owned || [];
+      const ownedCosmetics = (isAdmin ? LIBRARY_CATALOG : ownedIds.map(id => CATALOG_BY_ID[id]).filter(Boolean));
+      setCosmeticItems(ownedCosmetics);
+      setCosmeticEquip(data.equip || {});
+
+      localStorage.setItem("sbg_game_inventory", JSON.stringify({
+        gameItems: itemsVal, equipped: equippedVal,
+        owned: ownedIds, cosmeticEquip: data.equip || {},
+      }));
     } catch (e) {
       try {
         const cached = localStorage.getItem("sbg_game_inventory");
@@ -263,6 +288,9 @@ export default function InventoryTab({ user }) {
           const parsed = JSON.parse(cached);
           setItems(parsed.gameItems || []);
           setEquipped(parsed.equipped || {});
+          const ownedIds = parsed.owned || [];
+          setCosmeticItems(isAdmin ? LIBRARY_CATALOG : ownedIds.map(id => CATALOG_BY_ID[id]).filter(Boolean));
+          setCosmeticEquip(parsed.cosmeticEquip || {});
           setIsOffline(true);
         } else {
           setError("Не удалось загрузить инвентарь");
@@ -313,13 +341,56 @@ export default function InventoryTab({ user }) {
     }
   };
 
-  // Filter
+  // Cosmetic equip handler (рамки/фоны/бейджи/анимации — отдельный API)
+  const handleCosmeticEquip = async (item) => {
+    if (busy) return;
+    setBusy(item.id);
+    try {
+      await authedFetch("/api/inventory/equip", {
+        method: "POST",
+        body: JSON.stringify({ itemId: item.id }),
+      });
+      setCosmeticEquip(prev => ({ ...prev, [item.type]: item.id }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleCosmeticUnequip = async (item) => {
+    if (busy) return;
+    setBusy(item.id);
+    try {
+      await authedFetch("/api/inventory/unequip", {
+        method: "POST",
+        body: JSON.stringify({ type: item.type }),
+      });
+      setCosmeticEquip(prev => {
+        const next = { ...prev };
+        delete next[item.type];
+        return next;
+      });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Filter — game items only (cosmetic handled by its own category)
+  let cosmeticFiltered = cosmeticItems;
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    cosmeticFiltered = cosmeticFiltered.filter(i => (i.name || "").toLowerCase().includes(q) || (i.type || "").toLowerCase().includes(q));
+  }
+
   let filtered = items;
-  if (activeCategory !== "all") {
+  if (activeCategory !== "all" && activeCategory !== "cosmetic") {
     const catMap = { armor: "Броня", weapon: "Оружие", pet: "Питомцы", effect: "Эффекты" };
     filtered = filtered.filter(i => i.category === catMap[activeCategory]);
   }
-  if (activeServer !== "all") {
+  if (activeServer !== "all" && activeCategory !== "cosmetic") {
     filtered = filtered.filter(i => i.server === activeServer);
   }
   if (search.trim()) {
@@ -328,12 +399,16 @@ export default function InventoryTab({ user }) {
   }
 
   const counts = {
-    all: items.length,
-    armor:  items.filter(i => i.category === "Броня").length,
-    weapon: items.filter(i => i.category === "Оружие").length,
-    pet:    items.filter(i => i.category === "Питомцы").length,
-    effect: items.filter(i => i.category === "Эффекты").length,
+    all:      items.length + cosmeticItems.length,
+    armor:    items.filter(i => i.category === "Броня").length,
+    weapon:   items.filter(i => i.category === "Оружие").length,
+    pet:      items.filter(i => i.category === "Питомцы").length,
+    effect:   items.filter(i => i.category === "Эффекты").length,
+    cosmetic: cosmeticItems.length,
   };
+
+  const showCosmetic = activeCategory === "all" || activeCategory === "cosmetic";
+  const showGame = activeCategory === "all" || activeCategory !== "cosmetic";
 
   return (
     <div className="flex h-full">
@@ -420,28 +495,108 @@ export default function InventoryTab({ user }) {
             <div className="flex items-center justify-center py-16 text-white/30 text-[12px] gap-2">
               <Loader2 size={14} className="animate-spin" /> Загружаем инвентарь…
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Package size={32} style={{ color: "rgba(255,255,255,0.2)" }} />
-              <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
-                {items.length === 0 ? "Инвентарь пуст" : "Ничего не найдено"}
-              </p>
-            </div>
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
-              <AnimatePresence mode="popLayout">
-                {filtered.map(item => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    equipped={equipped[item.category] === item.id}
-                    onEquip={handleEquip}
-                    onUnequip={handleUnequip}
-                    busy={busy === item.id}
-                  />
-                ))}
-              </AnimatePresence>
-            </div>
+            <>
+              {/* ── Игровые предметы ── */}
+              {showGame && (
+                filtered.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Package size={32} style={{ color: "rgba(255,255,255,0.2)" }} />
+                    <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+                      {items.length === 0 ? "Инвентарь пуст" : "Ничего не найдено"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                    <AnimatePresence mode="popLayout">
+                      {filtered.map(item => (
+                        <ItemCard
+                          key={item.id}
+                          item={item}
+                          equipped={equipped[item.category] === item.id}
+                          onEquip={handleEquip}
+                          onUnequip={handleUnequip}
+                          busy={busy === item.id}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )
+              )}
+
+              {/* ── Купленные элементы кастомизации ── */}
+              {showCosmetic && (
+                cosmeticFiltered.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Palette size={32} style={{ color: "rgba(255,255,255,0.2)" }} />
+                    <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+                      {cosmeticItems.length === 0 ? "Нет купленной кастомизации" : "Ничего не найдено"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className={showGame ? "mt-6" : ""}>
+                    {showGame && (
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>
+                        Элементы кастомизации · {cosmeticFiltered.length}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                      {cosmeticFiltered.map(item => {
+                  const meta = COSMETIC_TYPE_META[item.type] || { label: item.type, color: "#94a3b8" };
+                  const rarity = RARITIES[item.rarity] || RARITIES.common;
+                  const isEquipped = cosmeticEquip?.frame === item.id
+                    || cosmeticEquip?.background === item.id
+                    || cosmeticEquip?.badge === item.id
+                    || cosmeticEquip?.avatar_animated === item.id;
+                  return (
+                    <div key={item.id} className="group relative rounded-2xl overflow-hidden transition-all duration-200"
+                      style={{
+                        background: isEquipped ? `${meta.color}12` : "rgba(255,255,255,0.05)",
+                        border: isEquipped ? `1.5px solid ${meta.color}40` : "1.5px solid rgba(255,255,255,0.1)",
+                      }}>
+                      <div className="relative h-[100px] flex items-center justify-center overflow-hidden"
+                        style={{ background: `radial-gradient(ellipse at 50% 120%, ${meta.color}12 0%, transparent 70%), rgba(0,0,0,0.3)` }}>
+                        {item.type === "background" && item.video ? (
+                          <video src={item.video} muted loop playsInline autoPlay
+                            className="absolute inset-0 w-full h-full object-cover opacity-70" />
+                        ) : item.image ? (
+                          <img src={item.image} alt={item.name} className="w-14 h-14 object-cover rounded-xl"
+                            style={{ boxShadow: `0 0 24px ${meta.color}30` }}
+                            onError={e => { e.currentTarget.style.display = "none"; }} />
+                        ) : item.icon ? (
+                          <img src={item.icon} alt={item.name} className="w-12 h-12 object-contain"
+                            onError={e => { e.currentTarget.style.display = "none"; }} />
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl" style={{ background: `${meta.color}20` }} />
+                        )}
+
+                        {/* Type badge */}
+                        <span className="absolute top-2 left-2 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider"
+                          style={{ background: `${meta.color}20`, color: meta.color, border: `1px solid ${meta.color}30` }}>
+                          {meta.label}
+                        </span>
+
+                        {/* Equipped badge */}
+                        {isEquipped && (
+                          <span className="absolute top-2 right-2 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider"
+                            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
+                            ✓ Экип.
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="px-3 py-2.5">
+                        {item.name && <p className="text-[12px] font-bold text-white truncate">{item.name}</p>}
+                        <p className="text-[9px] mt-0.5" style={{ color: `${rarity.color}cc` }}>{rarity.label}</p>
+                      </div>
+                    </div>
+                  );
+                      })}
+                    </div>
+                  </div>
+                )
+              )}
+            </>
           )}
         </div>
       </div>
