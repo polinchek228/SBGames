@@ -72,7 +72,7 @@ export default function App() {
       <NotificationProvider>
         <CustomCursor />
         <UpdateNotifier />
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {!user ? (
             <LoginPage key="login" onLogin={handleLogin} />
           ) : (

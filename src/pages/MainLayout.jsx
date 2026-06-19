@@ -116,11 +116,15 @@ export default function MainLayout({ user, onLogout }) {
     setDiscordPresence("В лаунчере", "SB Games", "sbgames");
   }, []);
 
-  // Запрос разрешения на уведомления при первом входе
+  // Запрос разрешения на уведомления при первом входе.
+  // На macOS WKWebView Tauri-плагин перехватывает window.Notification и может
+  // бросить синхронное исключение, если ACL ещё не собран (первый запуск).
   useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch {}
   }, []);
 
   // Приветственное уведомление — только один раз за всё время
@@ -184,10 +188,8 @@ export default function MainLayout({ user, onLogout }) {
   };
 
   return (
-    <motion.div
+    <div
       className="w-full h-full flex flex-col bg-black"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
     >
       <Titlebar />
 
@@ -325,6 +327,6 @@ export default function MainLayout({ user, onLogout }) {
 
       {/* 6. Download progress overlay */}
       <DownloadProgress />
-    </motion.div>
+    </div>
   );
 }
