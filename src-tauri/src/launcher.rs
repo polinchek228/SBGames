@@ -127,6 +127,15 @@ pub async fn launch_instance(
     std::fs::create_dir_all(&log_dir).ok();
 
     let mut cmd = Command::new(&java_path);
+
+    // На Windows подавляем создание отдельного окна консоли.
+    // Без этого флага каждый spawn открывает cmd.exe → куча окон.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
     apply_jvm_args(&mut cmd, &resolved, &cfg, &inst_dir);
     cmd.arg(&resolved.main_class);
     cmd.args(&resolved.game_args);

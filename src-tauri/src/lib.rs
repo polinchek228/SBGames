@@ -736,6 +736,14 @@ async fn launch_minecraft(
     // 4. Запуск Forge
     let ram = ram_gb.unwrap_or(4);
     let mut cmd = Command::new(&java);
+
+    // На Windows подавляем создание отдельного окна консоли.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
     cmd.arg(format!("-Xmx{}G", ram));
     cmd.arg(format!("-Xms{}G", (ram / 2).max(1)));
     cmd.arg("-Dfile.encoding=UTF-8");
@@ -1185,10 +1193,15 @@ async fn launch_minecraft(
                         || (!java_dir.is_empty() && p.starts_with(&java_dir))
                         || p.starts_with("c:\\program files\\java\\")
                         || p.starts_with("c:\\program files\\eclipse adoptium\\")
+                        // LWJGL extracts native libs (openal.dll, lwjgl.dll etc.)
+                        // into %LOCALAPPDATA%/Temp/lwjgl<hash>/<version>/...
+                        // Это легитимные библиотеки, не инжект.
+                        || p.contains("\\temp\\lwjgl")
                 };
 
-                // Baseline: ждём 4 сек пока MC прогрузит свои нативные DLL
-                // (ускорено — раньше было 8 сек, читер мог успеть до baseline)
+                // Baseline: ждём 6 сек пока MC прогрузит свои нативные DLL
+                // (LWJGL может lazily-extract natives в temp через несколько секунд
+                //  после старта, поэтому даём запас)
                 let mut baseline: std::collections::HashSet<String> = std::collections::HashSet::new();
                 let mut baseline_done = false;
                 let mut tick: u32 = 0;
@@ -1201,10 +1214,10 @@ async fn launch_minecraft(
                         break;
                     }
 
-                    // Baseline собираем первые 4 сек (40 тиков по 100мс)
+                    // Baseline собираем первые 6 сек (60 тиков по 100мс)
                     if !baseline_done {
                         for dll in enum_dlls(pid_watch) { baseline.insert(dll); }
-                        if tick >= 40 { baseline_done = true; }
+                        if tick >= 60 { baseline_done = true; }
                     }
 
                     // ── mods/ integrity по SHA256 (каждые 200мс) ──
