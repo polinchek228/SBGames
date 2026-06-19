@@ -551,136 +551,96 @@ export default function PlayPage({ user, onOpenCommunity }) {
       {/* ═══ ДОП — модальное окно с вкладками ═══ */}
       <AnimatePresence>
         {showSidebarMenu && (
-          <>
-            {/* Затемнение */}
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
-              className="absolute inset-0 z-40" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
-              onClick={() => setShowSidebarMenu(false)} />
-            {/* Модальное окно */}
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: 10 }}
-              transition={{ duration: 0.2 }}
-              className="absolute z-50 rounded-2xl overflow-hidden flex flex-col"
-              style={{ left: 272, top: 24, bottom: 24, width: 420, background: "rgba(12,12,16,0.97)",
-                border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 80px rgba(0,0,0,0.85)", backdropFilter: "blur(28px)" }}>
-              {/* Шапка */}
-              <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center gap-2">
-                  <MoreHorizontal size={15} style={{ color: "rgba(255,255,255,0.5)" }} />
-                  <p className="text-[13px] font-black tracking-wide text-white">Управление</p>
-                </div>
-                <button onClick={() => setShowSidebarMenu(false)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition-all">
-                  <X size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
-                </button>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) setShowSidebarMenu(false); }}>
+            <motion.div initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 12 }} transition={{ duration: 0.18 }}
+              className="w-[440px] rounded-2xl p-5 flex flex-col gap-4" style={{ background: "rgba(10,10,14,0.98)", boxShadow: "0 8px 40px rgba(0,0,0,0.7)" }}>
+              <div className="flex items-center justify-between">
+                <p className="text-[14px] font-bold text-white">{sidebarMenuTab === "servers" ? "Серверы" : "Мои сборки"}</p>
+                <button onClick={() => setShowSidebarMenu(false)} className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ color: "rgba(255,255,255,0.3)" }}
+                  onMouseEnter={e => e.currentTarget.style.color = "#fff"} onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}><X size={12} /></button>
               </div>
 
               {/* Вкладки */}
-              <div className="flex gap-1 px-3 pt-3 pb-1 flex-shrink-0">
+              <div className="flex gap-1.5 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
                 {[
-                  { id: "servers", label: "Серверы", icon: Grid3X3, count: SERVERS.length },
-                  { id: "modpacks", label: "Сборки", icon: FolderOpen, count: customModpacks.length },
-                ].map(t => {
-                  const Icon = t.icon;
-                  const activeT = sidebarMenuTab === t.id;
-                  return (
-                    <button key={t.id} onClick={() => setSidebarMenuTab(t.id)}
-                      className="flex-1 h-9 rounded-lg flex items-center justify-center gap-1.5 transition-all"
-                      style={{ background: activeT ? "rgba(255,255,255,0.08)" : "transparent",
-                        border: `1px solid ${activeT ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)"}` }}>
-                      <Icon size={13} style={{ color: activeT ? "#fff" : "rgba(255,255,255,0.4)" }} />
-                      <span className="text-[11px] font-bold" style={{ color: activeT ? "#fff" : "rgba(255,255,255,0.4)" }}>{t.label}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold"
-                        style={{ background: activeT ? "rgba(168,85,247,0.25)" : "rgba(255,255,255,0.06)", color: activeT ? "rgba(192,132,252,0.95)" : "rgba(255,255,255,0.35)" }}>{t.count}</span>
-                    </button>
-                  );
-                })}
+                  { id: "servers", label: "Серверы" },
+                  { id: "modpacks", label: "Сборки" },
+                ].map(t => (
+                  <button key={t.id} onClick={() => setSidebarMenuTab(t.id)}
+                    className="flex-1 h-8 rounded-lg text-[11px] font-semibold transition-all"
+                    style={{ background: sidebarMenuTab === t.id ? "rgba(37,99,235,0.5)" : "transparent",
+                      color: sidebarMenuTab === t.id ? "#fff" : "rgba(255,255,255,0.4)" }}>
+                    {t.label}
+                  </button>
+                ))}
               </div>
 
-              {/* Контент вкладок */}
-              <div className="flex-1 overflow-y-auto p-2.5">
+              {/* Контент */}
+              <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
                 {sidebarMenuTab === "servers" ? (
-                  <div className="flex flex-col gap-1">
-                    {SERVERS.map(srv => {
-                      const activeS = selected?.id === srv.id && !showBuilder;
-                      return (
-                        <button key={srv.id} onClick={() => { setShowBuilder(false); setSelected(srv); setShowSidebarMenu(false); }}
-                          className="w-full text-left rounded-xl overflow-hidden transition-all hover:bg-white/[0.04]">
-                          <div className="h-[68px] relative" style={{ background: srv.bg, outline: activeS ? `2px solid ${srv.accent}` : "1px solid rgba(255,255,255,0.06)", outlineOffset: -2 }}>
-                            {srv.image && <img src={srv.image} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
-                            <div className="absolute bottom-2.5 left-3">
-                              <p className="text-[13px] font-black text-white tracking-wide leading-none">{srv.name}</p>
-                              <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>{srv.subtitle}</p>
-                            </div>
-                            {activeS && (
-                              <div className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center"
-                                style={{ background: srv.accent }}>
-                                <Check size={11} style={{ color: "#000" }} />
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  SERVERS.map(srv => {
+                    const activeS = selected?.id === srv.id && !showBuilder;
+                    return (
+                      <button key={srv.id} onClick={() => { setShowBuilder(false); setSelected(srv); setShowSidebarMenu(false); }}
+                        className="w-full rounded-xl overflow-hidden flex items-center gap-3 px-3 py-2.5 text-left transition-all"
+                        style={{ background: activeS ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)",
+                          border: `1px solid ${activeS ? "rgba(37,99,235,0.4)" : "rgba(255,255,255,0.05)"}` }}>
+                        <div className="w-10 h-10 rounded-lg flex-shrink-0 overflow-hidden" style={{ background: srv.bg }}>
+                          {srv.image && <img src={srv.image} alt="" className="w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-bold text-white truncate">{srv.name}</p>
+                          <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>{srv.subtitle}</p>
+                        </div>
+                        {activeS && <Check size={12} style={{ color: "#6395ff" }} />}
+                      </button>
+                    );
+                  })
                 ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {/* Создать сборку */}
+                  <>
                     <button onClick={() => { openBuilder(null); setShowSidebarMenu(false); }}
-                      className="w-full rounded-xl flex items-center gap-2.5 px-3 py-3 transition-all hover:bg-white/[0.04]"
-                      style={{ background: "rgba(168,85,247,0.06)", border: "1.5px dashed rgba(168,85,247,0.35)" }}>
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ background: "rgba(168,85,247,0.15)" }}>
-                        <Plus size={16} style={{ color: "rgba(192,132,252,0.9)" }} />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-[12px] font-bold" style={{ color: "rgba(192,132,252,0.95)" }}>Создать сборку</p>
-                        <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>Соберите свой модпак</p>
-                      </div>
+                      className="w-full rounded-xl flex items-center gap-2.5 px-3 py-2.5 text-left transition-all"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1.5px dashed rgba(255,255,255,0.12)" }}>
+                      <Plus size={14} style={{ color: "rgba(255,255,255,0.35)" }} />
+                      <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>Создать сборку</span>
                     </button>
-
                     {customModpacks.length === 0 ? (
-                      <div className="text-center py-10 px-4">
-                        <FolderOpen size={32} className="mx-auto mb-2" style={{ color: "rgba(255,255,255,0.15)" }} />
-                        <p className="text-[11px] font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Пока нет сборок</p>
-                        <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.2)" }}>Нажмите «Создать сборку» чтобы начать</p>
+                      <div className="text-center py-8">
+                        <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>Пока нет сборок</p>
                       </div>
                     ) : (
                       customModpacks.map(mp => {
                         const activeM = selected?.id === `custom_${mp.id}` && !showBuilder;
                         return (
-                          <div key={mp.id} className="group/item rounded-xl flex items-center gap-2.5 px-2.5 py-2 transition-all"
-                            style={{ background: activeM ? "rgba(168,85,247,0.1)" : "rgba(255,255,255,0.02)",
-                              border: `1px solid ${activeM ? "rgba(168,85,247,0.3)" : "rgba(255,255,255,0.05)"}` }}>
+                          <div key={mp.id} className="group/item rounded-xl flex items-center gap-2.5 px-3 py-2.5"
+                            style={{ background: activeM ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)",
+                              border: `1px solid ${activeM ? "rgba(37,99,235,0.4)" : "rgba(255,255,255,0.05)"}` }}>
                             <button onClick={() => { selectCustom(mp); setShowSidebarMenu(false); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
-                              <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center"
-                                style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.22), rgba(59,130,252,0.14))", border: "1px solid rgba(168,85,247,0.28)" }}>
-                                <FolderOpen size={16} style={{ color: "rgba(192,132,252,0.95)" }} />
+                              <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center"
+                                style={{ background: "rgba(255,255,255,0.06)" }}>
+                                <FolderOpen size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
                               </div>
                               <div className="min-w-0">
-                                <p className="text-[12px] font-bold text-white truncate">{mp.name}</p>
-                                <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} · {mp.mods.length} модов</p>
+                                <p className="text-[11px] font-bold text-white truncate">{mp.name}</p>
+                                <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} · {mp.mods.length} модов</p>
                               </div>
                             </button>
                             <div className="flex gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity">
                               <button onClick={(e) => { e.stopPropagation(); openBuilder(mp); setShowSidebarMenu(false); }}
-                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10" title="Редактировать">
-                                <Settings size={12} style={{ color: "rgba(255,255,255,0.55)" }} />
-                              </button>
+                                className="p-1 rounded hover:bg-white/10"><Settings size={10} style={{ color: "rgba(255,255,255,0.4)" }} /></button>
                               <button onClick={(e) => { e.stopPropagation(); deleteModpack(mp.id); }}
-                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-red-500/15" title="Удалить">
-                                <Trash2 size={12} style={{ color: "rgba(239,68,68,0.7)" }} />
-                              </button>
+                                className="p-1 rounded hover:bg-red-500/15"><Trash2 size={10} style={{ color: "rgba(239,68,68,0.6)" }} /></button>
                             </div>
                           </div>
                         );
                       })
                     )}
-                  </div>
+                  </>
                 )}
               </div>
             </motion.div>
-          </>
+          </motion.div>
         )}
       </AnimatePresence>
 

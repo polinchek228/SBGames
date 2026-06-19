@@ -1,22 +1,42 @@
 import { useEffect, useRef } from "react";
 
+// ── Тематические курсоры для каждого режима ──────────────────────────────
+// Минималистичные иконки 24px с мягким glow.
+// tipX/tipY — точка клика в координатах SVG (куда наводится острие).
+// Кастомные сборки (serverId не из списка) и "ничего не выбрано" → ring+dot.
+const THEMES = {
+  starwars:     { tipX: 12, tipY: 20, color: "#a78bfa", glow: "rgba(167,139,250,0.6)" },
+  minigames:    { tipX: 12, tipY: 12, color: "#4ade80", glow: "rgba(74,222,128,0.6)" },
+  gta:          { tipX: 12, tipY: 20, color: "#f87171", glow: "rgba(248,113,113,0.6)" },
+  vanilla_plus: { tipX: 12, tipY: 20, color: "#22d3ee", glow: "rgba(34,211,238,0.6)" },
+  anarchy:      { tipX: 12, tipY: 20, color: "#fbbf24", glow: "rgba(251,191,36,0.6)" },
+};
+
 export default function CustomCursor() {
   const dotRef   = useRef(null);
   const ringRef  = useRef(null);
-  const saberRef = useRef(null);
   const flashRef = useRef(null);
   const wrapRef  = useRef(null);
+  // refs для каждого тематического курсора
+  const themedRefs = {
+    starwars:     useRef(null),
+    minigames:    useRef(null),
+    gta:          useRef(null),
+    vanilla_plus: useRef(null),
+    anarchy:      useRef(null),
+  };
 
   useEffect(() => {
     const dot   = dotRef.current;
     const ring  = ringRef.current;
-    const saber = saberRef.current;
     const flash = flashRef.current;
     const wrap  = wrapRef.current;
-    if (!dot || !ring || !saber || !flash || !wrap) return;
+    const themed = Object.fromEntries(
+      Object.entries(themedRefs).map(([k, r]) => [k, r.current])
+    );
+    if (!dot || !ring || !flash || !wrap || Object.values(themed).some(r => !r)) return;
 
     let mx = -300, my = -300;
-    let rx = -300, ry = -300;
     let hovering  = false;
     let clicking  = false;
     let serverId  = null;
@@ -41,15 +61,15 @@ export default function CustomCursor() {
       } catch {}
     }
 
-    // Острие в SVG: (5, 5)
-    const TIP_X = 5;
-    const TIP_Y = 5;
-
-    // Вспышка при клике — короткий burst
+    // Вспышка при клике — короткий burst (цвет зависит от режима)
     function triggerFlash(x, y) {
+      const theme = THEMES[serverId];
+      if (theme) {
+        flash.style.background = `radial-gradient(circle, ${theme.glow} 0%, transparent 70%)`;
+      }
       if (flashAnim) clearTimeout(flashAnim);
-      flash.style.left    = `${x - 10}px`;
-      flash.style.top     = `${y - 10}px`;
+      flash.style.left    = `${x - 12}px`;
+      flash.style.top     = `${y - 12}px`;
       flash.style.opacity = "1";
       flash.style.transform = "scale(1)";
       flashAnim = setTimeout(() => {
@@ -59,23 +79,28 @@ export default function CustomCursor() {
     }
 
     const loop = () => {
-      const isSaber = serverId === "starwars";
+      const theme = THEMES[serverId];
+      const isThemed = !!theme;
 
-      dot.style.opacity   = isSaber ? "0" : "1";
-      ring.style.opacity  = isSaber ? "0" : "1";
-      saber.style.opacity = isSaber ? "1" : "0";
-      flash.style.display = isSaber ? "block" : "none";
+      dot.style.opacity   = isThemed ? "0" : "1";
+      ring.style.opacity  = isThemed ? "0" : "1";
+      flash.style.display = isThemed ? "block" : "none";
 
-      if (isSaber) {
-        saber.style.transform = `translate(${mx - TIP_X}px, ${my - TIP_Y}px)`;
+      // Скрываем все тематические, показываем активный
+      for (const [id, ref] of Object.entries(themed)) {
+        ref.style.opacity = (isThemed && id === serverId) ? "1" : "0";
+      }
+
+      if (isThemed) {
+        const ref = themed[serverId];
+        const sc = clicking ? 0.82 : hovering ? 1.18 : 1;
+        ref.style.transform = `translate(${mx - theme.tipX}px, ${my - theme.tipY}px) scale(${sc})`;
       } else {
-        rx = mx;
-        ry = my;
         const sz = hovering ? 24 : 18;
         const sc = clicking ? 0.75 : hovering ? 1.4 : 1;
         ring.style.width       = `${sz}px`;
         ring.style.height      = `${sz}px`;
-        ring.style.transform   = `translate(${rx - sz/2}px, ${ry - sz/2}px) scale(${sc})`;
+        ring.style.transform   = `translate(${mx - sz/2}px, ${my - sz/2}px) scale(${sc})`;
         ring.style.borderColor = hovering ? "rgba(99,149,255,0.9)" : "rgba(255,255,255,0.5)";
         ring.style.background  = hovering ? "rgba(99,149,255,0.06)" : "transparent";
         dot.style.transform    = `translate(${mx - 2}px, ${my - 2}px)`;
@@ -90,7 +115,7 @@ export default function CustomCursor() {
     const onMove = (e) => { mx = e.clientX; my = e.clientY; };
     const onDown = (e) => {
       clicking = true;
-      if (serverId === "starwars") triggerFlash(e.clientX, e.clientY);
+      if (THEMES[serverId]) triggerFlash(e.clientX, e.clientY);
     };
     const onUp   = () => { clicking = false; };
     const onOver = (e) => { if (e.target.closest("button,a,input,textarea,select,[role=button],label")) hovering = true; };
@@ -127,6 +152,13 @@ export default function CustomCursor() {
     };
   }, []);
 
+  const themedStyle = (opacity = 0) => ({
+    position:"fixed", top:0, left:0, zIndex:9999,
+    pointerEvents:"none", opacity,
+    willChange:"transform",
+    transition:"transform 0.04s linear",
+  });
+
   return (
     <div ref={wrapRef} style={{ display: "none" }}>
       {/* Default ring */}
@@ -151,127 +183,128 @@ export default function CustomCursor() {
       {/* Вспышка при клике */}
       <div ref={flashRef} style={{
         position:"fixed", zIndex:10000, pointerEvents:"none",
-        width:20, height:20, borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(196,181,253,0.9) 0%, rgba(129,140,248,0.5) 40%, transparent 70%)",
+        width:24, height:24, borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(167,139,250,0.7) 0%, transparent 70%)",
         opacity:0, display:"none",
         transition:"none",
         willChange:"transform, opacity",
       }}/>
 
-      {/* ── Lightsaber ── */}
-      <div ref={saberRef} style={{
-        position:"fixed", top:0, left:0, zIndex:9999,
-        pointerEvents:"none", opacity:0,
-        willChange:"transform",
-      }}>
-        {/*
-          Компактный меч: острие → (5, 5), клинок ~28px, рукоять ~18px.
-          Повёрнут на -38deg вокруг острия.
-        */}
-        <svg
-          width="20" height="60"
-          viewBox="0 0 20 60"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{
-            display:"block",
-            overflow:"visible",
-            transform:"rotate(-38deg)",
-            transformOrigin:"5px 5px",
-          }}
-        >
+      {/* ═══════════ STARWARS — звезда-очки (фиолетовый) ═══════════ */}
+      <div ref={themedRefs.starwars} style={themedStyle()}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ display:"block", overflow:"visible" }}>
           <defs>
-            <filter id="sb-far" x="-600%" y="-6%" width="1300%" height="112%">
-              <feGaussianBlur stdDeviation="4.5"/>
-            </filter>
-            <filter id="sb-mid" x="-250%" y="-4%" width="600%" height="108%">
+            <filter id="sw-glow" x="-100%" y="-100%" width="300%" height="300%">
               <feGaussianBlur stdDeviation="2"/>
             </filter>
-            <filter id="sb-near" x="-120%" y="-2%" width="340%" height="104%">
-              <feGaussianBlur stdDeviation="1"/>
+          </defs>
+          {/* glow halo */}
+          <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5Z"
+            fill="#a78bfa" opacity="0.35" filter="url(#sw-glow)"/>
+          {/* star core */}
+          <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5Z" fill="#c4b5fd"/>
+          {/* bright tip (click point at bottom 12,20) */}
+          <circle cx="12" cy="20" r="2.2" fill="#ede9fe" opacity="0.95"/>
+          <circle cx="12" cy="20" r="1" fill="#fff"/>
+        </svg>
+      </div>
+
+      {/* ═══════════ MINIGAMES — ромб-кристалл (зелёный) ═══════════ */}
+      <div ref={themedRefs.minigames} style={themedStyle()}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ display:"block", overflow:"visible" }}>
+          <defs>
+            <filter id="mg-glow" x="-100%" y="-100%" width="300%" height="300%">
+              <feGaussianBlur stdDeviation="2"/>
             </filter>
-            <filter id="sb-tip-glow" x="-500%" y="-500%" width="1100%" height="1100%">
-              <feGaussianBlur stdDeviation="2.5"/>
-            </filter>
-            <filter id="sb-btn-glow" x="-300%" y="-300%" width="700%" height="700%">
-              <feGaussianBlur stdDeviation="1.2"/>
-            </filter>
-            <linearGradient id="hilt-g" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%"  stopColor="#1a2236"/>
-              <stop offset="45%" stopColor="#263044"/>
-              <stop offset="100%" stopColor="#1a2236"/>
+            <linearGradient id="mg-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#86efac"/>
+              <stop offset="100%" stopColor="#22c55e"/>
             </linearGradient>
           </defs>
+          {/* glow halo */}
+          <path d="M12 2L22 12L12 22L2 12Z" fill="#4ade80" opacity="0.35" filter="url(#mg-glow)"/>
+          {/* diamond */}
+          <path d="M12 3L21 12L12 21L3 12Z" fill="url(#mg-grad)"/>
+          {/* facets */}
+          <path d="M12 3L21 12L12 12Z" fill="#bbf7d0" opacity="0.7"/>
+          <path d="M12 3L3 12L12 12Z" fill="#4ade80" opacity="0.8"/>
+          <line x1="3" y1="12" x2="21" y2="12" stroke="#86efac" strokeWidth="0.6" opacity="0.7"/>
+          {/* center highlight */}
+          <circle cx="12" cy="12" r="1.6" fill="#fff" opacity="0.55"/>
+        </svg>
+      </div>
 
-          {/* ─ КЛИНОК ─ */}
+      {/* ═══════════ GTA — мишень/прицел (красный) ═══════════ */}
+      <div ref={themedRefs.gta} style={themedStyle()}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ display:"block", overflow:"visible" }}>
+          <defs>
+            <filter id="gta-glow" x="-100%" y="-100%" width="300%" height="300%">
+              <feGaussianBlur stdDeviation="1.8"/>
+            </filter>
+          </defs>
+          {/* glow */}
+          <circle cx="12" cy="12" r="9" stroke="#f87171" strokeWidth="2.4" fill="none" opacity="0.4" filter="url(#gta-glow)"/>
+          {/* outer ring */}
+          <circle cx="12" cy="12" r="8.5" stroke="#fca5a5" strokeWidth="1.6" fill="none"/>
+          <circle cx="12" cy="12" r="8.5" stroke="#ef4444" strokeWidth="2.2" fill="none" opacity="0.5"/>
+          {/* crosshair lines (gaps in middle) */}
+          <line x1="12" y1="2"  x2="12" y2="6"  stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"/>
+          <line x1="12" y1="18" x2="12" y2="22" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"/>
+          <line x1="2"  y1="12" x2="6"  y2="12" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"/>
+          <line x1="18" y1="12" x2="22" y2="12" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"/>
+          {/* center dot */}
+          <circle cx="12" cy="12" r="2" fill="#fecaca"/>
+          <circle cx="12" cy="12" r="1" fill="#fff"/>
+          {/* tip marker at bottom */}
+          <circle cx="12" cy="20" r="1.4" fill="#fca5a5"/>
+        </svg>
+      </div>
 
-          {/* Ореол — самый широкий */}
-          <line x1="5" y1="5" x2="5" y2="33"
-            stroke="#4c1d95" strokeWidth="14" strokeLinecap="round"
-            opacity="0.14" filter="url(#sb-far)">
-            <animate attributeName="opacity" values="0.14;0.22;0.14" dur="2s" repeatCount="indefinite"/>
-          </line>
+      {/* ═══════════ VANILLA+ — капля/семя (cyan) ═══════════ */}
+      <div ref={themedRefs.vanilla_plus} style={themedStyle()}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ display:"block", overflow:"visible" }}>
+          <defs>
+            <filter id="vp-glow" x="-100%" y="-100%" width="300%" height="300%">
+              <feGaussianBlur stdDeviation="2"/>
+            </filter>
+            <linearGradient id="vp-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#a5f3fc"/>
+              <stop offset="100%" stopColor="#06b6d4"/>
+            </linearGradient>
+          </defs>
+          {/* glow */}
+          <path d="M12 2C7 8 5 11 5 14.5C5 18.6 8.1 22 12 22C15.9 22 19 18.6 19 14.5C19 11 17 8 12 2Z"
+            fill="#22d3ee" opacity="0.35" filter="url(#vp-glow)"/>
+          {/* drop shape */}
+          <path d="M12 3C7.5 8.5 6 11 6 14.5C6 18.2 8.6 21 12 21C15.4 21 18 18.2 18 14.5C18 11 16.5 8.5 12 3Z" fill="url(#vp-grad)"/>
+          {/* highlight */}
+          <path d="M12 5C9 9 8 11 8 13.5C8 15.5 9 14 10 12C11 10 12 7 12 5Z" fill="#cffafe" opacity="0.6"/>
+          {/* tip dot at bottom */}
+          <circle cx="12" cy="20" r="1.6" fill="#cffafe" opacity="0.95"/>
+        </svg>
+      </div>
 
-          {/* Средний */}
-          <line x1="5" y1="5" x2="5" y2="33"
-            stroke="#7c3aed" strokeWidth="6" strokeLinecap="round"
-            opacity="0.32" filter="url(#sb-mid)">
-            <animate attributeName="opacity" values="0.32;0.48;0.32" dur="2s" repeatCount="indefinite"/>
-          </line>
-
-          {/* Близкий */}
-          <line x1="5" y1="5" x2="5" y2="33"
-            stroke="#818cf8" strokeWidth="3" strokeLinecap="round"
-            opacity="0.75" filter="url(#sb-near)">
-            <animate attributeName="opacity" values="0.75;0.95;0.75" dur="2s" repeatCount="indefinite"/>
-          </line>
-
-          {/* Клинок */}
-          <line x1="5" y1="5" x2="5" y2="33"
-            stroke="#c4b5fd" strokeWidth="1.8" strokeLinecap="round"/>
-
-          {/* Белое ядро */}
-          <line x1="5" y1="6" x2="5" y2="32"
-            stroke="white" strokeWidth="0.7" strokeLinecap="round" opacity="0.95"/>
-
-          {/* Острие — блик */}
-          <circle cx="5" cy="5" r="3"
-            fill="#818cf8" opacity="0.4" filter="url(#sb-tip-glow)">
-            <animate attributeName="opacity" values="0.4;0.6;0.4" dur="2s" repeatCount="indefinite"/>
-          </circle>
-          <circle cx="5" cy="5" r="1.2" fill="white" opacity="0.98"/>
-
-          {/* ─ ЭМИТТЕР ─ */}
-          <rect x="2.5" y="33" width="5" height="2" rx="1"
-            fill="#475569"/>
-          <rect x="2.8" y="33.1" width="4.4" height="0.9" rx="0.45"
-            fill="#64748b" opacity="0.8"/>
-
-          {/* ─ ГАРДА ─ */}
-          <rect x="0.5" y="35" width="9" height="2.5" rx="1.25"
-            fill="#334155"/>
-          <rect x="1" y="35.2" width="8" height="1" rx="0.5"
-            fill="#64748b" opacity="0.55"/>
-
-          {/* ─ РУКОЯТЬ ─ */}
-          <rect x="3" y="37.5" width="4" height="17" rx="2"
-            fill="url(#hilt-g)"/>
-
-          {/* Полосы намотки */}
-          <rect x="3" y="39.5" width="4" height="1.3" rx="0.65" fill="#1e293b"/>
-          <rect x="3" y="42.2" width="4" height="1.3" rx="0.65" fill="#1e293b"/>
-          <rect x="3" y="44.9" width="4" height="1.3" rx="0.65" fill="#1e293b"/>
-
-          {/* Кнопка активации */}
-          <circle cx="5" cy="48.5" r="1.2"
-            fill="#818cf8" opacity="0.85" filter="url(#sb-btn-glow)">
-            <animate attributeName="opacity" values="0.85;1;0.85" dur="2.6s" repeatCount="indefinite"/>
-          </circle>
-          <circle cx="5" cy="48.5" r="0.65" fill="#e0e7ff"/>
-
-          {/* ─ НАВЕРШИЕ ─ */}
-          <ellipse cx="5" cy="55.5" rx="3" ry="1.6" fill="#293548"/>
-          <ellipse cx="5" cy="55" rx="2.2" ry="1.1" fill="#3d4f6b"/>
+      {/* ═══════════ ANARCHY — молния (amber) ═══════════ */}
+      <div ref={themedRefs.anarchy} style={themedStyle()}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ display:"block", overflow:"visible" }}>
+          <defs>
+            <filter id="an-glow" x="-100%" y="-100%" width="300%" height="300%">
+              <feGaussianBlur stdDeviation="2"/>
+            </filter>
+            <linearGradient id="an-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#fde047"/>
+              <stop offset="100%" stopColor="#f59e0b"/>
+            </linearGradient>
+          </defs>
+          {/* glow */}
+          <path d="M14 2L5 13.5H11L9 22L19 9.5H13L14 2Z"
+            fill="#f59e0b" opacity="0.38" filter="url(#an-glow)"/>
+          {/* bolt */}
+          <path d="M14 2L5 13.5H11L9 22L19 9.5H13L14 2Z" fill="url(#an-grad)"/>
+          {/* inner highlight */}
+          <path d="M13.5 4L7 12.5H11L10 19L17 10.5H13.5L13.5 4Z" fill="#fef3c7" opacity="0.55"/>
+          {/* tip */}
+          <circle cx="9" cy="20" r="1.6" fill="#fef3c7" opacity="0.95"/>
         </svg>
       </div>
     </div>
