@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { TelegramLogo, ArrowLeft, Check, Copy, GoogleLogo } from "@phosphor-icons/react";
+import { TelegramLogo, ArrowLeft, Check, Copy, GoogleLogo, Gift } from "@phosphor-icons/react";
 import { API_URL } from "../lib/api.js";
 
 const glowCard = {
@@ -48,7 +48,16 @@ export default function LoginPage({ onLogin }) {
   const location = useLocation();
   const returnTo = location.state?.from || "/";
   const redirectMessage = location.state?.message || null;
-  const referralCodeRef = useRef(new URLSearchParams(window.location.search).get("ref") || null);
+  const [referralFromUrl] = useState(() => {
+    const urlCode = new URLSearchParams(window.location.search).get("ref");
+    if (urlCode) {
+      localStorage.setItem("referral", urlCode);
+      return urlCode;
+    }
+    return localStorage.getItem("referral") || null;
+  });
+  const referralCodeRef = useRef(referralFromUrl);
+  const [referralInput, setReferralInput] = useState(referralFromUrl || "");
 
   useEffect(() => {
     if (step !== "widget" || !widgetRef.current) return;
@@ -169,7 +178,7 @@ export default function LoginPage({ onLogin }) {
       const res = await fetch(`${API_URL}/auth/google/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: googleState, username: clean }),
+        body: JSON.stringify({ state: googleState, username: clean, referralCode: referralInput || referralCodeRef.current }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -191,7 +200,7 @@ export default function LoginPage({ onLogin }) {
         const loginRes = await fetch(`${API_URL}/auth/tg-login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tgUser: json.tgUser, referralCode: referralCodeRef.current }),
+          body: JSON.stringify({ tgUser: json.tgUser, referralCode: referralInput || referralCodeRef.current }),
         });
         const loginJson = await loginRes.json();
         if (loginJson.needNick) {
@@ -223,7 +232,7 @@ export default function LoginPage({ onLogin }) {
       const res = await fetch(`${API_URL}/auth/tg-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tgUser, username: clean, referralCode: referralCodeRef.current }),
+        body: JSON.stringify({ tgUser, username: clean, referralCode: referralInput || referralCodeRef.current }),
         signal: ctrl.signal,
       });
       const data = await res.json();
@@ -328,6 +337,19 @@ export default function LoginPage({ onLogin }) {
                 lineHeight: 1.4,
               }}>
                 {redirectMessage}
+              </div>
+            )}
+
+            {referralFromUrl && !redirectMessage && step === "choose" && (
+              <div style={{
+                padding: "12px 16px", marginBottom: 20, borderRadius: 12,
+                background: "linear-gradient(135deg, rgba(16,185,129,0.12), rgba(6,182,212,0.08))",
+                border: "1px solid rgba(16,185,129,0.2)",
+                color: "#6ee7b7", fontSize: 13, fontWeight: 600, lineHeight: 1.4,
+                display: "flex", alignItems: "center", gap: 10,
+              }}>
+                <Gift size={18} weight="duotone" />
+                <span>Вы пришли по реферальной ссылке. Зарегистрируйтесь!</span>
               </div>
             )}
 
@@ -542,7 +564,15 @@ export default function LoginPage({ onLogin }) {
                     onChange={(e) => { setNick(e.target.value.replace(/[^a-zA-Z0-9_]/g, "")); setError(""); }}
                     placeholder="ник" autoFocus maxLength={16}
                     style={inputStyle(error)} />
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 8, marginBottom: 16 }}>3–16 символов, буквы/цифры/подчёркивание</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 8, marginBottom: 12 }}>3–16 символов, буквы/цифры/подчёркивание</p>
+                  <div style={{ position: "relative", marginBottom: 16 }}>
+                    <Gift size={14} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.25)" }} />
+                    <input type="text" value={referralInput}
+                      onChange={(e) => setReferralInput(e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())}
+                      placeholder="Реферальный код (необязательно)" maxLength={8}
+                      autoCapitalize="characters" autoComplete="off"
+                      style={{ ...inputStyle(false), paddingLeft: 38, color: "rgba(255,255,255,0.5)" }} />
+                  </div>
                   {error && <p style={{ color: "#fca5a5", fontSize: 12, marginBottom: 12 }}>{error}</p>}
                   <button type="submit" disabled={loading || nick.length < 3}
                     style={{
@@ -564,7 +594,7 @@ export default function LoginPage({ onLogin }) {
             {step === "nick" && (
               <div>
                 <p style={{ color: "#fff", fontWeight: 700, marginBottom: 4, fontSize: 16 }}>
-                  Привет, {tgUser?.first_name || "друг"}! 👋
+                  Привет, {tgUser?.first_name || "друг"}!
                 </p>
                 <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, marginBottom: 20 }}>
                   Придумай игровой ник
@@ -579,9 +609,28 @@ export default function LoginPage({ onLogin }) {
                     maxLength={16}
                     style={inputStyle(error)}
                   />
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 8, marginBottom: 16 }}>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 8, marginBottom: 12 }}>
                     3–16 символов, буквы/цифры/подчёркивание
                   </p>
+
+                  <div style={{ position: "relative", marginBottom: 16 }}>
+                    <Gift size={14} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.25)" }} />
+                    <input
+                      type="text"
+                      value={referralInput}
+                      onChange={(e) => setReferralInput(e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())}
+                      placeholder="Реферальный код (необязательно)"
+                      maxLength={8}
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      style={{
+                        ...inputStyle(false),
+                        paddingLeft: 38,
+                        color: "rgba(255,255,255,0.5)",
+                      }}
+                    />
+                  </div>
+
                   {error && <p style={{ color: "#fca5a5", fontSize: 12, marginBottom: 12 }}>{error}</p>}
                   <button type="submit" disabled={loading || nick.length < 3}
                     style={{

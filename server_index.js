@@ -1875,6 +1875,21 @@ app.get("/affiliate/code", requireAuth, (req, res) => {
   res.json({ code: data.code, link: `https://games.sb-capital.group/invite/${data.code}` });
 });
 
+// GET /api/referral — compact referral info for current user
+app.get("/api/referral", requireAuth, async (req, res) => {
+  const data = ensureReferralData(req.userId);
+  const level = getAffiliateLevel(data.referralCount);
+  res.json({
+    code: data.code,
+    link: `https://games.sb-capital.group/invite/${data.code}`,
+    referralCount: data.referralCount || 0,
+    totalEarned: data.totalEarned || 0,
+    pendingPayout: data.pendingPayout || 0,
+    level: level.level,
+    levelPercent: level.percent,
+  });
+});
+
 // POST /affiliate/payout — request payout
 app.post("/affiliate/payout", requireAuth, async (req, res) => {
   const { amount, method } = req.body;

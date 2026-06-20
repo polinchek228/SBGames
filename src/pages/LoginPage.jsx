@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2 } from "lucide-react";
-import { TelegramLogo, GoogleLogo } from "@phosphor-icons/react";
+import { TelegramLogo, GoogleLogo, Gift } from "@phosphor-icons/react";
 import QRCodeLib from "qrcode";
 import Titlebar from "../components/Titlebar.jsx";
 import { API_URL } from "../lib/api.js";
@@ -58,6 +58,7 @@ export default function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const pollRef = useRef(null);
   const referralCodeRef = useRef(new URLSearchParams(window.location.search).get("ref") || null);
+  const [referralInput, setReferralInput] = useState(referralCodeRef.current || "");
 
   const stopPolling = () => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -230,7 +231,7 @@ export default function LoginPage({ onLogin }) {
       const res = await fetch(`${API_URL}/auth/tg-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tgUser, username: clean, referralCode: referralCodeRef.current }),
+        body: JSON.stringify({ tgUser, username: clean, referralCode: referralInput || referralCodeRef.current }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Ошибка");
@@ -257,7 +258,7 @@ export default function LoginPage({ onLogin }) {
       const res = await fetch(`${API_URL}/auth/google/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: googleState, username: clean }),
+        body: JSON.stringify({ state: googleState, username: clean, referralCode: referralInput || referralCodeRef.current }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Ошибка");
@@ -311,6 +312,22 @@ export default function LoginPage({ onLogin }) {
                   className="w-px h-6 mx-1 flex-shrink-0"
                   style={{ background: "rgba(255,255,255,0.08)" }}
                 />
+
+                {/* Referral banner when ?ref= in URL */}
+                {referralCodeRef.current && (
+                  <div
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
+                    style={{
+                      background: "rgba(16,185,129,0.12)",
+                      border: "1px solid rgba(16,185,129,0.2)",
+                    }}
+                  >
+                    <Gift size={12} style={{ color: "#6ee7b7" }} />
+                    <span className="text-[11px] font-medium" style={{ color: "#6ee7b7" }}>
+                      Реферальная ссылка
+                    </span>
+                  </div>
+                )}
 
                 {/* Method tabs */}
                 {[
@@ -530,6 +547,26 @@ export default function LoginPage({ onLogin }) {
                   }}
                 />
 
+                <div className="relative">
+                  <Gift size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(255,255,255,0.25)" }} />
+                  <input
+                    value={referralInput}
+                    onChange={(e) => setReferralInput(e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())}
+                    placeholder="Реферальный код (необязательно)"
+                    maxLength={8}
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    className="w-full rounded-xl pl-9 pr-4 py-2.5 text-[13px] outline-none transition-all"
+                    style={{
+                      background: "rgba(18,18,18,0.95)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      color: "rgba(255,255,255,0.5)",
+                      caretColor: "#60a5fa",
+                      backdropFilter: "blur(20px)",
+                    }}
+                  />
+                </div>
+
                 {error && (
                   <motion.p
                     initial={{ opacity: 0, y: -2 }}
@@ -602,6 +639,25 @@ export default function LoginPage({ onLogin }) {
                     backdropFilter: "blur(20px)",
                   }}
                 />
+                <div className="relative">
+                  <Gift size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(255,255,255,0.25)" }} />
+                  <input
+                    value={referralInput}
+                    onChange={(e) => setReferralInput(e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())}
+                    placeholder="Реферальный код (необязательно)"
+                    maxLength={8}
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    className="w-full rounded-xl pl-9 pr-4 py-2.5 text-[13px] outline-none transition-all"
+                    style={{
+                      background: "rgba(18,18,18,0.95)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      color: "rgba(255,255,255,0.5)",
+                      caretColor: "#60a5fa",
+                      backdropFilter: "blur(20px)",
+                    }}
+                  />
+                </div>
                 {error && (
                   <motion.p initial={{ opacity: 0, y: -2 }} animate={{ opacity: 1, y: 0 }}
                     className="text-[11px] px-1" style={{ color: "rgba(239,68,68,0.9)" }}>
