@@ -1,14 +1,15 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { House, User, Coins, Headset, Scroll, Shield } from "@phosphor-icons/react";
+import { House, User, Coins, Headset, Scroll, Shield, Handshake } from "@phosphor-icons/react";
 
 const NAV = [
-  { to:"/",        label:"Главная",    icon:House    },
-  { to:"/cabinet", label:"Кабинет",    icon:User     },
-  { to:"/topup",   label:"Пополнение", icon:Coins    },
-  { to:"/support", label:"Поддержка",  icon:Headset  },
-  { to:"/rules",   label:"Правила",    icon:Scroll   },
-  { to:"/admin",   label:"Админ",      icon:Shield   },
+  { to:"/",           label:"Главная",    icon:House      },
+  { to:"/cabinet",    label:"Кабинет",    icon:User       },
+  { to:"/topup",      label:"Пополнение", icon:Coins      },
+  { to:"/affiliate",  label:"Партнёры",   icon:Handshake  },
+  { to:"/support",    label:"Поддержка",  icon:Headset    },
+  { to:"/rules",      label:"Правила",    icon:Scroll     },
+  { to:"/admin",      label:"Админ",      icon:Shield     },
 ];
 
 const LOGO = { width:28, height:28, borderRadius:8, overflow:"hidden", flexShrink:0 };

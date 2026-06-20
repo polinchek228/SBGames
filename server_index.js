@@ -473,7 +473,7 @@ app.post("/auth/widget-login", async (req, res) => {
 // Завершение регистрации (ник) — поддерживает desktop flow
 app.post("/auth/tg-login", async (req, res) => {
   const ip = getIP(req);
-  const { tgUser, username } = req.body;
+  const { tgUser, username, referralCode } = req.body;
   if (!tgUser) {
     recordFailure(ip);
     return res.status(400).json({ message: "Обязательные поля отсутствуют" });
@@ -493,7 +493,7 @@ app.post("/auth/tg-login", async (req, res) => {
     return res.json({ user: account, token: signToken(tgId) });
   }
 
-  // ????? ???????????? — ??? ??????????
+  // Новый пользователь — нужен ник
   if (!username) {
     return res.status(400).json({ needNick: true, message: "Придумай игровой ник" });
   }
@@ -506,6 +506,33 @@ app.post("/auth/tg-login", async (req, res) => {
   const adminRole = isAdmin(tgUser.username || cleanNick) || isAdminId(tgId) ? "admin" : "user";
   account = { id: tgId, username: cleanNick, telegram: tgUser.username || null, firstName: sanitize(tgUser.first_name || "", 64), balance: 0, role: adminRole, createdAt: Date.now() };
   await redisAccounts.set(tgId, account);
+
+  // --- Referral tracking ---
+  const refCode = (referralCode || "").toUpperCase();
+  if (refCode) {
+    // Find referrer by code
+    let referrerId = null;
+    for (const [rid, data] of referralData) {
+      if (data.code === refCode) { referrerId = rid; break; }
+    }
+    if (referrerId && referrerId !== tgId) {
+      const refData = ensureReferralData(referrerId);
+      refData.referralCount = (refData.referralCount || 0) + 1;
+      refData.referrals.push({
+        tgId, nick: cleanNick, joinedAt: new Date().toISOString(), totalDonated: 0,
+      });
+      // Update level
+      const level = getAffiliateLevel(refData.referralCount);
+      refData.levelPercent = level.percent;
+      await saveReferral(referrerId, refData);
+
+      // Set referredBy on new user
+      const newData = ensureReferralData(tgId);
+      newData.referredBy = referrerId;
+      await saveReferral(tgId, newData);
+    }
+  }
+
   res.json({ user: account, token: signToken(tgId) });
 });
 
@@ -1750,6 +1777,150 @@ app.get("/online", (_, res) => {
   res.json({ users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username })) });
 });
 
+// ─── Affiliate / Referral System ─────────────────────────────────────────────
+const LEVELS = [
+  { level: 1, percent: 30, minReferrals: 0 },
+  { level: 2, percent: 35, minReferrals: 15 },
+  { level: 3, percent: 40, minReferrals: 50 },
+  { level: 4, percent: 45, minReferrals: 100 },
+  { level: 5, percent: 50, minReferrals: 200 },
+  { level: 6, percent: 55, minReferrals: 400 },
+  { level: 7, percent: 60, minReferrals: 700 },
+];
+
+// referralData: { [tgId]: { code, referredBy, referralCount, totalEarned, pendingPayout,
+//   referrals: [{ tgId, nick, joinedAt, totalDonated }],
+//   commissions: [{ playerNick, amount, date, level }],
+//   payouts: [{ id, amount, method, status, createdAt }] } }
+const referralData = new Map();
+
+async function loadReferralData() {
+  try {
+    const stream = redis.scanStream({ match: "ref:*", count: 200 });
+    for await (const keys of stream) {
+      for (const k of keys) {
+        const v = await redis.get(k);
+        if (v) {
+          const tgId = k.replace("ref:", "");
+          referralData.set(tgId, JSON.parse(v));
+        }
+      }
+    }
+  } catch {}
+}
+
+async function saveReferral(tgId, data) {
+  referralData.set(tgId, data);
+  try { await redis.set(`ref:${tgId}`, JSON.stringify(data)); } catch {}
+}
+
+function generateReferralCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function getAffiliateLevel(referralCount) {
+  let level = LEVELS[0];
+  for (const l of LEVELS) {
+    if (referralCount >= l.minReferrals) level = l;
+  }
+  return level;
+}
+
+function ensureReferralData(tgId) {
+  if (!referralData.has(tgId)) {
+    const data = {
+      code: generateReferralCode(),
+      referredBy: null,
+      referralCount: 0,
+      totalEarned: 0,
+      pendingPayout: 0,
+      referrals: [],
+      commissions: [],
+      allCommissions: [],
+      payouts: [],
+      subAffiliates: [],
+      monthlyStats: [],
+    };
+    referralData.set(tgId, data);
+  }
+  return referralData.get(tgId);
+}
+
+// GET /affiliate/stats — dashboard data for current user
+app.get("/affiliate/stats", requireAuth, async (req, res) => {
+  const data = ensureReferralData(req.userId);
+  const acc = await redisAccounts.get(req.userId);
+  const level = getAffiliateLevel(data.referralCount);
+  res.json({
+    totalEarned: data.totalEarned || 0,
+    pendingPayout: data.pendingPayout || 0,
+    totalReferrals: data.referralCount || 0,
+    levelPercent: level.percent,
+    referralCode: data.code,
+    referrals: (data.referrals || []).slice(-50).reverse(),
+    subAffiliates: data.subAffiliates || [],
+    recentCommissions: (data.commissions || []).slice(-10).reverse(),
+    allCommissions: (data.allCommissions || []).slice(-100).reverse(),
+    payouts: (data.payouts || []).slice(-20).reverse(),
+    monthlyStats: data.monthlyStats || [],
+  });
+});
+
+// GET /affiliate/code — get or generate referral code
+app.get("/affiliate/code", requireAuth, (req, res) => {
+  const data = ensureReferralData(req.userId);
+  res.json({ code: data.code, link: `https://games.sb-capital.group/invite/${data.code}` });
+});
+
+// POST /affiliate/payout — request payout
+app.post("/affiliate/payout", requireAuth, async (req, res) => {
+  const { amount, method } = req.body;
+  if (!amount || amount < 5) return res.status(400).json({ message: "Минимальная сумма вывода — $5" });
+  if (!method) return res.status(400).json({ message: "Укажите способ вывода" });
+  const data = ensureReferralData(req.userId);
+  if (data.pendingPayout < amount) return res.status(400).json({ message: "Недостаточно средств" });
+  data.pendingPayout -= amount;
+  data.payouts.push({
+    id: uuidv4(),
+    amount,
+    method,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  });
+  await saveReferral(req.userId, data);
+  res.json({ ok: true, payout: data.payouts[data.payouts.length - 1] });
+});
+
+// POST /affiliate/register — record a referral during registration
+// Body: { referralCode: "XXXXXXX" }
+app.post("/affiliate/register", (req, res) => {
+  const { referralCode } = req.body;
+  if (!referralCode) return res.json({ ok: false });
+  // Store in a temporary map so tg-login can pick it up
+  pendingReferrals.set(referralCode.toUpperCase(), Date.now());
+  res.json({ ok: true });
+});
+
+// Pending referral codes: code -> timestamp (expires 30 min)
+const pendingReferrals = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of pendingReferrals) {
+    if (now - v > 1_800_000) pendingReferrals.delete(k);
+  }
+}, 60_000);
+
+// GET /invite/:code — redirect to registration with code
+app.get("/invite/:code", (req, res) => {
+  const code = (req.params.code || "").toUpperCase();
+  const data = [...referralData.values()].find(d => d.code === code);
+  if (!data) return res.redirect("https://games.sb-capital.group/");
+  res.redirect(`https://games.sb-capital.group/?ref=${code}`);
+});
+
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 const WS_MAX_PER_IP    = 5;    // макс соединений с одного IP
 const WS_AUTH_TIMEOUT  = 10_000; // 10с на авторизацию
@@ -1998,6 +2169,58 @@ wss.on("connection", (ws, req) => {
               );
             } catch (e) { console.error("[ws confirm_payment tg]", e.message); }
           }
+          // --- Referral commission ---
+          try {
+            const payerData = referralData.get(ticket.userId);
+            if (payerData && payerData.referredBy) {
+              const referrerId = payerData.referredBy;
+              const referrerData = referralData.get(referrerId);
+              if (referrerData) {
+                const level = getAffiliateLevel(referrerData.referralCount || 0);
+                const commission = Math.round(amount * level.percent) / 100;
+                if (commission > 0) {
+                  referrerData.pendingPayout = (referrerData.pendingPayout || 0) + commission;
+                  referrerData.totalEarned = (referrerData.totalEarned || 0) + commission;
+                  const commRecord = {
+                    playerNick: acc.username || ticket.userId,
+                    amount: commission,
+                    date: new Date().toISOString(),
+                    level: level.level,
+                  };
+                  referrerData.commissions = referrerData.commissions || [];
+                  referrerData.commissions.push(commRecord);
+                  referrerData.allCommissions = referrerData.allCommissions || [];
+                  referrerData.allCommissions.push(commRecord);
+                  // Update referrer's referral totalDonated
+                  const refEntry = (referrerData.referrals || []).find(r => r.tgId === ticket.userId);
+                  if (refEntry) refEntry.totalDonated = (refEntry.totalDonated || 0) + amount;
+                  // Sub-referral: if referrer was also referred, give them a cut
+                  if (referrerData.referredBy) {
+                    const topReferrer = referralData.get(referrerData.referredBy);
+                    if (topReferrer) {
+                      const subCommission = Math.round(commission * 0.10 * 100) / 100; // 10% of referrer's commission
+                      topReferrer.pendingPayout = (topReferrer.pendingPayout || 0) + subCommission;
+                      topReferrer.totalEarned = (topReferrer.totalEarned || 0) + subCommission;
+                      topReferrer.subAffiliates = topReferrer.subAffiliates || [];
+                      const existing = topReferrer.subAffiliates.find(s => s.tgId === referrerId);
+                      if (existing) {
+                        existing.yourCommission = (existing.yourCommission || 0) + subCommission;
+                      } else {
+                        topReferrer.subAffiliates.push({
+                          tgId: referrerId,
+                          nick: (await redisAccounts.get(referrerId))?.username || referrerId,
+                          referralCount: referrerData.referralCount || 0,
+                          yourCommission: subCommission,
+                        });
+                      }
+                      await saveReferral(referrerData.referredBy, topReferrer);
+                    }
+                  }
+                  await saveReferral(referrerId, referrerData);
+                }
+              }
+            }
+          } catch (e) { console.error("[affiliate commission]", e.message); }
           break;
         }
         case "subscribe_ticket": {
@@ -2559,6 +2782,37 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     }
   }
 
+  // /start ref_XXXXXX — referral tracking
+  if (param.startsWith("ref_")) {
+    const refCode = param.slice(4).toUpperCase();
+    // Store referral code for this user
+    if (!account) {
+      // New user: store pending referral for later
+      botSessions.set(msg.chat.id, { state: "awaiting_nick", pendingReferral: refCode });
+      bot.sendMessage(msg.chat.id, "Привет! Придумай игровой ник (3–16 символов, буквы/цифры/_):");
+      return;
+    }
+    // Existing user: track referral
+    const referrerData = [...referralData.values()].find(d => d.code === refCode);
+    if (referrerData) {
+      const myData = ensureReferralData(tgId);
+      if (!myData.referredBy) {
+        myData.referredBy = [...referralData.entries()].find(([, d]) => d === referrerData)?.[0];
+        if (myData.referredBy && myData.referredBy !== tgId) {
+          referrerData.referralCount = (referrerData.referralCount || 0) + 1;
+          referrerData.referrals.push({ tgId, nick: account.username, joinedAt: new Date().toISOString(), totalDonated: 0 });
+          referrerData.levelPercent = getAffiliateLevel(referrerData.referralCount).percent;
+          const referrerTgId = myData.referredBy;
+          await saveReferral(referrerTgId, referrerData);
+          await saveReferral(tgId, myData);
+          bot.sendMessage(msg.chat.id, "Ты зарегистрирован по партнёрской ссылке! Начни играть на серверах.");
+        }
+      }
+    }
+    mainMenu(msg.chat.id, account);
+    return;
+  }
+
   mainMenu(msg.chat.id, account);
 });
 
@@ -2909,6 +3163,39 @@ bot.on("message", async (msg) => {
 
   if (!session) return;
 
+  // Waiting for nick (new user from /start ref_XXXXXX)
+  if (session.state === "awaiting_nick") {
+    const clean = (msg.text || "").trim().replace(/^@/, "");
+    if (!/^[a-zA-Z0-9_]{3,16}$/.test(clean)) {
+      bot.sendMessage(chatId, "Ник: 3–16 символов, только буквы/цифры/_. Попробуй ещё раз:");
+      return;
+    }
+    const adminRole = isAdmin(msg.from.username || clean) || isAdminId(tgId) ? "admin" : "user";
+    const newAccount = { id: tgId, username: clean, telegram: msg.from.username || null, firstName: sanitize(msg.from.first_name || "", 64), balance: 0, role: adminRole, createdAt: Date.now() };
+    await redisAccounts.set(tgId, newAccount);
+    botSessions.delete(chatId);
+    // Track referral
+    if (session.pendingReferral) {
+      const refCode = session.pendingReferral;
+      let referrerId = null;
+      for (const [rid, data] of referralData) {
+        if (data.code === refCode) { referrerId = rid; break; }
+      }
+      if (referrerId && referrerId !== tgId) {
+        const referrerData = ensureReferralData(referrerId);
+        referrerData.referralCount = (referrerData.referralCount || 0) + 1;
+        referrerData.referrals.push({ tgId, nick: clean, joinedAt: new Date().toISOString(), totalDonated: 0 });
+        referrerData.levelPercent = getAffiliateLevel(referrerData.referralCount).percent;
+        await saveReferral(referrerId, referrerData);
+        const newData = ensureReferralData(tgId);
+        newData.referredBy = referrerId;
+        await saveReferral(tgId, newData);
+      }
+    }
+    bot.sendMessage(chatId, `Добро пожаловать, *${clean}*! Ты теперь в системе.`, { parse_mode: "Markdown", reply_markup: USER_KB });
+    return;
+  }
+
   // ???? ????????? ?????
   if (session.state === "awaiting_topup_amount") {
     const amount = parseInt(msg.text?.trim(), 10);
@@ -3062,6 +3349,7 @@ if (fs.existsSync(websiteDir)) {
 // и получить токен, подписанный эфемерным секретом, который сразу инвалидируется.
 ;(async () => {
   await loadJwtSecret();
+  await loadReferralData().catch(() => {});
 
   server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
 

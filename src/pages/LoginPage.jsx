@@ -57,6 +57,7 @@ export default function LoginPage({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const pollRef = useRef(null);
+  const referralCodeRef = useRef(new URLSearchParams(window.location.search).get("ref") || null);
 
   const stopPolling = () => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -229,7 +230,7 @@ export default function LoginPage({ onLogin }) {
       const res = await fetch(`${API_URL}/auth/tg-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tgUser, username: clean }),
+        body: JSON.stringify({ tgUser, username: clean, referralCode: referralCodeRef.current }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Ошибка");

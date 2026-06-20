@@ -19,7 +19,6 @@ export async function refreshUser(setUser) {
   try {
     const res = await fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 401) {
-      // Токен невалиден — чистим и перенаправляем на логин
       clearAuth();
       if (setUser) setUser(null);
       return;
@@ -29,4 +28,16 @@ export async function refreshUser(setUser) {
     localStorage.setItem("sbgames_user", JSON.stringify(user));
     if (setUser) setUser(user);
   } catch {}
+}
+
+export async function api(path, opts = {}) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json", ...opts.headers };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { ...opts, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `API ${res.status}`);
+  }
+  return res.json();
 }
