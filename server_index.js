@@ -67,6 +67,40 @@ const redisAccounts = { _map: new Map(),
   async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
   async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
   values()        { return this._map.values(); },
+  // Атомарная мутация аккаунта (оптимистичная блокировка).
+  // fn(acc) получает текущий объект аккаунта (или null) и должен вернуть
+  //   { ok: true, value: <обновлённый acc> }  — записать и вернуть value, либо
+  //   { ok: false, error: <строка> }          — отменить, вернуть ошибку без записи.
+  // При живом Redis используется WATCH/MULTI/EXEC с повтором при конкурентной
+  // записи. Без Redis мутация идёт синхронно над _map (для одного процесса Node
+  // это атомарно — между чтением и записью нет await/точки переключения).
+  async mutate(k, fn, retries = 5) {
+    const key = `acc:${k}`;
+    for (let attempt = 0; attempt < retries; attempt++) {
+      let usedRedis = false;
+      try {
+        await redis.watch(key);
+        usedRedis = true;
+        const raw = await redis.get(key);
+        const cur = raw ? JSON.parse(raw) : (this._map.get(k) || null);
+        const out = fn(cur ? JSON.parse(JSON.stringify(cur)) : null);
+        if (!out || out.ok !== true) { await redis.unwatch(); return { ok: false, error: out?.error || "mutation rejected" }; }
+        const exec = await redis.multi().set(key, JSON.stringify(out.value)).exec();
+        if (exec === null) { continue; } // ключ изменился между watch и exec — повтор
+        this._map.set(k, out.value);
+        return { ok: true, value: out.value };
+      } catch {
+        // Redis недоступен — синхронная мутация над памятью без await внутри
+        if (usedRedis) { try { await redis.unwatch(); } catch {} }
+        const cur = this._map.get(k) || null;
+        const out = fn(cur ? JSON.parse(JSON.stringify(cur)) : null);
+        if (!out || out.ok !== true) return { ok: false, error: out?.error || "mutation rejected" };
+        this._map.set(k, out.value);
+        return { ok: true, value: out.value };
+      }
+    }
+    return { ok: false, error: "too much contention, try again" };
+  },
   // Поиск по части имени в Redis + memory
   async search(q, limit = 30) {
     if (!q || q.length < 2) return [];
@@ -95,6 +129,27 @@ const redisAccounts = { _map: new Map(),
       } catch {}
     }
     return results.slice(0, limit);
+  },
+  // Все аккаунты: memory + Redis scan по acc:*. После рестарта процесса
+  // _map пуст, а пользователи живут только в Redis — values() их не видит.
+  // Этот метод медленнее values() (scan), поэтому используется только
+  // для админских списков, не на горячих путях.
+  async allValues() {
+    const out = [...this._map.values()];
+    const seen = new Set(out.map(a => String(a.id)));
+    try {
+      const stream = redis.scanStream({ match: "acc:*", count: 300 });
+      for await (const keys of stream) {
+        for (const k of keys) {
+          const id = k.slice(4);
+          if (seen.has(id)) continue;
+          const v = await redis.get(k);
+          if (!v) continue;
+          try { const acc = JSON.parse(v); out.push(acc); seen.add(id); } catch {}
+        }
+      }
+    } catch {}
+    return out;
   },
 };
 
@@ -162,7 +217,7 @@ app.use(cors({
     if (!origin || ALLOWED_ORIGINS.has(origin)) return cb(null, true);
     if (origin && (origin.startsWith("tauri://") || origin.includes("tauri.localhost"))) return cb(null, true);
     console.warn("[CORS] rejected origin:", origin);
-    cb(null, true);
+    cb(new Error("Not allowed by CORS"));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -384,7 +439,7 @@ function sanitize(str, max = 500) {
   if (typeof str !== "string") return "";
   return sanitizeHtml(str.slice(0, max), { allowedTags: [], allowedAttributes: {} }).trim();
 }
-function signToken(userId)  { return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "30d" }); }
+function signToken(userId, tokenVersion = 0) { return jwt.sign({ sub: userId, ver: tokenVersion }, JWT_SECRET, { expiresIn: "7d" }); }
 function verifyToken(token) { try { return jwt.verify(token, JWT_SECRET); } catch { return null; } }
 function wsAuthenticate(token) { const p = verifyToken(token); return p ? p.sub : null; }
 function isAdmin(username)  { return ADMIN_USERNAMES.includes((username || "").toLowerCase()); }
@@ -626,7 +681,7 @@ app.post("/auth/google/register", authLimiter, async (req, res) => {
     authProvider: "google",
   };
   await redisAccounts.set(googleId, account);
-  const token = signToken(googleId);
+  const token = signToken(googleId, account.tokenVersion || 0);
   googlePending.set(state, { step: "done", token, user: account });
   res.json({ user: account, token });
 });
@@ -762,7 +817,8 @@ async function requireAdmin(req, res) {
 
 app.get("/admin/users", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
-  const users = [...redisAccounts._map.values()].map(a => ({
+  const all = await redisAccounts.allValues();
+  const users = all.map(a => ({
     id: a.id, username: a.username, telegram: a.telegram,
     balance: a.balance ?? 0, role: a.role, createdAt: a.createdAt,
   }));
@@ -845,17 +901,23 @@ app.post("/payments/create", async (req, res) => {
 });
 
 // ─── Auth middleware ───────────────────────────────────────────────────────────
-function optionalAuth(req, _res, next) {
+async function optionalAuth(req, _res, next) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-  req.userId = token ? verifyToken(token)?.sub : null;
+  const payload = token ? verifyToken(token) : null;
+  req.userId = null;
+  if (payload?.sub) {
+    const acc = await redisAccounts.get(payload.sub);
+    if (acc && (acc.tokenVersion || 0) === (payload.ver || 0)) {
+      req.userId = payload.sub;
+    }
+  }
   next();
 }
-function requireAuth(req, res, next) {
-  optionalAuth(req, res, () => {
-    if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
-    next();
-  });
+async function requireAuth(req, res, next) {
+  await optionalAuth(req, res, () => {});
+  if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
+  next();
 }
 
 // ─── Shop Catalog ─────────────────────────────────────────────────────────────
@@ -1285,15 +1347,18 @@ app.post("/api/inventory/buy", requireAuth, async (req, res) => {
   const itemId = sanitize(req.body.itemId || "", 64);
   const item = getShopItem(itemId);
   if (!item || item.active === false) return res.status(404).json({ message: "Предмет не найден" });
-  const acc = await redisAccounts.get(req.userId);
-  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
-  const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
-  if (owned.includes(itemId)) return res.status(400).json({ message: "Уже куплено" });
-  if ((acc.balance || 0) < item.price) return res.status(400).json({ message: "Недостаточно СБТ", need: item.price, have: acc.balance || 0 });
-  acc.balance = (acc.balance || 0) - item.price;
-  acc.inventory = [...owned, itemId];
-  await redisAccounts.set(req.userId, acc);
-  res.json({ ok: true, balance: acc.balance, inventory: acc.inventory });
+  // Проверка + списание + выдача предмета — одной атомарной мутацией.
+  const r = await redisAccounts.mutate(req.userId, (acc) => {
+    if (!acc) return { ok: false, error: "Игрок не найден" };
+    const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
+    if (owned.includes(itemId)) return { ok: false, error: "Уже куплено" };
+    if ((acc.balance || 0) < item.price) return { ok: false, error: "Недостаточно СБТ" };
+    acc.balance = (acc.balance || 0) - item.price;
+    acc.inventory = [...owned, itemId];
+    return { ok: true, value: acc };
+  });
+  if (!r.ok) return res.status(400).json({ message: r.error });
+  res.json({ ok: true, balance: r.value.balance, inventory: r.value.inventory });
 });
 
 app.post("/api/inventory/equip", requireAuth, async (req, res) => {
@@ -1409,22 +1474,52 @@ app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
   if (!listing) return res.status(404).json({ message: "Листинг не найден" });
   if (listing.status !== "active") return res.status(400).json({ message: "Уже завершён" });
   if (listing.sellerId === req.userId) return res.status(400).json({ message: "Нельзя купить свой" });
-  const buyer = await redisAccounts.get(req.userId);
-  if (!buyer) return res.status(404).json({ message: "Аккаунт не найден" });
-  if ((buyer.balance || 0) < listing.price) return res.status(400).json({ message: "Недостаточно СБТ" });
   const seller = await redisAccounts.get(listing.sellerId);
   if (!seller) return res.status(404).json({ message: "Продавец не найден" });
-  buyer.balance = (buyer.balance || 0) - listing.price;
-  seller.balance = (seller.balance || 0) + listing.price;
-  buyer.market_inventory = Array.isArray(buyer.market_inventory) ? [...buyer.market_inventory, listing.itemId] : [listing.itemId];
-  if (Date.now() - listing.createdAt > 14 * 86400000) { const fee = Math.ceil(listing.price * 0.05); seller.balance -= fee; buyer.balance += fee; }
-  await redisAccounts.set(req.userId, buyer);
-  await redisAccounts.set(listing.sellerId, seller);
+  // Защита от двойной покупки одного листинга: помечаем sold синхронно ДО любых
+  // await. Для одного процесса Node этого достаточно (нет точки переключения).
   listing.status = "sold"; listing.soldTo = req.userId; listing.soldAt = Date.now();
   listings.set(id, listing);
+
+  // Комиссия 5% за листинги старше 14 дней удерживается с продавца.
+  const fee = (Date.now() - listing.createdAt > 14 * 86400000) ? Math.ceil(listing.price * 0.05) : 0;
+  const buyerCost = listing.price - fee;     // покупатель платит цену, fee ему возвращается
+  const sellerGain = listing.price - fee;    // продавец получает цену за вычетом комиссии
+
+  // Шаг 1: атомарно списываем у покупателя и выдаём предмет.
+  const rb = await redisAccounts.mutate(req.userId, (acc) => {
+    if (!acc) return { ok: false, error: "Аккаунт не найден" };
+    if ((acc.balance || 0) < buyerCost) return { ok: false, error: "Недостаточно СБТ" };
+    acc.balance = (acc.balance || 0) - buyerCost;
+    acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId];
+    return { ok: true, value: acc };
+  });
+  if (!rb.ok) {
+    // откатываем пометку sold — листинг снова активен
+    listing.status = "active"; delete listing.soldTo; delete listing.soldAt; listings.set(id, listing);
+    return res.status(400).json({ message: rb.error });
+  }
+
+  // Шаг 2: атомарно зачисляем продавцу. При сбое — компенсируем покупателю.
+  const rsell = await redisAccounts.mutate(listing.sellerId, (acc) => {
+    if (!acc) return { ok: false, error: "Продавец не найден" };
+    acc.balance = (acc.balance || 0) + sellerGain;
+    return { ok: true, value: acc };
+  });
+  if (!rsell.ok) {
+    await redisAccounts.mutate(req.userId, (acc) => {
+      if (!acc) return { ok: false, error: "acc gone" };
+      acc.balance = (acc.balance || 0) + buyerCost;
+      acc.market_inventory = (Array.isArray(acc.market_inventory) ? acc.market_inventory : []).filter(x => x !== listing.itemId);
+      return { ok: true, value: acc };
+    });
+    listing.status = "active"; delete listing.soldTo; delete listing.soldAt; listings.set(id, listing);
+    return res.status(500).json({ message: "Не удалось завершить покупку, попробуй ещё раз" });
+  }
+
   saveListing(listing);
-  sendToUser(listing.sellerId, { type: "market_sold", listingId: id, price: listing.price, buyerName: buyer.username });
-  res.json({ ok: true, balance: buyer.balance, market: buyer.market_inventory });
+  sendToUser(listing.sellerId, { type: "market_sold", listingId: id, price: listing.price, buyerName: buyer?.username || "" });
+  res.json({ ok: true, balance: rb.value.balance, market: rb.value.market_inventory });
 });
 
 app.delete("/api/market/:id", requireAuth, async (req, res) => {
@@ -2451,8 +2546,9 @@ wss.on("connection", (ws, req) => {
           if (client.role !== "admin") break;
           const ticket = tickets.get(Number(msg.ticketId));
           if (!ticket) break;
-          const amount = parseInt(msg.amount, 10);
-          if (!amount || amount <= 0) break;
+          // Сумма берётся ТОЛЬКО из серверного источника (тикет), не из клиентского msg.amount.
+          const amount = Number(ticket.paymentAmount);
+          if (!Number.isFinite(amount) || amount <= 0) { send(ws, { type: "error", text: "У тикета нет суммы пополнения" }); break; }
           const acc = await redisAccounts.get(ticket.userId);
           if (!acc) { send(ws, { type: "error", text: "Аккаунт игрока не найден" }); break; }
           acc.balance = (acc.balance || 0) + amount;
@@ -3321,14 +3417,15 @@ bot.on("callback_query", async (q) => {
     const ticketId = parseInt(parts[2], 10);
     const userId   = parts[3];
     const ticket   = tickets.get(ticketId);
-    // Сумма: надёжный источник — тикет (paymentAmount), callback_data — запасной вариант.
-    let amount = Number(ticket?.paymentAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      const fromCb = parseInt(parts[4], 10); // в callback_data могло прилететь "?" → NaN
-      amount = Number.isFinite(fromCb) ? fromCb : NaN;
+    // Сумма берётся ТОЛЬКО из серверного источника (тикет). Никакого fallback на
+    // callback_data — иначе в баланс может попасть число из строки кнопки.
+    if (!ticket) {
+      bot.answerCallbackQuery(q.id, { text: "Тикет не найден.", show_alert: true });
+      return;
     }
+    const amount = Number(ticket.paymentAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      bot.answerCallbackQuery(q.id, { text: "Не удалось определить сумму пополнения. Зачислите вручную.", show_alert: true });
+      bot.answerCallbackQuery(q.id, { text: "У тикета нет суммы пополнения. Зачислите вручную через веб.", show_alert: true });
       return;
     }
     const acc = await redisAccounts.get(userId);
@@ -3393,7 +3490,7 @@ bot.on("message", async (msg) => {
         broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
         broadcastToTicket(ticketId, tgId, { type: "message", ticketId, message });
         try { await bot.sendMessage(ticket.userId, `Ответ по тикету \`#${ticketId}\`:\n\n${text}`, { parse_mode: "Markdown", reply_markup: USER_KB }); } catch {}
-        bot.sendMessage(chatId, `Категория: *${category}*\n\nОпиши проблему подробно:`, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `Ответ отправлен по тикету #${ticketId}.`);
         return;
       }
     }
@@ -3571,7 +3668,7 @@ bot.on("message", async (msg) => {
         const caption   = `Чек на пополнение\n\nИгрок: ${account?.username || tgId}\nСумма: ${invAmount} СБТ\nСпособ: ${invMethod}\nТикет: #${ticketId}`;
         const rm        = { inline_keyboard: [[
           { text: "Подтвердить", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
-          { text: "Подтвердить", callback_data: `confirm_pay_${ticketId}_${tgId}_${invAmount}` },
+          { text: "Отклонить",   callback_data: `reject_pay_${ticketId}_${tgId}` },
         ]]};
         if (hasPhoto) await bot.sendPhoto(tid, msg.photo[msg.photo.length - 1].file_id, { caption, reply_markup: rm });
         else          await bot.sendDocument(tid, msg.document.file_id, { caption, reply_markup: rm });
