@@ -895,6 +895,154 @@ const MARKET_CATALOG = [
   { id: "m_aurora_shard",   type: "shard",      name: "Осколок Авроры",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
 ];
 
+// ─── Shop catalog (Redis-backed, seeded from SHOP_CATALOG) ────────────────────
+// Админка сайта редактирует каталог через /admin/shop/items. Каталог хранится
+// в Redis (ключ "shop:catalog") как массив. При первом запуске (или если ключ
+// отсутствует) сидимся из SHOP_CATALOG, добавляя дефолтные category/type.
+// /api/inventory/catalog и /api/inventory читают ту же Redis-версию, поэтому
+// изменения админа сразу видны в лаунчере (включая категории для фильтров).
+let _shopCatalogCache = null;
+function _seedShopItem(raw) {
+  // Адаптируем хардкод-запись SHOP_CATALOG к полной схеме товара.
+  // category по умолчанию выводим из type, чтобы старые товары попали в фильтр.
+  const typeToCat = { frame: "Рамки", badge: "Значки", background: "Фоны", avatar_animated: "Аватары" };
+  return {
+    id: raw.id,
+    name: raw.name || raw.id,
+    type: raw.type || "item",
+    category: raw.category || typeToCat[raw.type] || "Предметы",
+    subcategory: raw.subcategory || "",
+    price: Number(raw.price) || 0,
+    preview: raw.preview || "#3b82f6",
+    image: raw.image || "",
+    description: raw.description || "",
+    active: raw.active !== false,
+  };
+}
+async function loadShopCatalog() {
+  try {
+    const raw = await redis.get("shop:catalog");
+    if (raw) { _shopCatalogCache = JSON.parse(raw); return _shopCatalogCache; }
+  } catch {}
+  // Seed: первый запуск — кладём SHOP_CATALOG в Redis
+  const seeded = SHOP_CATALOG.map(_seedShopItem);
+  _shopCatalogCache = seeded;
+  try { await redis.set("shop:catalog", JSON.stringify(seeded)); } catch {}
+  return seeded;
+}
+async function saveShopCatalog(items) {
+  _shopCatalogCache = items;
+  try { await redis.set("shop:catalog", JSON.stringify(items)); } catch {}
+  return items;
+}
+// Готовим каталог при старте (не await — сервер поднимется без задержки)
+loadShopCatalog().catch(() => {});
+// ВАЖНО: getShopCatalogSync возвращает кеш (возможно пустой на первых тиках).
+// Если кеш пуст — синхронно отдаём seed, чтобы buy/equip не падали до
+// завершения loadShopCatalog().
+function getShopCatalogSync() {
+  if (_shopCatalogCache && _shopCatalogCache.length) return _shopCatalogCache;
+  return SHOP_CATALOG.map(_seedShopItem);
+}
+
+// CRUD каталога для админки сайта
+app.get("/admin/shop/items", requireAuth, async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const items = await loadShopCatalog();
+  res.json({ items });
+});
+
+app.post("/admin/shop/items", requireAuth, async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ ok: false, message: "Введите название" });
+  const items = await loadShopCatalog();
+  const id = b.id || ("item_" + uuidv4().slice(0, 8));
+  if (items.some(i => i.id === id)) return res.status(409).json({ ok: false, message: "ID уже занят" });
+  const item = _seedShopItem({
+    id, name: b.name, type: b.type || "item",
+    category: b.category, subcategory: b.subcategory,
+    price: b.price, preview: b.preview, image: b.image,
+    description: b.description, active: b.active,
+  });
+  items.push(item);
+  await saveShopCatalog(items);
+  res.json({ ok: true, item });
+});
+
+app.put("/admin/shop/items/:id", requireAuth, async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const id = sanitize(req.params.id, 64);
+  const items = await loadShopCatalog();
+  const idx = items.findIndex(i => i.id === id);
+  if (idx < 0) return res.status(404).json({ ok: false, message: "Товар не найден" });
+  const b = req.body || {};
+  // Частичное обновление: merge разрешённых полей
+  const cur = items[idx];
+  items[idx] = _seedShopItem({
+    id: cur.id,
+    name: b.name ?? cur.name,
+    type: b.type ?? cur.type,
+    category: b.category ?? cur.category,
+    subcategory: b.subcategory ?? cur.subcategory,
+    price: b.price ?? cur.price,
+    preview: b.preview ?? cur.preview,
+    image: b.image ?? cur.image,
+    description: b.description ?? cur.description,
+    active: b.active ?? cur.active,
+  });
+  await saveShopCatalog(items);
+  res.json({ ok: true, item: items[idx] });
+});
+
+app.delete("/admin/shop/items/:id", requireAuth, async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const id = sanitize(req.params.id, 64);
+  let items = await loadShopCatalog();
+  const before = items.length;
+  items = items.filter(i => i.id !== id);
+  if (items.length === before) return res.status(404).json({ ok: false, message: "Товар не найден" });
+  await saveShopCatalog(items);
+  res.json({ ok: true });
+});
+
+// Upload изображения товара. FormData от админки приходит как multipart, но
+// т.к. multer не подключён, принимаем файл как raw binary body на отдельном
+// пути. express.raw зарегистрирован ниже (до этого роута) специально для него.
+app.post("/admin/shop/items/:id/image", requireAuth, async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const id = sanitize(req.params.id, 64);
+  const items = await loadShopCatalog();
+  const item = items.find(i => i.id === id);
+  if (!item) return res.status(404).json({ ok: false, message: "Товар не найден" });
+  const buf = req.body;
+  if (!Buffer.isBuffer(buf) || !buf.length) return res.status(400).json({ ok: false, message: "Нет файла" });
+  const ct = (req.headers["content-type"] || "").toLowerCase();
+  const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+  const dir = require("path").join(__dirname, "shop-images");
+  try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+  const fname = `${id}.${ext}`;
+  fs.writeFileSync(require("path").join(dir, fname), buf);
+  const imageUrl = `/shop-images/${fname}`;
+  item.image = imageUrl;
+  await saveShopCatalog(items);
+  res.json({ ok: true, image: imageUrl });
+});
+// Raw body parser ТОЛЬКО для upload-роута (Content-Type: image/* или octet-stream).
+// Регистрируем до основного express.json, чтобы не пытаться парсить бинарник как JSON.
+app.use("/admin/shop/items/:id/image", (req, res, next) => {
+  if (req.method !== "POST") return next();
+  let chunks = [];
+  req.on("data", c => chunks.push(c));
+  req.on("end", () => { req.body = Buffer.concat(chunks); next(); });
+  req.on("error", () => res.status(400).json({ ok: false, message: "Ошибка чтения" }));
+});
+// Статическая раздача картинок товаров
+app.use("/shop-images", express.static(
+  require("path").join(__dirname, "shop-images"),
+  { maxAge: "7d", etag: true, lastModified: true }
+));
+
 // ─── Public profile ───────────────────────────────────────────────────────────
 app.get("/api/user/:id", async (req, res) => {
   const id = sanitize(req.params.id, 64);
@@ -998,19 +1146,24 @@ app.put("/api/user/bio", requireAuth, async (req, res) => {
 });
 
 // ─── Inventory ────────────────────────────────────────────────────────────────
-app.get("/api/inventory/catalog", (_req, res) => res.json({ items: SHOP_CATALOG }));
+app.get("/api/inventory/catalog", async (_req, res) => {
+  const items = (await loadShopCatalog()).filter(i => i.active !== false);
+  res.json({ items });
+});
 
 app.get("/api/inventory", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
   const owned = Array.isArray(acc?.inventory) ? acc.inventory : [];
   const marketOwn = Array.isArray(acc?.market_inventory) ? acc.market_inventory : [];
   const equip = acc?.equip && typeof acc.equip === "object" ? acc.equip : {};
-  res.json({ owned, market: marketOwn, equip, catalog: SHOP_CATALOG, marketCatalog: MARKET_CATALOG });
+  const catalog = (await loadShopCatalog()).filter(i => i.active !== false);
+  res.json({ owned, market: marketOwn, equip, catalog, marketCatalog: MARKET_CATALOG });
 });
 
 app.post("/api/inventory/buy", requireAuth, async (req, res) => {
   const itemId = sanitize(req.body.itemId || "", 64);
-  const item = SHOP_CATALOG.find(i => i.id === itemId);
+  const catalog = await loadShopCatalog();
+  const item = catalog.find(i => i.id === itemId && i.active !== false);
   if (!item) return res.status(404).json({ message: "Предмет не найден" });
   const acc = await redisAccounts.get(req.userId);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
@@ -1029,7 +1182,8 @@ app.post("/api/inventory/equip", requireAuth, async (req, res) => {
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
   if (!owned.includes(itemId)) return res.status(400).json({ message: "Сначала купи предмет" });
-  const item = SHOP_CATALOG.find(i => i.id === itemId);
+  const catalog = await loadShopCatalog();
+  const item = catalog.find(i => i.id === itemId);
   if (!item) return res.status(404).json({ message: "Предмет не найден" });
   acc.equip = { ...(acc.equip || {}), [item.type]: itemId };
   await redisAccounts.set(req.userId, acc);

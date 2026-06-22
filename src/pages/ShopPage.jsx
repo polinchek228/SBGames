@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Storefront,
   ShoppingCartSimple, Gift, Info, X,
-  ArrowsLeftRight, CaretLeft,
+  ArrowsLeftRight, CaretLeft, Plus,
 } from "@phosphor-icons/react";
 import { authedFetch, API_URL } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
