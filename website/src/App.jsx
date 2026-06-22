@@ -17,13 +17,35 @@ import { getUser, refreshUser } from "./lib/api.js";
 function RequireAuth({ children }) {
   const user = getUser();
   const location = useLocation();
-  if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  if (!user) {
+    // Preserve the referral code through the redirect so it reaches /login
+    // even if the user landed on a protected page via ?ref=CODE.
+    const ref = new URLSearchParams(window.location.search).get("ref")
+      || localStorage.getItem("referral") || null;
+    return <Navigate to="/login" state={{ from: location.pathname, ref }} replace />;
+  }
   return children;
 }
 
 function RequireAdmin({ user, children }) {
   if (!user || user.role !== "admin") return <Navigate to="/" replace />;
   return children;
+}
+
+// Captures ?ref= from ANY page URL and persists it to localStorage so the
+// referral code survives navigation, refreshes, and auth redirects. Must live
+// inside <BrowserRouter> so useLocation() fires on every route change.
+function ReferralCapture() {
+  const location = useLocation();
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) {
+      localStorage.setItem("referral", ref);
+      // Strip ?ref= from the URL so it doesn't linger / get shared awkwardly.
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location]);
+  return null;
 }
 
 export default function App() {
@@ -43,6 +65,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-black text-white">
+        <ReferralCapture />
         <Navbar user={user} />
         <Routes>
           <Route path="/"           element={<HomePage />} />

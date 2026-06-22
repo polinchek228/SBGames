@@ -19,6 +19,10 @@ input:focus, button:focus, textarea:focus { outline: none; }
   90%  { opacity: 0.6; }
   100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 .snowflake {
   position: fixed;
   color: rgba(255,255,255,0.45);
