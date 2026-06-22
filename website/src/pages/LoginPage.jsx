@@ -1,21 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { TelegramLogo, ArrowLeft, Check, Copy, GoogleLogo, Gift } from "@phosphor-icons/react";
-import { API_URL } from "../lib/api.js";
+import { TelegramLogo, ArrowLeft, Check, Copy, GoogleLogo, Gift, CaretRight } from "@phosphor-icons/react";
+import { API_URL, getUser } from "../lib/api.js";
 
-const glowCard = {
-  position: "relative",
-  borderRadius: 24,
-  padding: 1,
-};
+// Numeric bot ID for @sbgamescbot (used by oauth.telegram.org/auth).
+const TG_BOT_ID = "8703318210";
+// Solid brand blue — matches HomePage (#3b82f6 is the site's actual blue).
+const BLUE = "#3b82f6";
+const BLUE_DARK = "#2563eb";
 
-const glowCardBg = {
-  background: "rgba(17,17,24,0.85)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  borderRadius: 24,
-  padding: "40px 36px",
+// Card style — identical to HomePage's `card` constant.
+const HOME_CARD = {
+  background: "rgba(255,255,255,0.03)",
   border: "1px solid rgba(255,255,255,0.06)",
+  borderRadius: 20,
 };
 
 const inputStyle = (hasError) => ({
@@ -42,28 +40,50 @@ export default function LoginPage({ onLogin }) {
   const [copied, setCopied] = useState(false);
   const [widgetReady, setWidgetReady] = useState(false);
   const [googleState, setGoogleState] = useState(null);
-  const widgetRef = useRef(null);
   const googlePollRef = useRef(null);
+  const widgetRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = location.state?.from || "/";
   const redirectMessage = location.state?.message || null;
   const [referralFromUrl] = useState(() => {
+    // 1. ?ref= directly in the URL (from /invite/:code redirect)
     const urlCode = new URLSearchParams(window.location.search).get("ref");
     if (urlCode) {
       localStorage.setItem("referral", urlCode);
       return urlCode;
     }
+    // 2. Passed via router state by RequireAuth redirect
+    const stateRef = location.state?.ref;
+    if (stateRef) {
+      localStorage.setItem("referral", stateRef);
+      return stateRef;
+    }
+    // 3. Persisted from an earlier page visit (global ReferralCapture in App.jsx)
     return localStorage.getItem("referral") || null;
   });
   const referralCodeRef = useRef(referralFromUrl);
   const [referralInput, setReferralInput] = useState(referralFromUrl || "");
+
+  // If already logged in, don't show the login form — bounce to the right place.
+  // A logged-in user clicking /invite/CODE should land on their affiliate
+  // dashboard (with the ref captured), not be asked to log in again.
+  useEffect(() => {
+    if (getUser()) {
+      navigate(referralFromUrl ? "/affiliate" : returnTo, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (step !== "widget" || !widgetRef.current) return;
     setWidgetReady(false);
     setError("");
 
+    // Telegram OAuth calls this after a successful widget auth.
+    // NOTE: this callback only fires via telegram-widget.js (iframe or its
+    // managed popup) — a raw window.open() of oauth.telegram.org will NOT
+    // bridge back, so we must keep the widget script.
     window.onTelegramAuth = async (data) => {
       setLoading(true);
       setError("");
@@ -78,6 +98,7 @@ export default function LoginPage({ onLogin }) {
         if (json.needNick) {
           setTgUser(json.tgUser);
           setNick(json.tgUser.username || "");
+          setLoading(false);   // otherwise the "Готово" button stays disabled forever
           setStep("nick");
         } else {
           finishLogin(json.user, json.token);
@@ -256,13 +277,13 @@ export default function LoginPage({ onLogin }) {
         <div style={{ textAlign: "center" }}>
           <div style={{
             width: 72, height: 72, borderRadius: "50%",
-            background: "linear-gradient(135deg, rgba(16,185,129,0.2), rgba(6,182,212,0.2))",
-            border: "2px solid rgba(16,185,129,0.4)",
+            background: "rgba(59,130,246,0.15)",
+            border: `2px solid ${BLUE}`,
             margin: "0 auto 20px",
             display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 40px rgba(16,185,129,0.15)",
+            boxShadow: `0 0 40px rgba(59,130,246,0.25)`,
           }}>
-            <Check size={36} weight="bold" color="#10b981" />
+            <Check size={36} weight="bold" color={BLUE} />
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", margin: "0 0 8px" }}>Входим</h1>
           <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Один момент…</p>
@@ -280,60 +301,48 @@ export default function LoginPage({ onLogin }) {
       position: "relative",
       overflow: "hidden",
     }}>
-      {/* BG glow */}
-      <div style={{
-        position: "absolute", top: "-30%", left: "50%", transform: "translateX(-50%)",
-        width: 600, height: 600, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%)",
-        pointerEvents: "none",
-      }} />
-      <div style={{
-        position: "absolute", bottom: "-20%", right: "-10%",
-        width: 400, height: 400, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(168,85,247,0.06) 0%, transparent 70%)",
-        pointerEvents: "none",
-      }} />
 
       <div style={{ width: "100%", maxWidth: 420, position: "relative", zIndex: 1 }}>
 
         {/* Logo / Brand */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{
-            width: 56, height: 56, borderRadius: 16, margin: "0 auto 16px",
-            background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 8px 32px rgba(59,130,246,0.3)",
+            width: 56, height: 56, borderRadius: 14, margin: "0 auto 12px",
+            overflow: "hidden",
+            boxShadow: "0 8px 28px rgba(59,130,246,0.18)",
+            border: "1px solid rgba(255,255,255,0.08)",
           }}>
-            <span style={{ fontSize: 24, fontWeight: 900, color: "#fff", fontFamily: "monospace" }}>S&B</span>
+            <img src="/logo.jpg" alt="SB Games" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1, marginBottom: 8, color: "#fff" }}>
+            SB <span style={{ color: BLUE }}>GAMES</span>
           </div>
           <h1 style={{
-            fontSize: 28, fontWeight: 900, margin: "0 0 6px",
-            background: "linear-gradient(135deg, #fff 30%, rgba(255,255,255,0.6))",
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
+            fontSize: 18, fontWeight: 800, margin: "0 0 6px",
+            color: "#fff",
           }}>
             Вход в аккаунт
           </h1>
-          <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, margin: 0 }}>
+          <p style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.15em",
+            textTransform: "uppercase", color: "rgba(255,255,255,0.3)", margin: 0,
+          }}>
             Выбери способ входа
           </p>
         </div>
 
-        {/* Card */}
-        <div style={glowCard}>
-          <div style={{
-            position: "absolute", inset: -1, borderRadius: 24, padding: 1,
-            background: "linear-gradient(135deg, rgba(59,130,246,0.15), rgba(168,85,247,0.1), rgba(59,130,246,0.05))",
-            pointerEvents: "none",
-          }} />
-          <div style={glowCardBg}>
+        {/* Card — flat style matching HomePage cards */}
+        <div style={{
+          ...HOME_CARD,
+          padding: "30px 30px",
+        }}>
 
             {redirectMessage && (
               <div style={{
-                padding: "12px 16px", marginBottom: 20, borderRadius: 12,
-                background: "linear-gradient(135deg, rgba(59,130,246,0.12), rgba(99,102,241,0.08))",
-                border: "1px solid rgba(59,130,246,0.2)",
-                color: "#93c5fd", fontSize: 13, fontWeight: 600,
+                padding: "12px 16px", marginBottom: 20, borderRadius: 10,
+                background: "rgba(59,130,246,0.10)",
+                border: `1px solid rgba(59,130,246,0.3)`,
+                color: "#bfdbfe", fontSize: 13, fontWeight: 600,
                 lineHeight: 1.4,
               }}>
                 {redirectMessage}
@@ -342,10 +351,10 @@ export default function LoginPage({ onLogin }) {
 
             {referralFromUrl && !redirectMessage && step === "choose" && (
               <div style={{
-                padding: "12px 16px", marginBottom: 20, borderRadius: 12,
-                background: "linear-gradient(135deg, rgba(16,185,129,0.12), rgba(6,182,212,0.08))",
-                border: "1px solid rgba(16,185,129,0.2)",
-                color: "#6ee7b7", fontSize: 13, fontWeight: 600, lineHeight: 1.4,
+                padding: "12px 16px", marginBottom: 20, borderRadius: 10,
+                background: "rgba(59,130,246,0.10)",
+                border: "1px solid rgba(59,130,246,0.3)",
+                color: "#bfdbfe", fontSize: 13, fontWeight: 600, lineHeight: 1.4,
                 display: "flex", alignItems: "center", gap: 10,
               }}>
                 <Gift size={18} weight="duotone" />
@@ -353,100 +362,75 @@ export default function LoginPage({ onLogin }) {
               </div>
             )}
 
-            {/* CHOOSE */}
+            {/* CHOOSE — mirrors the HomePage "КОМЬЮНИТИ" list style exactly */}
             {step === "choose" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {[
                   {
                     onClick: () => setStep("widget"),
-                    icon: <TelegramLogo size={22} weight="fill" color="#fff" />,
-                    iconBg: "linear-gradient(135deg, #3b82f6, #2563eb)",
-                    iconShadow: "0 4px 16px rgba(59,130,246,0.3)",
+                    icon: <TelegramLogo size={22} weight="fill" color="#3b82f6" />,
                     label: "Войти через Telegram",
-                    sub: "Быстрый вход в один клик",
                   },
                   {
                     onClick: () => setStep("code"),
-                    icon: <span style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: "monospace" }}>#</span>,
-                    iconBg: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
-                    iconShadow: "0 4px 16px rgba(139,92,246,0.3)",
+                    icon: <span style={{ fontSize: 18, fontWeight: 900, color: "#3b82f6", fontFamily: "monospace" }}>#</span>,
                     label: "Получить код",
-                    sub: "Отправь код боту в Telegram",
                   },
                   {
                     onClick: handleGoogleLogin,
                     disabled: loading,
-                    icon: <GoogleLogo size={22} weight="bold" color="#fff" />,
-                    iconBg: "linear-gradient(135deg, #4285f4, #3b82f6)",
-                    iconShadow: "0 4px 16px rgba(66,133,244,0.3)",
+                    icon: <GoogleLogo size={22} weight="bold" color="#3b82f6" />,
                     label: "Войти через Google",
-                    sub: "Откроется окно авторизации",
                   },
-                ].map(({ onClick, disabled, icon, iconBg, iconShadow, label, sub }) => (
+                ].map(({ onClick, disabled, icon, label }) => (
                   <button
                     key={label}
                     onClick={onClick}
                     disabled={disabled}
                     style={{
-                      width: "100%", padding: "16px 18px", textAlign: "left",
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      borderRadius: 16, cursor: disabled ? "not-allowed" : "pointer",
-                      color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: "inherit",
-                      display: "flex", alignItems: "center", gap: 16,
-                      transition: "all 0.2s",
+                      ...HOME_CARD,
+                      border: "none",
+                      padding: "16px 18px",
+                      display: "flex", alignItems: "center", gap: 14,
+                      cursor: disabled ? "not-allowed" : "pointer",
                       opacity: disabled ? 0.5 : 1,
-                    }}
-                    onMouseEnter={e => {
-                      if (disabled) return;
-                      e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.3)";
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "none";
+                      color: "#fff", fontFamily: "inherit", textAlign: "left",
+                      transition: "all 0.15s",
                     }}
                   >
-                    <div style={{
-                      width: 44, height: 44, borderRadius: 12,
-                      background: iconBg,
-                      boxShadow: iconShadow,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0,
-                    }}>
-                      {icon}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2, fontWeight: 400 }}>
-                        {sub}
-                      </div>
-                    </div>
+                    {icon}
+                    <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.08em", flex: 1 }}>{label}</span>
+                    <CaretRight size={14} style={{ color: "rgba(255,255,255,0.25)" }} />
                   </button>
                 ))}
               </div>
             )}
 
-            {/* WIDGET */}
+            {/* WIDGET — telegram-widget.js in iframe (only path that fires onTelegramAuth) */}
             {step === "widget" && (
               <div>
                 <BackBtn onClick={() => setStep("choose")} />
                 <div style={{
-                  padding: "28px 24px",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 16,
-                  display: "flex", justifyContent: "center", minHeight: 90,
-                  alignItems: "center",
+                  ...HOME_CARD,
+                  padding: "24px 24px",
+                  textAlign: "center",
                 }}>
-                  {!widgetReady && !error && (
-                    <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>Загружаем…</span>
-                  )}
-                  <div ref={widgetRef} />
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", textTransform: "uppercase", letterSpacing: "0.02em" }}>
+                      Вход через Telegram
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                      Нажми кнопку ниже, чтобы войти
+                    </div>
+                  </div>
+                  <div style={{
+                    display: "flex", justifyContent: "center", minHeight: 50, alignItems: "center",
+                  }}>
+                    {!widgetReady && !error && (
+                      <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>Загружаем…</span>
+                    )}
+                    <div ref={widgetRef} />
+                  </div>
                 </div>
                 {error && <p style={{ color: "#fca5a5", fontSize: 12, marginTop: 12 }}>{error}</p>}
               </div>
@@ -500,16 +484,15 @@ export default function LoginPage({ onLogin }) {
                     <a href={botLink} target="_blank" rel="noopener noreferrer"
                       style={{
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        gap: 10, width: "100%", padding: "14px",
-                        background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                        gap: 8, padding: "12px 22px",
+                        background: "#3b82f6",
                         color: "#fff",
-                        fontSize: 14, fontWeight: 700,
-                        borderRadius: 14, textDecoration: "none", boxSizing: "border-box",
-                        transition: "all 0.2s",
-                        boxShadow: "0 4px 20px rgba(59,130,246,0.3)",
+                        fontSize: 11, fontWeight: 700,
+                        letterSpacing: "0.08em", textTransform: "uppercase",
+                        borderRadius: 10, textDecoration: "none",
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(59,130,246,0.4)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(59,130,246,0.3)"; }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "#2563eb"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "#3b82f6"; }}
                     >
                       <TelegramLogo size={18} weight="fill" />
                       Открыть @sbgamescbot
@@ -529,10 +512,9 @@ export default function LoginPage({ onLogin }) {
               <div style={{ textAlign: "center", padding: "8px 0" }}>
                 <div style={{
                   width: 64, height: 64, borderRadius: "50%", margin: "0 auto 16px",
-                  background: "linear-gradient(135deg, rgba(66,133,244,0.2), rgba(59,130,246,0.15))",
-                  border: "2px solid rgba(66,133,244,0.3)",
+                  background: "rgba(234,67,53,0.12)",
+                  border: "1px solid #ea4335",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  boxShadow: "0 0 40px rgba(66,133,244,0.1)",
                 }}>
                   <GoogleLogo size={30} weight="bold" color="#fff" />
                 </div>
@@ -576,15 +558,15 @@ export default function LoginPage({ onLogin }) {
                   {error && <p style={{ color: "#fca5a5", fontSize: 12, marginBottom: 12 }}>{error}</p>}
                   <button type="submit" disabled={loading || nick.length < 3}
                     style={{
-                      width: "100%", padding: "13px",
-                      background: nick.length < 3 ? "rgba(59,130,246,0.3)" : "linear-gradient(135deg, #3b82f6, #2563eb)",
-                      color: "#fff", fontSize: 14, fontWeight: 700,
-                      border: "none", borderRadius: 14,
+                      width: "100%", padding: "12px 22px",
+                      background: nick.length < 3 ? "rgba(59,130,246,0.3)" : "#3b82f6",
+                      color: "#fff", fontSize: 11, fontWeight: 700,
+                      letterSpacing: "0.08em", textTransform: "uppercase",
+                      border: "none", borderRadius: 10,
                       cursor: nick.length < 3 ? "not-allowed" : "pointer",
-                      fontFamily: "inherit", transition: "all 0.2s",
-                      boxShadow: nick.length >= 3 ? "0 4px 16px rgba(59,130,246,0.25)" : "none",
+                      fontFamily: "inherit",
                     }}>
-                    {loading ? "..." : "Готово"}
+                    {loading ? "Входим…" : "Готово"}
                   </button>
                 </form>
               </div>
@@ -634,21 +616,20 @@ export default function LoginPage({ onLogin }) {
                   {error && <p style={{ color: "#fca5a5", fontSize: 12, marginBottom: 12 }}>{error}</p>}
                   <button type="submit" disabled={loading || nick.length < 3}
                     style={{
-                      width: "100%", padding: "13px",
-                      background: loading || nick.length < 3 ? "rgba(59,130,246,0.3)" : "linear-gradient(135deg, #3b82f6, #2563eb)",
-                      color: "#fff", fontSize: 14, fontWeight: 700,
-                      border: "none", borderRadius: 14,
+                      width: "100%", padding: "12px 22px",
+                      background: loading || nick.length < 3 ? "rgba(59,130,246,0.3)" : "#3b82f6",
+                      color: "#fff", fontSize: 11, fontWeight: 700,
+                      letterSpacing: "0.08em", textTransform: "uppercase",
+                      border: "none", borderRadius: 10,
                       cursor: loading || nick.length < 3 ? "not-allowed" : "pointer",
-                      fontFamily: "inherit", transition: "all 0.2s",
-                      boxShadow: nick.length >= 3 ? "0 4px 16px rgba(59,130,246,0.25)" : "none",
+                      fontFamily: "inherit",
                     }}>
-                    {loading ? "..." : "Готово"}
+                    {loading ? "Входим…" : "Готово"}
                   </button>
                 </form>
               </div>
             )}
 
-          </div>
         </div>
 
         {/* Footer */}

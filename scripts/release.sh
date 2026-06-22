@@ -14,9 +14,9 @@
 set -e
 
 VERSION="${1:?Укажи версию, например: 1.1.0}"
-SERVER="root@94.26.83.31"
+SERVER="${SERVER_USER:-root}@${SERVER_HOST:-62.77.154.84}"
 REMOTE_DIR="/opt/sbgames-auth/updates"
-KEY_PATH="$HOME/.tauri/sbgames.key"
+KEY_PATH="${TAURI_SIGNING_PRIVATE_KEY_PATH:-$HOME/.tauri/sbgames.key}"
 
 echo "==> Обновляем версию до $VERSION..."
 
@@ -26,10 +26,8 @@ sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.co
 sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 # package.json
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
-# server_index.js (LATEST_VERSION)
-sed -i "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VERSION\"/" server_index.js
-# server/index.js (LATEST_VERSION)
-sed -i "s/const LATEST_VERSION = \"[^\"]*\"/const LATEST_VERSION = \"$VERSION\"/" server/index.js
+# Примечание: server_index.js использует авто-детект версии по файлам в
+# updates/ (detectLatestVersion), поэтому LATEST_VERSION вручную менять не нужно.
 
 echo "==> Билдим с подписью..."
 export TAURI_SIGNING_PRIVATE_KEY="$KEY_PATH"
@@ -66,5 +64,6 @@ ssh -o StrictHostKeyChecking=no "$SERVER" "cd /opt/sbgames-auth && pm2 restart s
 
 echo ""
 echo "✅ Релиз $VERSION готов!"
-echo "   Файлы: https://api.sbgames.hyperionsearch.xyz:8443/update/$VERSION/"
-echo "   Манифест: GET /update/{target}/{arch}/{currentVersion}"
+echo "   Файлы: https://games.sb-capital.group/update/"
+echo "   Манифест: GET https://games.sb-capital.group/update/{target}/{arch}/{currentVersion}"
+echo "   Диагностика: GET https://games.sb-capital.group/downloads/latest.json"

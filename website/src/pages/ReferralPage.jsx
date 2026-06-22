@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getUser } from "../lib/api.js";
 import { motion } from "framer-motion";
+import AffiliatePage from "./AffiliatePage.jsx";
 import {
   TrendUp, CalendarDots, Globe, Gift, ShieldCheck, Headset,
   ChartBarHorizontal, UsersThree, CurrencyDollar, Trophy,
@@ -145,13 +146,16 @@ function FAQItem({ q, a }) {
 
 export default function ReferralPage() {
   const navigate = useNavigate();
+  const currentUser = getUser();
+
+  // Logged-in users see the partner dashboard directly on this page.
+  // No redirect, no separate route — "Start Earning" embeds it inline.
+  if (currentUser) {
+    return <AffiliatePage user={currentUser} />;
+  }
 
   const handleCta = () => {
-    if (getUser()) {
-      navigate("/affiliate/dashboard");
-    } else {
-      navigate("/login", { state: { from: "/affiliate/dashboard", message: "Войдите или зарегистрируйтесь, чтобы стать партнёром" } });
-    }
+    navigate("/login", { state: { from: "/affiliate", message: "Войдите или зарегистрируйтесь, чтобы стать партнёром" } });
   };
 
   const ctaBtnStyle = {

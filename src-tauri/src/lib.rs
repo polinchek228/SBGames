@@ -1,4 +1,4 @@
-﻿#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
+#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -927,7 +927,13 @@ async fn launch_minecraft(
     // SBGames кастомный titlebar в Minecraft (заменяет "Minecraft 1.20.1" на "SBGames")
     cmd.arg("--title").arg("SBGames");
     cmd.arg("--assetsDir").arg(mc_dir.join("assets"));
-    cmd.arg("--assetIndex").arg("5");
+    // Читаем assetIndex.id из vanilla version.json (для 1.20.1 это "17", не "5")
+    let asset_index_id = std::fs::read_to_string(mc_dir.join("versions/1.20.1/1.20.1.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v["assetIndex"]["id"].as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "17".to_string());
+    cmd.arg("--assetIndex").arg(&asset_index_id);
     cmd.arg("--uuid").arg(uuid_str(&uuid_from_username(&username)));
     cmd.arg("--accessToken").arg(&token);
     cmd.arg("--userType").arg("legacy");
