@@ -1875,6 +1875,24 @@ app.get("/affiliate/code", requireAuth, (req, res) => {
   res.json({ code: data.code, link: `https://games.sb-capital.group/invite/${data.code}` });
 });
 
+// PUT /affiliate/code — set/change custom referral code
+// Body: { code: "XXXXXXX" }. Code must be unique; persisted via saveReferral.
+app.put("/affiliate/code", requireAuth, async (req, res) => {
+  const code = String(req.body?.code || "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{3,20}$/.test(code)) {
+    return res.status(400).json({ message: "Код: 3–20 символов, латинские буквы и цифры" });
+  }
+  // Uniqueness check across all referral records
+  const takenBy = [...referralData.entries()].find(([uid, d]) => d.code === code && uid !== req.userId);
+  if (takenBy) {
+    return res.status(409).json({ message: "Этот код уже занят" });
+  }
+  const data = ensureReferralData(req.userId);
+  data.code = code;
+  await saveReferral(req.userId, data);
+  res.json({ ok: true, code, link: `https://games.sb-capital.group/invite/${code}` });
+});
+
 // GET /api/referral — compact referral info for current user
 app.get("/api/referral", requireAuth, async (req, res) => {
   const data = ensureReferralData(req.userId);
@@ -3353,7 +3371,9 @@ if (fs.existsSync(websiteDir)) {
   app.use(express.static(websiteDir, { maxAge: "1d", etag: true, index: "index.html" }));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/auth/") || req.path.startsWith("/api/") || req.path.startsWith("/payments/") ||
-        req.path.startsWith("/admin/") || req.path.startsWith("/support/") || req.path.startsWith("/update/")) return next();
+        req.path.startsWith("/admin/") || req.path.startsWith("/support/") || req.path.startsWith("/update/") ||
+        req.path.startsWith("/affiliate/") || req.path.startsWith("/invite/") || req.path.startsWith("/online") ||
+        req.path.startsWith("/news") || req.path.startsWith("/downloads/") || req.path.startsWith("/health")) return next();
     res.sendFile(require("path").join(websiteDir, "index.html"), err => { if (err) next(); });
   });
 }
