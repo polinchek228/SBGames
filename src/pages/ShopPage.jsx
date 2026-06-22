@@ -1,52 +1,20 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Storefront, Shield, Sword, PawPrint, Sparkle,
-  ShoppingCartSimple, Crown, Star, Lightning, Ghost,
-  Skull, Flame, Wind, Diamond, Gift, Info, X, Tag,
-  ArrowsLeftRight, Plus, ListChecks, CaretLeft,
+  Storefront,
+  ShoppingCartSimple, Gift, Info, X,
+  ArrowsLeftRight, CaretLeft,
 } from "@phosphor-icons/react";
-import { authedFetch } from "../lib/api.js";
+import { authedFetch, API_URL } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
 
-// Серверы — без "Все", пользователь выбирает сам
-const SERVERS = [
-  { id: "starwars", label: "StarWars",    color: "#818cf8", emoji: "⚔️" },
-  { id: "global",   label: "Глобальные", color: "#3b82f6", emoji: "🌐" },
-];
-
-const CATEGORIES = [
-  { id: "Все",     icon: Storefront },
-  { id: "Броня",   icon: Shield },
-  { id: "Оружие",  icon: Sword },
-  { id: "Питомцы", icon: PawPrint },
-  { id: "Эффекты", icon: Sparkle },
-];
-
-const ITEM_ICONS = {
-  1: Crown, 2: Sword, 3: Ghost, 4: Wind,
-  5: Star, 6: Lightning, 7: Skull, 8: Flame, 9: Diamond, 10: Gift,
-};
-
-const ITEMS = [
-  { id: 1, name: "Мандалорская броня",  server: "starwars", category: "Броня",   price: 420, rarity: "legendary", desc: "Легендарная броня с джетпаком. Исходно принадлежала роду Манда'лор — одному из древнейших кланов галактики." },
-  { id: 2, name: "Световой меч",        server: "starwars", category: "Оружие",  price: 280, rarity: "epic",      desc: "Синий световой меч Ордена Джедаев. Кристалл Кайбера настроен на своего владельца." },
-  { id: 3, name: "Дроид-спутник",       server: "starwars", category: "Питомцы", price: 230, rarity: "rare",      desc: "Маленький дроид-астромех следует за тобой везде и помогает в бою." },
-  { id: 4, name: "Аура Тёмной Силы",    server: "starwars", category: "Эффекты", price: 175, rarity: "rare",      desc: "Тёмная сторона Силы окутывает тебя мрачным сиянием. Пугает союзников." },
-  { id: 8, name: "Плащ Ситха",          server: "starwars", category: "Броня",   price: 190, rarity: "uncommon",  desc: "Тёмно-красный плащ с капюшоном. Любимая одежда лорда Вейдера." },
-  { id: 5, name: "VIP Статус",          server: "global",   category: "Эффекты", price: 599, rarity: "legendary", desc: "VIP-бейдж и привилегии на всех серверах. Уникальный ник-эффект и доступ к закрытым ивентам." },
-  { id: 6, name: "Молния-клинок",       server: "global",   category: "Оружие",  price: 165, rarity: "uncommon",  desc: "Электрический след за клинком. Совместим с любым сервером." },
-  { id: 7, name: "Нагрудник Бездны",    server: "global",   category: "Броня",   price: 410, rarity: "legendary", desc: "Броня из фрагментов Бездны. Поглощает урон и отражает часть обратно." },
-  { id: 9, name: "Кристалл Силы",       server: "global",   category: "Питомцы", price: 250, rarity: "epic",      desc: "Светящийся кристалл Кайбера парит рядом с тобой." },
-  { id: 10, name: "Ивент-набор",        server: "global",   category: "Эффекты", price: 99,  rarity: "uncommon",  desc: "Эксклюзивный набор сезонного события. Ограниченный тираж." },
-];
-
-const RARITY = {
-  legendary: { label: "Легендарный", color: "#f59e0b", bg: "rgba(245,158,11,0.07)" },
-  epic:      { label: "Эпический",   color: "#a855f7", bg: "rgba(168,85,247,0.07)" },
-  rare:      { label: "Редкий",      color: "#3b82f6", bg: "rgba(59,130,246,0.07)" },
-  uncommon:  { label: "Необычный",   color: "#22c55e", bg: "rgba(34,197,94,0.07)" },
-};
+// Цветовая "редкость" для визуала карточек — вычисляется по цене товара из БД.
+function rarityForPrice(price) {
+  if (price >= 2000) return { label: "Легендарный", color: "#f59e0b", bg: "rgba(245,158,11,0.07)" };
+  if (price >= 750)  return { label: "Эпический",   color: "#a855f7", bg: "rgba(168,85,247,0.07)" };
+  if (price >= 250)  return { label: "Редкий",      color: "#3b82f6", bg: "rgba(59,130,246,0.07)" };
+  return { label: "Обычный", color: "#22c55e", bg: "rgba(34,197,94,0.07)" };
+}
 
 export default function ShopPage({ user, onBalanceChange }) {
   const [mode, setMode] = useState("choose"); // "choose" | "donate" | "market"
@@ -152,9 +120,10 @@ export default function ShopPage({ user, onBalanceChange }) {
   );
 }
 
-// ─── Донат (старая логика магазина) ───────────────────────────────────────────
+// ─── Донат (DB-backed каталог через /api/inventory/catalog) ──────────────────
 function DonateView({ user, onBalanceChange }) {
-  const [server,   setServer]   = useState(() => localStorage.getItem("sbg_donate_server")   || SERVERS[0].id);
+  const [items,    setItems]    = useState([]);
+  const [loading,  setLoading]  = useState(true);
   const [category, setCategory] = useState(() => localStorage.getItem("sbg_donate_category") || "Все");
   const [cart,     setCart]     = useState(new Set());
   const [detail,   setDetail]   = useState(null);
@@ -162,36 +131,43 @@ function DonateView({ user, onBalanceChange }) {
   const [checkingOut, setCheckingOut] = useState(false);
   const { push: pushNotif } = useNotifications() || {};
 
+  // Загружаем каталог из БД — те же товары, что админ редактирует на сайте.
+  useEffect(() => {
+    authedFetch("/api/inventory/catalog")
+      .then(d => { setItems(d.items || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Динамические категории из загруженных товаров.
+  const categories = ["Все", ...Array.from(new Set(items.map(i => i.category).filter(Boolean)))];
+  useEffect(() => { if (categories.length > 1 && !categories.includes(category)) setCategory("Все"); }, [categories.join("|")]);
+
+  // Покупка: каждый товар отдельно через /api/inventory/buy (работает с Redis-каталогом).
   const handleCheckout = async () => {
     if (checkingOut || cart.size === 0) return;
     setCheckingOut(true);
-    try {
-      const ids = [...cart];
-      const r = await authedFetch("/api/shop/buy", {
-        method: "POST",
-        body: JSON.stringify({ itemIds: ids }),
-      });
-      if (onBalanceChange) onBalanceChange(r.balance);
-      pushNotif?.("Заказ оформлен", "Предметы добавлены в ваш инвентарь", "success");
-      setCart(new Set());
-      setShowCart(false);
-    } catch (e) {
-      pushNotif?.("Ошибка заказа", e.message || "Не удалось оформить заказ", "error");
-    } finally {
-      setCheckingOut(false);
+    let lastBalance = null, okCount = 0, lastErr = "";
+    for (const id of [...cart]) {
+      try {
+        const r = await authedFetch("/api/inventory/buy", { method: "POST", body: JSON.stringify({ itemId: id }) });
+        if (r.balance != null) lastBalance = r.balance;
+        okCount++;
+      } catch (e) { lastErr = e.message || "Ошибка"; }
     }
+    if (onBalanceChange && lastBalance != null) onBalanceChange(lastBalance);
+    if (okCount > 0) {
+      pushNotif?.("Заказ оформлен", `Добавлено товаров: ${okCount}${lastErr ? ` (часть не удалась: ${lastErr})` : ""}`, "success");
+      setCart(new Set()); setShowCart(false);
+    } else {
+      pushNotif?.("Ошибка заказа", lastErr || "Не удалось оформить заказ", "error");
+    }
+    setCheckingOut(false);
   };
-  useEffect(() => { localStorage.setItem("sbg_donate_server",   server);   }, [server]);
   useEffect(() => { localStorage.setItem("sbg_donate_category", category); }, [category]);
 
-  const filtered = ITEMS.filter(i =>
-    i.server === server &&
-    (category === "Все" || i.category === category)
-  );
-
-  const toggleCart = (id) => setCart(prev => {
-    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
-  });
+  const filtered = items.filter(i => category === "Все" || i.category === category);
+  const toggleCart = (id) => setCart(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const findItem = (id) => items.find(i => i.id === id);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -220,41 +196,24 @@ function DonateView({ user, onBalanceChange }) {
         </AnimatePresence>
       </div>
 
-      {/* Server selector — без "Все" */}
-      <div className="flex items-center gap-2 px-6 pb-2 flex-shrink-0">
-        {SERVERS.map(s => (
-          <button key={s.id} onClick={() => setServer(s.id)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all duration-150"
-            style={server === s.id
-              ? { background: `${s.color}20`, color: s.color, boxShadow: `0 0 0 1px ${s.color}35` }
-              : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)" }
-            }
-          >
-            <span>{s.emoji}</span>
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Category tabs */}
-      <div className="flex items-center gap-1 px-6 pb-3 flex-shrink-0">
-        {CATEGORIES.map(({ id, icon: Icon }) => (
+      {/* Category tabs — динамические из загруженного каталога */}
+      <div className="flex items-center gap-1 px-6 pb-3 flex-shrink-0 overflow-x-auto">
+        {categories.map(id => (
           <button key={id} onClick={() => setCategory(id)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-150"
-            style={category === id
-              ? { background: "rgba(255,255,255,0.08)", color: "#fff" }
-              : { color: "rgba(255,255,255,0.5)" }
-            }
-          >
-            <Icon size={12} weight={category === id ? "fill" : "regular"} />
-            {id}
-          </button>
+            className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-150 whitespace-nowrap"
+            style={category === id ? { background: "rgba(255,255,255,0.08)", color: "#fff" } : { color: "rgba(255,255,255,0.5)" }}
+          >{id}</button>
         ))}
       </div>
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="w-7 h-7 rounded-full border-2 border-white/10 border-t-blue-500 animate-spin" />
+            <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.45)" }}>Загрузка каталога…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <Storefront size={28} style={{ color: "rgba(255,255,255,0.08)" }} />
             <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.45)" }}>Нет предметов</p>
@@ -262,108 +221,41 @@ function DonateView({ user, onBalanceChange }) {
         ) : (
           <div className="grid grid-cols-3 gap-3 auto-rows-max">
             {filtered.map((item, i) => {
-              const r = RARITY[item.rarity];
+              const r = rarityForPrice(item.price || 0);
               const inCart = cart.has(item.id);
-              const ItemIcon = ITEM_ICONS[item.id] || Diamond;
+              const thumb = item.image || (item.preview && !String(item.preview).startsWith("linear") ? item.preview : null);
               return (
-                <motion.div
-                  key={item.id}
-                  layout
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04 }}
+                <motion.div key={item.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
                   onClick={() => setDetail(item)}
                   className="flex flex-col rounded-2xl overflow-hidden group"
                   style={{ background: "rgba(14,14,14,0.55)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(20,20,20,0.65)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(14,14,14,0.55)"; }}
                 >
-                  {/* ── Обложка-баннер ── */}
                   <div className="relative h-[110px] flex-shrink-0 overflow-hidden"
-                    style={{
-                      background: `radial-gradient(ellipse at 50% 120%, ${r.color}30 0%, transparent 70%), linear-gradient(160deg, ${r.color}12 0%, #000 100%)`,
-                    }}
+                    style={{ background: thumb ? "#000" : `radial-gradient(ellipse at 50% 120%, ${r.color}30 0%, transparent 70%), linear-gradient(160deg, ${r.color}12 0%, #000 100%)` }}
                   >
-                    {/* Glow */}
-                    <div className="absolute inset-0"
-                      style={{ background: `radial-gradient(circle at 50% 100%, ${r.color}20, transparent 65%)` }}
-                    />
-                    {/* Большая иконка по центру */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <ItemIcon
-                        size={52}
-                        weight="fill"
-                        style={{
-                          color: r.color,
-                          opacity: 0.85,
-                          filter: `drop-shadow(0 0 16px ${r.color}60)`,
-                          transition: "transform 0.2s",
-                        }}
-                        className="group-hover:scale-110"
-                      />
-                    </div>
-                    {/* Rarity badge */}
+                    {thumb && <img src={thumb} alt={item.name || ""} className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.9 }} onError={e => { e.currentTarget.style.display = "none"; }} />}
+                    {!thumb && <div className="absolute inset-0 flex items-center justify-center"><Gift size={48} weight="fill" style={{ color: r.color, opacity: 0.7, filter: `drop-shadow(0 0 14px ${r.color}50)` }} className="group-hover:scale-110 transition-transform" /></div>}
                     <div className="absolute top-2.5 right-2.5">
-                      <span className="text-[9px] font-bold tracking-wider px-2 py-1 rounded-lg"
-                        style={{ color: r.color, background: `rgba(0,0,0,0.7)`, border: `1px solid ${r.color}30` }}
-                      >
-                        {r.label.toUpperCase()}
-                      </span>
+                      <span className="text-[9px] font-bold tracking-wider px-2 py-1 rounded-lg" style={{ color: r.color, background: "rgba(0,0,0,0.7)", border: `1px solid ${r.color}30` }}>{r.label.toUpperCase()}</span>
                     </div>
-                    {/* Server badge */}
-                    {server === "all" && (() => {
-                      const srvColor = SERVERS.find(s => s.id === item.server)?.color;
-                      const srvLabel = SERVERS.find(s => s.id === item.server)?.label;
-                      return srvColor ? (
-                        <div className="absolute top-2.5 left-2.5">
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md"
-                            style={{ color: srvColor, background: `rgba(0,0,0,0.7)`, border: `1px solid ${srvColor}30` }}
-                          >{srvLabel}</span>
-                        </div>
-                      ) : null;
-                    })()}
-                    {/* Bottom fade */}
                     <div className="absolute bottom-0 left-0 right-0 h-8" style={{ background: "linear-gradient(to top, rgba(14,14,14,0.55), transparent)" }} />
                   </div>
-
-                  {/* ── Контент ── */}
                   <div className="px-4 pb-4 pt-2 flex flex-col gap-2.5 flex-1">
                     <div>
+                      {item.subcategory && <p className="text-[9px] font-bold tracking-wide uppercase" style={{ color: "rgba(255,255,255,0.35)" }}>{item.subcategory}</p>}
                       {item.name && <p className="text-[13px] font-bold text-white leading-tight">{item.name}</p>}
-                      <p className="text-[10px] mt-1 leading-relaxed line-clamp-2"
-                        style={{ color: "rgba(255,255,255,0.6)" }}
-                      >
-                        {item.desc}
-                      </p>
+                      {item.description && <p className="text-[10px] mt-1 leading-relaxed line-clamp-2" style={{ color: "rgba(255,255,255,0.6)" }}>{item.description}</p>}
                     </div>
-
-                    {/* ── Нижняя строка: цена | Подробнее | Купить ── */}
-                    <div className="flex items-center gap-2 mt-auto pt-2"
-                      style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
-                    >
-                      {/* Цена */}
+                    <div className="flex items-center gap-2 mt-auto pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                       <div className="flex items-center gap-1 flex-1">
                         <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain" style={{ filter: "drop-shadow(0 0 3px rgba(37,99,235,0.6))" }} />
-                        <span className="text-[14px] font-black text-white tabular-nums">{item.price}</span>
+                        <span className="text-[14px] font-black text-white tabular-nums">{(item.price || 0).toLocaleString("ru-RU")}</span>
                         <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>SBT</span>
                       </div>
-                      {/* Подробнее */}
-                      <button
-                        onClick={e => { e.stopPropagation(); setDetail(item); }}
-                        className="text-[10px] font-semibold px-2.5 py-1.5 rounded-xl transition-all duration-150"
-                        style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)" }}
-                      >
-                        Подробнее
-                      </button>
-                      {/* Купить */}
-                      <button
-                        onClick={e => { e.stopPropagation(); toggleCart(item.id); }}
-                        className="flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all duration-150"
-                        style={inCart
-                          ? { background: `${r.color}22`, color: r.color }
-                          : { background: "rgba(37,99,235,0.2)", color: "#93c5fd" }
-                        }
-                      >
+                      <button onClick={e => { e.stopPropagation(); setDetail(item); }} className="text-[10px] font-semibold px-2.5 py-1.5 rounded-xl transition-all duration-150" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)" }}>Подробнее</button>
+                      <button onClick={e => { e.stopPropagation(); toggleCart(item.id); }} className="flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all duration-150" style={inCart ? { background: `${r.color}22`, color: r.color } : { background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}>
                         <ShoppingCartSimple size={12} weight={inCart ? "fill" : "regular"} />
                         {inCart ? "В корзине" : "Купить"}
                       </button>
@@ -378,173 +270,87 @@ function DonateView({ user, onBalanceChange }) {
 
       {/* Detail modal */}
       <AnimatePresence>
-        {detail && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          >
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setDetail(null)} />
-            <motion.div
-              initial={{ scale: 0.92, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 12 }}
-              transition={{ type: "spring", damping: 28, stiffness: 320 }}
-              className="relative z-10 w-[440px] rounded-3xl overflow-hidden"
-              style={{ background: "rgba(10,10,10,0.85)", backdropFilter: "blur(24px)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }}
-            >
-              {/* Banner with rarity glow */}
-              <div className="relative h-[160px] flex items-center justify-center overflow-hidden"
-                style={{ background: `radial-gradient(ellipse at 50% 130%, ${RARITY[detail.rarity].color}35 0%, transparent 70%), linear-gradient(160deg, ${RARITY[detail.rarity].color}15 0%, #000 100%)` }}
+        {detail && (() => {
+          const r = rarityForPrice(detail.price || 0);
+          const inCart = cart.has(detail.id);
+          const thumb = detail.image || (detail.preview && !String(detail.preview).startsWith("linear") ? detail.preview : null);
+          return (
+            <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDetail(null)}>
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+              <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={e => e.stopPropagation()}
+                className="relative w-full max-w-[440px] rounded-2xl overflow-hidden"
+                style={{ background: "rgba(14,14,14,0.92)", backdropFilter: "blur(24px)", border: "1px solid rgba(255,255,255,0.08)" }}
               >
-                <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 50% 100%, ${RARITY[detail.rarity].color}20, transparent 65%)` }} />
-                <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.1, type: "spring" }}>
-                  {React.createElement(ITEM_ICONS[detail.id] || Diamond, {
-                    size: 72, weight: "fill", style: { color: RARITY[detail.rarity].color, filter: `drop-shadow(0 0 24px ${RARITY[detail.rarity].color}60)` }
-                  })}
-                </motion.div>
-                {/* Rarity badge */}
-                <div className="absolute top-4 right-4">
-                  <span className="text-[9px] font-bold tracking-wider px-2.5 py-1 rounded-lg"
-                    style={{ color: RARITY[detail.rarity].color, background: "rgba(0,0,0,0.7)", border: `1px solid ${RARITY[detail.rarity].color}30` }}
-                  >
-                    {RARITY[detail.rarity].label.toUpperCase()}
-                  </span>
+                <div className="relative h-[180px] overflow-hidden" style={{ background: thumb ? "#000" : `radial-gradient(ellipse at 50% 130%, ${r.color}35 0%, transparent 70%), linear-gradient(160deg, ${r.color}15 0%, #000 100%)` }}>
+                  {thumb && <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.92 }} />}
+                  {!thumb && <div className="absolute inset-0 flex items-center justify-center"><Gift size={64} weight="fill" style={{ color: r.color, filter: `drop-shadow(0 0 20px ${r.color}50)` }} /></div>}
+                  <div className="absolute top-4 right-4"><span className="text-[9px] font-bold tracking-wider px-2.5 py-1 rounded-lg" style={{ color: r.color, background: "rgba(0,0,0,0.7)", border: `1px solid ${r.color}30` }}>{r.label.toUpperCase()}</span></div>
+                  <button onClick={() => setDetail(null)} className="absolute top-4 left-4 w-8 h-8 rounded-xl flex items-center justify-center transition-all" style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.5)" }} onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }} onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.5)"; e.currentTarget.style.background = "rgba(0,0,0,0.5)"; }}><X size={14} /></button>
                 </div>
-                {/* Close */}
-                <button onClick={() => setDetail(null)}
-                  className="absolute top-4 left-4 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.5)" }}
-                  onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.5)"; e.currentTarget.style.background = "rgba(0,0,0,0.5)"; }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="p-6">
-                {detail.name && <h2 className="text-[18px] font-black text-white mb-1">{detail.name}</h2>}
-                <p className="text-[12px] mb-4" style={{ color: "rgba(255,255,255,0.65)" }}>
-                  {detail.server === "starwars" ? "StarWars сервер" : "Глобальный"} · {detail.category}
-                </p>
-                <p className="text-[13px] leading-relaxed mb-5" style={{ color: "rgba(255,255,255,0.75)" }}>
-                  {detail.desc}
-                </p>
-
-                {/* Price + buttons */}
-                <div className="flex items-center justify-between pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="flex items-center gap-2">
-                    <img src="/money.png" alt="" className="w-5 h-5" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
-                    <span className="text-[22px] font-black text-white tabular-nums">{detail.price}</span>
-                    <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.75)" }}>SBT</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { toggleCart(detail.id); setDetail(null); }}
-                      className="px-6 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all"
-                      style={{ background: cart.has(detail.id) ? `linear-gradient(135deg, ${RARITY[detail.rarity].color}, ${RARITY[detail.rarity].color}aa)` : "linear-gradient(135deg, #2563EB, #3b82f6)", boxShadow: `0 0 20px ${cart.has(detail.id) ? RARITY[detail.rarity].color + "30" : "rgba(37,99,235,0.3)"}` }}
-                    >
-                      {cart.has(detail.id) ? "В корзине ✓" : "В корзину"}
-                    </button>
+                <div className="p-6">
+                  {detail.subcategory && <p className="text-[10px] font-bold tracking-wide uppercase mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>{detail.subcategory}</p>}
+                  {detail.name && <h2 className="text-[18px] font-black text-white mb-1">{detail.name}</h2>}
+                  <p className="text-[12px] mb-4" style={{ color: "rgba(255,255,255,0.65)" }}>{detail.category}{detail.subcategory ? ` · ${detail.subcategory}` : ""}</p>
+                  {detail.description && <p className="text-[13px] leading-relaxed mb-5" style={{ color: "rgba(255,255,255,0.75)" }}>{detail.description}</p>}
+                  <div className="flex items-center justify-between pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="flex items-center gap-2">
+                      <img src="/money.png" alt="" className="w-5 h-5" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
+                      <span className="text-[22px] font-black text-white tabular-nums">{(detail.price || 0).toLocaleString("ru-RU")}</span>
+                      <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.75)" }}>SBT</span>
+                    </div>
+                    <button onClick={() => { toggleCart(detail.id); setDetail(null); }} className="px-6 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all" style={{ background: inCart ? `linear-gradient(135deg, ${r.color}, ${r.color}aa)` : "linear-gradient(135deg, #2563EB, #3b82f6)", boxShadow: `0 0 20px ${inCart ? r.color + "30" : "rgba(37,99,235,0.3)"}` }}>{inCart ? "В корзине ✓" : "В корзину"}</button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       {/* Cart panel */}
       <AnimatePresence>
         {showCart && cart.size > 0 && (
-          <motion.div
-            className="fixed inset-0 z-50 flex justify-end"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          >
+          <motion.div className="fixed inset-0 z-50 flex justify-end" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCart(false)} />
-            <motion.div
-              initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="relative z-10 w-[380px] h-full flex flex-col"
-              style={{ background: "rgba(10,10,14,0.88)", backdropFilter: "blur(20px)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}
+            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="relative z-10 w-[380px] h-full flex flex-col" style={{ background: "rgba(10,10,14,0.88)", backdropFilter: "blur(20px)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 flex-shrink-0"
-                style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-              >
-                <div className="flex items-center gap-2.5">
-                  <ShoppingCartSimple size={16} weight="fill" style={{ color: "#93c5fd" }} />
-                  <p className="text-[14px] font-bold text-white">Корзина ({cart.size})</p>
-                </div>
-                <button onClick={() => setShowCart(false)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                  style={{ color: "rgba(255,255,255,0.6)" }}
-                  onMouseEnter={e => e.currentTarget.style.color = "#fff"}
-                  onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}
-                >
-                  <X size={14} />
-                </button>
+              <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center gap-2.5"><ShoppingCartSimple size={16} weight="fill" style={{ color: "#93c5fd" }} /><p className="text-[14px] font-bold text-white">Корзина ({cart.size})</p></div>
+                <button onClick={() => setShowCart(false)} className="w-7 h-7 rounded-lg flex items-center justify-center transition-all" style={{ color: "rgba(255,255,255,0.6)" }} onMouseEnter={e => e.currentTarget.style.color = "#fff"} onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}><X size={14} /></button>
               </div>
-
-              {/* Items */}
               <div className="flex-1 overflow-y-auto px-5 py-3">
                 {[...cart].map(id => {
-                  const item = ITEMS.find(i => i.id === id);
-                  if (!item) return null;
-                  const r = RARITY[item.rarity];
-                  const ItemIcon = ITEM_ICONS[item.id] || Diamond;
+                  const item = findItem(id); if (!item) return null;
+                  const r = rarityForPrice(item.price || 0);
+                  const thumb = item.image || (item.preview && !String(item.preview).startsWith("linear") ? item.preview : null);
                   return (
-                    <motion.div key={id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center gap-3 p-3 rounded-xl mb-2"
-                      style={{ background: "rgba(255,255,255,0.03)" }}
-                    >
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: `${r.color}15` }}
-                      >
-                        <ItemIcon size={20} weight="fill" style={{ color: r.color }} />
+                    <motion.div key={id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+                      <div className="w-10 h-10 rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center" style={{ background: thumb ? "#000" : `${r.color}15` }}>
+                        {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : <Gift size={18} weight="fill" style={{ color: r.color }} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         {item.name && <p className="text-[12px] font-semibold text-white truncate">{item.name}</p>}
-                        <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.75)" }}>{r.label}</p>
+                        <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.6)" }}>{r.label}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <img src="/money.png" alt="" className="w-3 h-3" />
-                          <span className="text-[12px] font-bold text-white tabular-nums">{item.price}</span>
-                        </div>
-                        <button onClick={() => toggleCart(id)}
-                          className="w-6 h-6 rounded-lg flex items-center justify-center transition-all"
-                          style={{ color: "rgba(239,68,68,0.5)" }}
-                          onMouseEnter={e => e.currentTarget.style.color = "#fca5a5"}
-                          onMouseLeave={e => e.currentTarget.style.color = "rgba(239,68,68,0.5)"}
-                        >
-                          <X size={11} />
-                        </button>
+                        <div className="flex items-center gap-1"><img src="/money.png" alt="" className="w-3 h-3" /><span className="text-[12px] font-bold text-white tabular-nums">{(item.price || 0).toLocaleString("ru-RU")}</span></div>
+                        <button onClick={() => toggleCart(id)} className="w-6 h-6 rounded-lg flex items-center justify-center transition-all" style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5" }}><X size={11} /></button>
                       </div>
                     </motion.div>
                   );
                 })}
               </div>
-
-              {/* Footer */}
               <div className="px-5 py-4 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>Итого:</span>
                   <div className="flex items-center gap-1.5">
                     <img src="/money.png" alt="" className="w-4 h-4" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
-                    <span className="text-[18px] font-black text-white tabular-nums">
-                      {[...cart].reduce((sum, id) => sum + (ITEMS.find(i => i.id === id)?.price || 0), 0)}
-                    </span>
+                    <span className="text-[18px] font-black text-white tabular-nums">{[...cart].reduce((sum, id) => sum + (findItem(id)?.price || 0), 0).toLocaleString("ru-RU")}</span>
                     <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.75)" }}>SBT</span>
                   </div>
                 </div>
-                <button
-                  onClick={handleCheckout}
-                  disabled={checkingOut}
-                  className="w-full py-3 rounded-xl text-[13px] font-bold text-white transition-all disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #2563EB, #3b82f6)", boxShadow: "0 0 20px rgba(37,99,235,0.3)" }}
-                  onMouseEnter={e => e.currentTarget.style.boxShadow = "0 0 30px rgba(37,99,235,0.5)"}
-                  onMouseLeave={e => e.currentTarget.style.boxShadow = "0 0 20px rgba(37,99,235,0.3)"}
-                >
-                  {checkingOut ? "Оформление…" : "Оформить заказ"}
-                </button>
+                <button onClick={handleCheckout} disabled={checkingOut} className="w-full py-3 rounded-xl text-[13px] font-bold text-white transition-all disabled:opacity-50" style={{ background: "linear-gradient(135deg, #2563EB, #3b82f6)", boxShadow: "0 0 20px rgba(37,99,235,0.3)" }} onMouseEnter={e => e.currentTarget.style.boxShadow = "0 0 30px rgba(37,99,235,0.5)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "0 0 20px rgba(37,99,235,0.3)"}>{checkingOut ? "Оформление…" : "Оформить заказ"}</button>
               </div>
             </motion.div>
           </motion.div>
