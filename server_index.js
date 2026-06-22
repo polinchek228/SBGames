@@ -895,153 +895,278 @@ const MARKET_CATALOG = [
   { id: "m_aurora_shard",   type: "shard",      name: "Осколок Авроры",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
 ];
 
-// ─── Shop catalog (Redis-backed, seeded from SHOP_CATALOG) ────────────────────
-// Админка сайта редактирует каталог через /admin/shop/items. Каталог хранится
-// в Redis (ключ "shop:catalog") как массив. При первом запуске (или если ключ
-// отсутствует) сидимся из SHOP_CATALOG, добавляя дефолтные category/type.
-// /api/inventory/catalog и /api/inventory читают ту же Redis-версию, поэтому
-// изменения админа сразу видны в лаунчере (включая категории для фильтров).
-let _shopCatalogCache = null;
-function _seedShopItem(raw) {
-  // Адаптируем хардкод-запись SHOP_CATALOG к полной схеме товара.
-  // category по умолчанию выводим из type, чтобы старые товары попали в фильтр.
-  const typeToCat = { frame: "Рамки", badge: "Значки", background: "Фоны", avatar_animated: "Аватары" };
-  return {
-    id: raw.id,
-    name: raw.name || raw.id,
-    type: raw.type || "item",
-    category: raw.category || typeToCat[raw.type] || "Предметы",
-    subcategory: raw.subcategory || "",
-    price: Number(raw.price) || 0,
-    preview: raw.preview || "#3b82f6",
-    image: raw.image || "",
-    description: raw.description || "",
-    active: raw.active !== false,
-  };
-}
-async function loadShopCatalog() {
+// ─── Shop catalog (Redis-backed, namespace shop:*) ────────────────────────────
+// Каталог хранится в Redis: каждый товар отдельным ключом shop:<id>. Это даёт
+// O(1) lookup по id (buy/equip) и атомарные обновления одного товара без
+// перезаписи всего массива. Админка сайта управляет каталогом через
+// /admin/shop/items (CRUD) + /admin/shop/items/:id/image (multer upload).
+// /api/inventory/catalog отдаёт только active-товары из того же источника,
+// поэтому правки админа сразу видны в лаунчере.
+
+const SHOP_IMG_DIR = "/opt/sbgames/shop-images";
+app.use("/shop-images", express.static(SHOP_IMG_DIR, { maxAge: "7d", etag: true, lastModified: true }));
+
+const shopItems = new Map(); // id -> item object
+async function loadShopItems() {
   try {
-    const raw = await redis.get("shop:catalog");
-    if (raw) { _shopCatalogCache = JSON.parse(raw); return _shopCatalogCache; }
-  } catch {}
-  // Seed: первый запуск — кладём SHOP_CATALOG в Redis
-  const seeded = SHOP_CATALOG.map(_seedShopItem);
-  _shopCatalogCache = seeded;
-  try { await redis.set("shop:catalog", JSON.stringify(seeded)); } catch {}
-  return seeded;
+    const stream = redis.scanStream({ match: "shop:*", count: 200 });
+    for await (const keys of stream) {
+      for (const k of keys) {
+        const v = await redis.get(k);
+        if (v) {
+          const id = k.replace("shop:", "");
+          try { shopItems.set(id, JSON.parse(v)); } catch {}
+        }
+      }
+    }
+    console.log(`[shop] loaded ${shopItems.size} items from redis`);
+  } catch (e) { console.warn("[shop] load failed:", e.message); }
 }
-async function saveShopCatalog(items) {
-  _shopCatalogCache = items;
-  try { await redis.set("shop:catalog", JSON.stringify(items)); } catch {}
-  return items;
+async function saveShopItem(item) {
+  shopItems.set(item.id, item);
+  try { await redis.set(`shop:${item.id}`, JSON.stringify(item)); } catch {}
 }
-// Готовим каталог при старте (не await — сервер поднимется без задержки)
-loadShopCatalog().catch(() => {});
-// ВАЖНО: getShopCatalogSync возвращает кеш (возможно пустой на первых тиках).
-// Если кеш пуст — синхронно отдаём seed, чтобы buy/equip не падали до
-// завершения loadShopCatalog().
-function getShopCatalogSync() {
-  if (_shopCatalogCache && _shopCatalogCache.length) return _shopCatalogCache;
-  return SHOP_CATALOG.map(_seedShopItem);
+async function deleteShopItem(id) {
+  shopItems.delete(id);
+  try { await redis.del(`shop:${id}`); } catch {}
+}
+function getShopItem(id) { return shopItems.get(id); }
+function getActiveShopItems() {
+  return [...shopItems.values()].filter(i => i.active !== false);
 }
 
-// CRUD каталога для админки сайта
+// Multer для upload картинок товаров: filename = <id>.<ext>
+const multer = require("multer");
+const shopUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, SHOP_IMG_DIR),
+    filename: (req, file, cb) => {
+      const ext = (file.originalname.split(".").pop() || "jpg").toLowerCase();
+      cb(null, `${req.params.id}.${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^(image\/jpeg|image\/png|image\/webp)$/.test(file.mimetype);
+    cb(ok ? null : new Error("Только JPEG, PNG, WebP"), ok);
+  },
+});
+
+// Slugify для генерации человеко-читаемых ID из названия.
+function slugify(text) {
+  const ru = { "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya" };
+  return String(text).toLowerCase().split("").map(c => ru[c] || c).join("")
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+}
+
+// ─── Admin: shop item CRUD ───────────────────────────────────────────────────
 app.get("/admin/shop/items", requireAuth, async (req, res) => {
   if (!await requireAdmin(req, res)) return;
-  const items = await loadShopCatalog();
+  const items = [...shopItems.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   res.json({ items });
 });
 
 app.post("/admin/shop/items", requireAuth, async (req, res) => {
   if (!await requireAdmin(req, res)) return;
-  const b = req.body || {};
-  if (!b.name) return res.status(400).json({ ok: false, message: "Введите название" });
-  const items = await loadShopCatalog();
-  const id = b.id || ("item_" + uuidv4().slice(0, 8));
-  if (items.some(i => i.id === id)) return res.status(409).json({ ok: false, message: "ID уже занят" });
-  const item = _seedShopItem({
-    id, name: b.name, type: b.type || "item",
-    category: b.category, subcategory: b.subcategory,
-    price: b.price, preview: b.preview, image: b.image,
-    description: b.description, active: b.active,
-  });
-  items.push(item);
-  await saveShopCatalog(items);
+  const { category, subcategory, name, price, preview, description, active, type } = req.body || {};
+  if (!name) return res.status(400).json({ message: "Укажите название" });
+  const id = slugify(name) + "_" + crypto.randomBytes(2).toString("hex");
+  const now = Date.now();
+  const item = {
+    id,
+    category: category || "Разное",
+    subcategory: subcategory || "",
+    name: String(name).slice(0, 100),
+    price: typeof price === "number" ? price : parseInt(price, 10) || 0,
+    preview: preview || "#3b82f6",
+    image: null,
+    description: description || "",
+    type: type || "item",
+    active: active !== false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await saveShopItem(item);
   res.json({ ok: true, item });
 });
 
 app.put("/admin/shop/items/:id", requireAuth, async (req, res) => {
   if (!await requireAdmin(req, res)) return;
-  const id = sanitize(req.params.id, 64);
-  const items = await loadShopCatalog();
-  const idx = items.findIndex(i => i.id === id);
-  if (idx < 0) return res.status(404).json({ ok: false, message: "Товар не найден" });
-  const b = req.body || {};
-  // Частичное обновление: merge разрешённых полей
-  const cur = items[idx];
-  items[idx] = _seedShopItem({
-    id: cur.id,
-    name: b.name ?? cur.name,
-    type: b.type ?? cur.type,
-    category: b.category ?? cur.category,
-    subcategory: b.subcategory ?? cur.subcategory,
-    price: b.price ?? cur.price,
-    preview: b.preview ?? cur.preview,
-    image: b.image ?? cur.image,
-    description: b.description ?? cur.description,
-    active: b.active ?? cur.active,
-  });
-  await saveShopCatalog(items);
-  res.json({ ok: true, item: items[idx] });
+  const item = getShopItem(sanitize(req.params.id, 64));
+  if (!item) return res.status(404).json({ message: "Товар не найден" });
+  const { category, subcategory, name, price, preview, description, active, type } = req.body || {};
+  if (category !== undefined) item.category = category;
+  if (subcategory !== undefined) item.subcategory = subcategory;
+  if (name !== undefined) item.name = String(name).slice(0, 100);
+  if (price !== undefined) item.price = typeof price === "number" ? price : parseInt(price, 10) || 0;
+  if (preview !== undefined) item.preview = preview;
+  if (description !== undefined) item.description = description;
+  if (active !== undefined) item.active = !!active;
+  if (type !== undefined) item.type = type;
+  item.updatedAt = Date.now();
+  await saveShopItem(item);
+  res.json({ ok: true, item });
 });
 
 app.delete("/admin/shop/items/:id", requireAuth, async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const id = sanitize(req.params.id, 64);
-  let items = await loadShopCatalog();
-  const before = items.length;
-  items = items.filter(i => i.id !== id);
-  if (items.length === before) return res.status(404).json({ ok: false, message: "Товар не найден" });
-  await saveShopCatalog(items);
+  if (!getShopItem(id)) return res.status(404).json({ message: "Товар не найден" });
+  await deleteShopItem(id);
   res.json({ ok: true });
 });
 
-// Upload изображения товара. FormData от админки приходит как multipart, но
-// т.к. multer не подключён, принимаем файл как raw binary body на отдельном
-// пути. express.raw зарегистрирован ниже (до этого роута) специально для него.
-app.post("/admin/shop/items/:id/image", requireAuth, async (req, res) => {
+app.post("/admin/shop/items/:id/image", requireAuth, shopUpload.single("image"), async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const id = sanitize(req.params.id, 64);
-  const items = await loadShopCatalog();
-  const item = items.find(i => i.id === id);
-  if (!item) return res.status(404).json({ ok: false, message: "Товар не найден" });
-  const buf = req.body;
-  if (!Buffer.isBuffer(buf) || !buf.length) return res.status(400).json({ ok: false, message: "Нет файла" });
-  const ct = (req.headers["content-type"] || "").toLowerCase();
-  const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
-  const dir = require("path").join(__dirname, "shop-images");
-  try { fs.mkdirSync(dir, { recursive: true }); } catch {}
-  const fname = `${id}.${ext}`;
-  fs.writeFileSync(require("path").join(dir, fname), buf);
-  const imageUrl = `/shop-images/${fname}`;
-  item.image = imageUrl;
-  await saveShopCatalog(items);
-  res.json({ ok: true, image: imageUrl });
+  const item = getShopItem(id);
+  if (!item) return res.status(404).json({ message: "Товар не найден" });
+  if (!req.file) return res.status(400).json({ message: "Файл не загружен" });
+  // Удаляем предыдущую картинку с другим расширением
+  try {
+    const newExt = req.file.filename.split(".").pop();
+    for (const ext of ["jpg","jpeg","png","webp"]) {
+      if (ext === newExt) continue;
+      const p2 = require("path").join(SHOP_IMG_DIR, `${id}.${ext}`);
+      if (fs.existsSync(p2)) fs.unlinkSync(p2);
+    }
+  } catch {}
+  item.image = `/shop-images/${req.file.filename}?t=${Date.now()}`;
+  item.updatedAt = Date.now();
+  await saveShopItem(item);
+  res.json({ ok: true, image: item.image });
 });
-// Raw body parser ТОЛЬКО для upload-роута (Content-Type: image/* или octet-stream).
-// Регистрируем до основного express.json, чтобы не пытаться парсить бинарник как JSON.
-app.use("/admin/shop/items/:id/image", (req, res, next) => {
-  if (req.method !== "POST") return next();
-  let chunks = [];
-  req.on("data", c => chunks.push(c));
-  req.on("end", () => { req.body = Buffer.concat(chunks); next(); });
-  req.on("error", () => res.status(400).json({ ok: false, message: "Ошибка чтения" }));
+// Обработчик ошибок multer (файл слишком большой / неверный тип)
+app.use("/admin/shop/items/:id/image", (err, _req, res, _next) => {
+  if (err) res.status(400).json({ message: err.message || "Ошибка загрузки" });
 });
-// Статическая раздача картинок товаров
-app.use("/shop-images", express.static(
-  require("path").join(__dirname, "shop-images"),
-  { maxAge: "7d", etag: true, lastModified: true }
-));
+
+// ─── Seed: populate shop catalog on first run ────────────────────────────────
+async function seedShopItems() {
+  if (shopItems.size > 0) { console.log(`[shop] seed skipped (${shopItems.size} items already present)`); return; }
+  console.log("[shop] seeding initial catalog...");
+  const now = Date.now();
+  // [category, subcategory, name, price, previewColor]
+  const seed = [
+    // ── Предметы ──
+    ["Предметы","Кайбер-Кристалл","Красный Кайбер-Кристалл",500,"#ef4444"],
+    ["Предметы","Кайбер-Кристалл","Синий Кайбер-Кристалл",350,"#3b82f6"],
+    ["Предметы","Кайбер-Кристалл","Зеленый Кайбер-Кристалл",500,"#22c55e"],
+    ["Предметы","Кайбер-Кристалл","Фиолетовый Кайбер-Кристалл",1000,"#a855f7"],
+    ["Предметы","Кайбер-Кристалл","Желтый Кайбер-Кристалл",500,"#eab308"],
+    ["Предметы","Кайбер-Кристалл","Черный Кайбер-Кристалл",1500,"#111827"],
+    ["Предметы","Джетпак","Выпадаемый Джетпак",1000,"#0ea5e9"],
+    ["Предметы","Джетпак","Не Выпадаемый Джетпак",2500,"#0369a1"],
+    ["Предметы","Джампер","Выпадаемый Джампер",500,"#14b8a6"],
+    ["Предметы","Джампер","Не выпадаемый Джампер",1250,"#0f766e"],
+    ["Предметы","Световые мечи","Двойной синий световой меч",1500,"#3b82f6"],
+    ["Предметы","Световые мечи","Двойной зеленый световой меч",1500,"#22c55e"],
+    ["Предметы","Световые мечи","Двойной красный световой меч",1500,"#ef4444"],
+    ["Предметы","Световые мечи","Двойной световой меч отрекшихся",1500,"#facc15"],
+    ["Предметы","Легендарные мечи","Легендарный меч Ситхов",3000,"#dc2626"],
+    ["Предметы","Легендарные мечи","Легендарный меч Джедаев",3000,"#22c55e"],
+    ["Предметы","Легендарные мечи","Легендарный меч Отрекшихся",3000,"#facc15"],
+    ["Предметы","Легендарные мечи","Темный световой меч",4000,"#1f2937"],
+    ["Предметы","Апгрейд","Предмет апгрейда 1 lvl",100,"#64748b"],
+    ["Предметы","Апгрейд","Предмет апгрейда 2 lvl",200,"#475569"],
+    ["Предметы","Жетоны и артефакты","Фракционный жетон Джедаев",250,"#22c55e"],
+    ["Предметы","Жетоны и артефакты","Фракционный жетон Ситхов",250,"#ef4444"],
+    ["Предметы","Жетоны и артефакты","Фракционный жетон Отрекшихся",250,"#facc15"],
+    ["Предметы","Жетоны и артефакты","Древний артефакт Джедаев",500,"#16a34a"],
+    ["Предметы","Жетоны и артефакты","Древний артефакт Ситхов",500,"#b91c1c"],
+    ["Предметы","Жетоны и артефакты","Древний артефакт Отрекшихся",500,"#ca8a04"],
+    ["Предметы","Крафт","Универсальный сплав",100,"#94a3b8"],
+    ["Предметы","Крафт","Энергетический конденсатор",150,"#06b6d4"],
+    ["Предметы","Крафт","Энергетический стабилизатор",150,"#0891b2"],
+    ["Предметы","Крафт","Фокусирующая линза",150,"#0ea5e9"],
+    ["Предметы","Крафт","Плазменное ядро",150,"#f97316"],
+    ["Предметы","Крафт","Рукоять светового меча",150,"#a78bfa"],
+    ["Предметы","Крафт","Улучшенная рукоять светового меча",500,"#7c3aed"],
+    ["Предметы","Свитки и карты","Фрагмент древней карты",100,"#d97706"],
+    ["Предметы","Свитки и карты","Свиток техники Силы",250,"#c026d3"],
+    ["Предметы","Здоровье","Стимпак",25,"#ef4444"],
+    // ── Дроиды и компаньоны ──
+    ["Дроиды и компаньоны","Дроиды","Дроид 1",1000,"#64748b"],
+    ["Дроиды и компаньоны","Дроиды","Дроид 2",1000,"#64748b"],
+    ["Дроиды и компаньоны","Дроиды","Дроид 3",1000,"#64748b"],
+    ["Дроиды и компаньоны","Дроиды","Дроид 4",1000,"#64748b"],
+    ["Дроиды и компаньоны","Компаньоны","Компаньон 1",1000,"#8b5cf6"],
+    ["Дроиды и компаньоны","Компаньоны","Компаньон 2",1000,"#8b5cf6"],
+    ["Дроиды и компаньоны","Компаньоны","Компаньон 3",1000,"#8b5cf6"],
+    ["Дроиды и компаньоны","Компаньоны","Компаньон 4",1000,"#8b5cf6"],
+    // ── Кредиты ──
+    ["Кредиты","Кредиты","1000 кредитов",100,"#eab308"],
+    ["Кредиты","Кредиты","5000 кредитов",500,"#eab308"],
+    ["Кредиты","Кредиты","10000 кредитов",1000,"#eab308"],
+    ["Кредиты","Кредиты","25000 кредитов",2000,"#eab308"],
+    ["Кредиты","Кредиты","50000 кредитов",3500,"#eab308"],
+    ["Кредиты","Кредиты","100000 кредитов",6000,"#eab308"],
+    ["Кредиты","Премиум","Премиальный кредит",250,"#f59e0b"],
+    // ── Battle Pass ──
+    ["Battle Pass","Пропуск","Пропуск Battle Pass",750,"#3b82f6"],
+    ["Battle Pass","Уровни","+5 уровней к Battle Pass",250,"#60a5fa"],
+    ["Battle Pass","Уровни","+10 уровней к Battle Pass",500,"#60a5fa"],
+    ["Battle Pass","Daily Rewards","Разблокировка Special DailyRewards",500,"#06b6d4"],
+    // ── Охота за головами ──
+    ["Охота за головами","Контракты","Количество контрактов +1",250,"#dc2626"],
+    ["Охота за головами","Награды","Увеличенная награда",500,"#b91c1c"],
+    // ── Жильё и Космолет ──
+    ["Жильё и Космолет","Жильё","Готовое жильё 1 уровня",500,"#84cc16"],
+    ["Жильё и Космолет","Жильё","Готовое жильё 2 уровня",1000,"#65a30d"],
+    ["Жильё и Космолет","Жильё","Готовое жильё 3 уровня",1500,"#4d7c0f"],
+    ["Жильё и Космолет","Жильё","+5 слотов к хранилищу",250,"#a3e635"],
+    ["Жильё и Космолет","Жильё","+10 слотов к хранилищу",400,"#bef264"],
+    ["Жильё и Космолет","Космолет","Корабль 1 уровня",300,"#6366f1"],
+    ["Жильё и Космолет","Космолет","Корабль 2 уровня",600,"#4f46d5"],
+    ["Жильё и Космолет","Космолет","Корабль 3 уровня",900,"#4338ca"],
+    ["Жильё и Космолет","Космолет","Топливо для корабля",50,"#818cf8"],
+    ["Жильё и Космолет","Космолет","+5 слотов к хранилищу",350,"#a5b4fc"],
+    ["Жильё и Космолет","Космолет","+10 слотов к хранилищу",600,"#c7d2fe"],
+    ["Жильё и Космолет","Космолет","Перелеты без расходов",350,"#e0e7ff"],
+    ["Жильё и Космолет","Декор","Набор декора 1",300,"#f472b6"],
+    ["Жильё и Космолет","Декор","Набор декора 2",300,"#ec4899"],
+    ["Жильё и Космолет","Декор","Набор декора 3",300,"#db2777"],
+    ["Жильё и Космолет","Декор","Стол для крафтов",100,"#f9a8d4"],
+    // ── Ключи и кейсы ──
+    ["Ключи и кейсы","Кейсы","Кейс Кукол",50,"#fb923c"],
+    ["Ключи и кейсы","Кейсы","Кейс Мечей",100,"#f97316"],
+    ["Ключи и кейсы","Кейсы","Кейс Джетпака",500,"#ea580c"],
+    ["Ключи и кейсы","Кейсы","Кейс улучшений",50,"#c2410c"],
+    ["Ключи и кейсы","Кейсы","Кейс Крафтов",50,"#9a3412"],
+    ["Ключи и кейсы","Кейсы","Кейс Жилища",50,"#7c2d12"],
+    ["Ключи и кейсы","Ключи","Ключ для кейса Кукол",250,"#fbbf24"],
+    ["Ключи и кейсы","Ключи","Ключ для кейса Мечей",350,"#f59e0b"],
+    ["Ключи и кейсы","Ключи","Ключ для кейса Джетпака",200,"#d97706"],
+    ["Ключи и кейсы","Ключи","Ключ для кейса улучшений",200,"#b45309"],
+    ["Ключи и кейсы","Ключи","Ключ для кейса Крафтов",100,"#92400e"],
+    ["Ключи и кейсы","Ключи","Ключ для кейса Жилища",250,"#78350f"],
+    // ── Турниры и Лига ──
+    ["Турниры и Лига","Лига","Улучшенный пропуск на лигу",1000,"#a855f7"],
+    ["Турниры и Лига","Турнир","Улучшенный пропуск на турнир",500,"#9333ea"],
+    // ── Кастомизация ──
+    ["Кастомизация","Титулы","Титул (базовый)",250,"#e879f9"],
+    ["Кастомизация","Титулы","Титул (премиум)",1000,"#c026d3"],
+    ["Кастомизация","Эффекты","Эффект (базовый)",250,"#f0abfc"],
+    ["Кастомизация","Эффекты","Эффект (премиум)",1000,"#e879f9"],
+    // ── Наборы ──
+    ["Наборы","Наборы","Набор Падавана",500,"#3b82f6"],
+    ["Наборы","Наборы","Набор Мастера",1000,"#6366f1"],
+    ["Наборы","Наборы","Набор Легенды",2000,"#8b5cf6"],
+    ["Наборы","Наборы","Набор Мифа",5000,"#a855f7"],
+  ];
+  let count = 0;
+  for (const [category, subcategory, name, price, preview] of seed) {
+    const id = slugify(name) + "_" + crypto.randomBytes(2).toString("hex");
+    const item = {
+      id, category, subcategory, name, price, preview,
+      image: null, description: "", type: "item", active: true,
+      createdAt: now + count, updatedAt: now + count,
+    };
+    await saveShopItem(item);
+    count++;
+  }
+  console.log(`[shop] seeded ${count} items`);
+}
 
 // ─── Public profile ───────────────────────────────────────────────────────────
 app.get("/api/user/:id", async (req, res) => {
@@ -1146,25 +1271,20 @@ app.put("/api/user/bio", requireAuth, async (req, res) => {
 });
 
 // ─── Inventory ────────────────────────────────────────────────────────────────
-app.get("/api/inventory/catalog", async (_req, res) => {
-  const items = (await loadShopCatalog()).filter(i => i.active !== false);
-  res.json({ items });
-});
+app.get("/api/inventory/catalog", (_req, res) => res.json({ items: getActiveShopItems() }));
 
 app.get("/api/inventory", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
   const owned = Array.isArray(acc?.inventory) ? acc.inventory : [];
   const marketOwn = Array.isArray(acc?.market_inventory) ? acc.market_inventory : [];
   const equip = acc?.equip && typeof acc.equip === "object" ? acc.equip : {};
-  const catalog = (await loadShopCatalog()).filter(i => i.active !== false);
-  res.json({ owned, market: marketOwn, equip, catalog, marketCatalog: MARKET_CATALOG });
+  res.json({ owned, market: marketOwn, equip, catalog: getActiveShopItems(), marketCatalog: MARKET_CATALOG });
 });
 
 app.post("/api/inventory/buy", requireAuth, async (req, res) => {
   const itemId = sanitize(req.body.itemId || "", 64);
-  const catalog = await loadShopCatalog();
-  const item = catalog.find(i => i.id === itemId && i.active !== false);
-  if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  const item = getShopItem(itemId);
+  if (!item || item.active === false) return res.status(404).json({ message: "Предмет не найден" });
   const acc = await redisAccounts.get(req.userId);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
@@ -1182,8 +1302,7 @@ app.post("/api/inventory/equip", requireAuth, async (req, res) => {
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
   if (!owned.includes(itemId)) return res.status(400).json({ message: "Сначала купи предмет" });
-  const catalog = await loadShopCatalog();
-  const item = catalog.find(i => i.id === itemId);
+  const item = getShopItem(itemId);
   if (!item) return res.status(404).json({ message: "Предмет не найден" });
   acc.equip = { ...(acc.equip || {}), [item.type]: itemId };
   await redisAccounts.set(req.userId, acc);
@@ -3539,6 +3658,8 @@ if (fs.existsSync(websiteDir)) {
 ;(async () => {
   await loadJwtSecret();
   await loadReferralData().catch(() => {});
+  await loadShopItems().catch(() => {});
+  await seedShopItems().catch(e => console.warn("[shop] seed failed:", e.message));
 
   server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
 
