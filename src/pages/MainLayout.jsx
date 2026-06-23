@@ -31,9 +31,12 @@ const NAV_ITEMS = [
 /* ── Global background video (experimental setting) ─────────────────────── */
 // Видео-фон отключён на странице «Играть» (там чёрный фон + фоны режимов).
 // На остальных страницах работает как раньше.
+// Фикс: видео не пересоздаётся при смене страниц — вместо этого
+// скрывается/ставится на паузу, чтобы избежать повторной загрузки.
 function GlobalBackground({ page }) {
   const [videoSrc, setVideoSrc] = useState(null);
   const [videoFailed, setVideoFailed] = useState(false);
+  const videoRef = useRef(null);
 
   useEffect(() => {
     const update = () => {
@@ -55,11 +58,21 @@ function GlobalBackground({ page }) {
     return () => { window.removeEventListener("storage", onStorage); window.removeEventListener("sbgames_equip_changed", update); };
   }, []);
 
-  // На странице «Играть» видео-фон не показываем — там чёрный фон.
-  if (page === "play") return null;
+  // Пауза/воспроизведение при смене страницы
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (page === "play") {
+      try { v.pause(); } catch {}
+    } else {
+      v.play().catch(() => {});
+    }
+  }, [page]);
+
   if (!videoSrc || videoFailed) return null;
   return (
     <video
+      ref={videoRef}
       key={videoSrc}
       autoPlay loop muted playsInline preload="none"
       src={videoSrc}
@@ -67,6 +80,7 @@ function GlobalBackground({ page }) {
       style={{
         position: "absolute", inset: 0, width: "100%", height: "100%",
         objectFit: "cover", zIndex: 0, pointerEvents: "none", opacity: 0.45,
+        display: page === "play" ? "none" : undefined,
       }}
     />
   );

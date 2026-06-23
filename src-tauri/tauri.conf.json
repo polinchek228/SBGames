@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SBGames-Launcher",
-  "version": "1.0.8",
+  "version": "1.1.0",
   "identifier": "com.sbgames.launcher",
   "build": {
     "frontendDist": "../dist",
@@ -45,7 +45,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://games.sb-capital.group wss://games.sb-capital.group https://*.hyperionsearch.xyz https://minotar.net https://api.modrinth.com https://launchermeta.mojang.com https://sessionserver.mojang.com https://api.mojang.com https://rsshub.app https://fonts.googleapis.com https://fonts.gstatic.com blob: data:; img-src 'self' data: https: blob:; media-src 'self' https://games.sb-capital.group https://*.hyperionsearch.xyz blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com blob:; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; navigate-to 'self' http://localhost:1420"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://games.sb-capital.group wss://games.sb-capital.group https://*.hyperionsearch.xyz https://minotar.net https://api.modrinth.com https://launchermeta.mojang.com https://sessionserver.mojang.com https://api.mojang.com https://rsshub.app https://fonts.googleapis.com https://fonts.gstatic.com blob: data:; img-src 'self' data: https: blob:; media-src 'self' https://games.sb-capital.group https://*.hyperionsearch.xyz blob:; style-src 'self' https://fonts.googleapis.com blob:; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; navigate-to 'self' http://localhost:1420"
     }
   },
   "bundle": {

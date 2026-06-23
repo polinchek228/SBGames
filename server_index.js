@@ -3757,6 +3757,46 @@ bot.on("callback_query", async (q) => {
 bot.on("polling_error", (err) => { if (!err.message?.includes("409")) console.error("[bot]", err.message); });
 
 
+// --- API: server online counts ------------------------------------------------
+app.get("/api/servers/online", (_req, res) => {
+  res.json({ starwars: 0, minigames: 0, gta: 0, vanilla_plus: 0, anarchy: 0 });
+});
+
+// --- API: modpack manifest ----------------------------------------------------
+const MODPACK_DIR = process.env.MODPACK_DIR || "/opt/sbgames-modpack";
+const _path = require("path");
+app.get("/api/mods/manifest", (_req, res) => {
+  try {
+    if (!fs.existsSync(MODPACK_DIR)) return res.json({ version: "", mods: [] });
+    const versions = fs.readdirSync(MODPACK_DIR).filter(d => {
+      try { return fs.statSync(_path.join(MODPACK_DIR, d)).isDirectory(); } catch { return false; }
+    });
+    if (versions.length === 0) return res.json({ version: "", mods: [] });
+    versions.sort((a, b) => {
+      return fs.statSync(_path.join(MODPACK_DIR, b)).mtimeMs
+           - fs.statSync(_path.join(MODPACK_DIR, a)).mtimeMs;
+    });
+    const latest = versions[0];
+    const modsDir = _path.join(MODPACK_DIR, latest, "mods");
+    if (!fs.existsSync(modsDir)) return res.json({ version: latest, mods: [] });
+    const mods = [];
+    for (const f of fs.readdirSync(modsDir)) {
+      if (!f.endsWith(".jar") && !f.endsWith(".disabled")) continue;
+      try {
+        const fp = _path.join(modsDir, f);
+        const buf = fs.readFileSync(fp);
+        const sha = crypto.createHash("sha256").update(buf).digest("hex");
+        mods.push({ name: f, sha256: sha, size: buf.length });
+      } catch {}
+    }
+    res.set("Cache-Control", "no-store");
+    res.json({ version: latest, mods });
+  } catch (e) {
+    console.error("[api/mods/manifest]", e.message);
+    res.json({ version: "", mods: [] });
+  }
+});
+
 // --- Website static serving (SPA catch-all) ------------------------------------
 const websiteDir = require("path").join(__dirname, "website", "dist");
 if (fs.existsSync(websiteDir)) {

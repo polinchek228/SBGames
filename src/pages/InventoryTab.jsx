@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, Sword, PawPrint, Sparkle, Star,
@@ -36,6 +36,27 @@ const SERVER_FILTERS = [
   { id: "starwars", label: "StarWars" },
   { id: "global",  label: "Глобальные" },
 ];
+
+function LazyBgVideo({ src, className }) {
+  const wrapRef = useRef(null);
+  const videoRef = useRef(null);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) v.play().catch(() => {});
+      else try { v.pause(); } catch {}
+    }, { threshold: 0.1 });
+    if (wrapRef.current) obs.observe(wrapRef.current);
+    return () => { obs.disconnect(); try { v.pause(); } catch {} };
+  }, []);
+  return (
+    <div ref={wrapRef} className="absolute inset-0">
+      <video ref={videoRef} src={src} muted loop playsInline preload="none"
+        className={className} />
+    </div>
+  );
+}
 
 function ItemCard({ item, equipped, onEquip, onUnequip, busy, onClick }) {
   const rarity = RARITY[item.rarity] || RARITY.common;
@@ -560,7 +581,7 @@ export default function InventoryTab({ user }) {
                       <div className="relative h-[100px] flex items-center justify-center overflow-hidden"
                         style={{ background: `radial-gradient(ellipse at 50% 120%, ${meta.color}12 0%, transparent 70%), rgba(0,0,0,0.3)` }}>
                         {item.type === "background" && item.video ? (
-                          <video src={item.video} muted loop playsInline autoPlay
+                          <LazyBgVideo src={item.video}
                             className="absolute inset-0 w-full h-full object-cover opacity-70" />
                         ) : item.image ? (
                           <img src={item.image} alt={item.name} className="w-14 h-14 object-cover rounded-xl"

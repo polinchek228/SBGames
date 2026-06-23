@@ -32,15 +32,32 @@ import AchievementSystem from "../components/AchievementSystem.jsx";
 
 function VideoBackground({ src, opacity = 0.5 }) {
   const [failed, setFailed] = React.useState(false);
+  const videoRef = React.useRef(null);
+  const wrapRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) v.play().catch(() => {});
+      else try { v.pause(); } catch {}
+    }, { threshold: 0.1 });
+    if (wrapRef.current) obs.observe(wrapRef.current);
+    return () => { obs.disconnect(); try { v.pause(); } catch {} };
+  }, []);
+
   if (failed) return null;
   return (
-    <video
-      src={src}
-      autoPlay muted loop playsInline preload="none"
-      onError={() => setFailed(true)}
-      className="absolute inset-0 w-full h-full object-cover"
-      style={{ pointerEvents: "none", opacity, zIndex: 0 }}
-    />
+    <div ref={wrapRef} className="absolute inset-0">
+      <video
+        ref={videoRef}
+        src={src}
+        muted loop playsInline preload="none"
+        onError={() => setFailed(true)}
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{ pointerEvents: "none", opacity, zIndex: 0 }}
+      />
+    </div>
   );
 }
 
