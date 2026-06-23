@@ -1435,12 +1435,29 @@ export default function PlayPage({ user, onOpenCommunity }) {
           </div>
         </div>
       ) : !selected ? (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
+        <div className="absolute inset-0 z-10 flex flex-col">
           <img src="/hero.jpg" alt="SBGames" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.55, objectPosition: "center" }} onError={e => e.currentTarget.style.display = "none"} />
           <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.8) 100%)" }} />
-          <div className="relative z-10 flex flex-col items-center">
+          <div className="relative z-10 flex-1 flex flex-col items-center justify-center">
             <div className="text-[64px] font-display font-black leading-none tracking-tight text-white text-center" style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}>SB GAMES</div>
             <div className="text-[56px] font-display font-black leading-none tracking-tight uppercase text-center" style={{ color: "rgba(255,255,255,0.22)" }}>КОМПЛЕКС<br />СЕРВЕРОВ</div>
+          </div>
+          <div className="relative z-10 flex items-center gap-3 pb-8 pr-8 px-10">
+            <div className="flex items-center gap-2 rounded-2xl px-4 h-[44px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+              <img src="/money.png" alt="SBT" className="w-5 h-5 flex-shrink-0" style={{ filter: "drop-shadow(0 0 4px rgba(250,204,21,0.6))" }} onError={e => e.currentTarget.style.display = "none"} />
+              <span className="text-[14px] font-black text-white tabular-nums">{(user?.balance ?? 0).toLocaleString("en-US")}</span>
+              <span className="text-[10px] font-bold" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
+            </div>
+            <div className="flex-1" />
+            <motion.button onClick={handlePlay} data-launch-btn disabled={true} whileTap={{ scale: 0.96 }}
+              className="flex items-center gap-3 h-[44px] rounded-2xl font-black text-[14px] tracking-widest uppercase opacity-40 cursor-not-allowed"
+              style={{ padding: "0 32px", background: "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", color: "#fff" }}>
+              ВЫБЕРИ СЕРВЕР <Play size={16} weight="fill" />
+            </motion.button>
+            <motion.button onClick={() => setShowSettings(true)} whileTap={{ scale: 0.9 }} className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}><Settings size={15} /></motion.button>
           </div>
         </div>
       ) : (
