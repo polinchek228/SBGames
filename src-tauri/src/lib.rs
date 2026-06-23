@@ -8,6 +8,7 @@ use tauri::{
 use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use hmac::Mac;
 
 static INTEGRITY_OK: AtomicBool = AtomicBool::new(false);
 
