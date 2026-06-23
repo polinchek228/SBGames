@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, ArrowUpDown, Loader2, Package, X,
@@ -49,8 +49,8 @@ function FramePreview({ color, item, large }) {
         {/* Mini avatar preview in top-left corner (Steam-style) */}
         {!large && item?.image && (
           <div className="absolute top-1 left-1 w-7 h-7 rounded-lg overflow-hidden border border-white/5 z-20 shadow-lg">
-            <img src="/logo.jpg" alt="" className="w-full h-full object-cover opacity-80" />
-            <img src={item.image} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            <img src="/logo.jpg" alt="SBGames" className="w-full h-full object-cover opacity-80" />
+            <img src={item.image} alt={item.name || "Предмет"} className="absolute inset-0 w-full h-full object-cover" />
           </div>
         )}
         
@@ -411,7 +411,7 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <img src="/money.png" alt="" className="w-4 h-4 object-contain"
+                <img src="/money.png" alt="SBT" className="w-4 h-4 object-contain"
                   onError={(e) => { e.currentTarget.style.display = "none"; }} />
                 <span className="text-[18px] font-black tabular-nums leading-none"
                   style={{ color: canAfford ? "rgba(255,255,255,0.9)" : "#f87171" }}>
@@ -567,7 +567,7 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
             </span>
           ) : (
             <div className="flex items-center gap-1 flex-shrink-0 bg-white/[0.03] px-1.5 py-0.5 rounded-lg border border-white/[0.04]">
-              <img src="/money.png" alt="" className="w-3 h-3 object-contain"
+              <img src="/money.png" alt="SBT" className="w-3 h-3 object-contain"
                 onError={(e) => { e.currentTarget.style.display = "none"; }} />
               <span className="text-[10px] font-black tabular-nums"
                 style={{ color: canAfford ? "rgba(255,255,255,0.85)" : "#f87171" }}>
@@ -666,7 +666,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
       const ownedVal = data.owned || [];
       const equipVal = data.equip || {};
       setOwned(ownedVal);
-      setEquip((prev) => ({ ...prev, ...equipVal }));
+      setEquip(equipVal);
       localStorage.setItem("sbg_pers_inventory", JSON.stringify({ owned: ownedVal, equip: equipVal }));
     } catch {
       try {
@@ -674,7 +674,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
         if (cached) {
           const parsed = JSON.parse(cached);
           setOwned(parsed.owned || []);
-          setEquip((prev) => ({ ...prev, ...(parsed.equip || {}) }));
+          setEquip(parsed.equip || {});
           setIsOffline(true);
         } else {
           setError("Не удалось загрузить инвентарь");
@@ -786,13 +786,13 @@ export default function LibraryTab({ user, equip, setEquip }) {
   if (sort === "price_desc") items = [...items].sort((a, b) => b.price - a.price);
   if (sort === "name")       items = [...items].sort((a, b) => a.name.localeCompare(b.name));
 
-  const counts = {
+  const counts = useMemo(() => ({
     all: LIBRARY_CATALOG.length,
     frame: LIBRARY_CATALOG.filter(i => i.type === "frame").length,
     background: LIBRARY_CATALOG.filter(i => i.type === "background").length,
     avatar_animated: LIBRARY_CATALOG.filter(i => i.type === "avatar_animated").length,
     badge: LIBRARY_CATALOG.filter(i => i.type === "badge").length,
-  };
+  }), []);
 
   return (
     <div className="flex flex-col h-full">
@@ -890,7 +890,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
             </span>
           )}
           <div className="flex items-center gap-1.5">
-            <img src="/money.png" alt="" className="w-3.5 h-3.5"
+            <img src="/money.png" alt="SBT" className="w-3.5 h-3.5"
               onError={(e) => { e.currentTarget.style.display = "none"; }} />
             <span className="text-[13px] font-black text-white tabular-nums">{balance.toLocaleString("en-US")}</span>
             <span className="text-[9px] text-white/50">SBT</span>

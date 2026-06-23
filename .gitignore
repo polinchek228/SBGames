@@ -10,6 +10,7 @@ nul
 mimo.exe
 *.b64
 .tauri/
+scratch/
 
 # Background videos — served from server, not bundled
 public/fon*.mp4

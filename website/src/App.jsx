@@ -1,25 +1,24 @@
-import React, { useState, useEffect, useLayoutEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
-import HomePage from "./pages/HomePage.jsx";
-import CabinetPage from "./pages/CabinetPage.jsx";
-import TopupPage from "./pages/TopupPage.jsx";
-import SupportPage from "./pages/SupportPage.jsx";
-import RulesPage from "./pages/RulesPage.jsx";
-import LoginPage from "./pages/LoginPage.jsx";
-import DownloadPage from "./pages/DownloadPage.jsx";
-import HowToPlayPage from "./pages/HowToPlayPage.jsx";
-import AdminPage from "./pages/AdminPage.jsx";
-import ReferralPage from "./pages/ReferralPage.jsx";
-import AffiliatePage from "./pages/AffiliatePage.jsx";
 import { getUser, refreshUser } from "./lib/api.js";
 
-function RequireAuth({ children }) {
-  const user = getUser();
+// Lazy-load pages for code splitting
+const HomePage = lazy(() => import("./pages/HomePage.jsx"));
+const CabinetPage = lazy(() => import("./pages/CabinetPage.jsx"));
+const TopupPage = lazy(() => import("./pages/TopupPage.jsx"));
+const SupportPage = lazy(() => import("./pages/SupportPage.jsx"));
+const RulesPage = lazy(() => import("./pages/RulesPage.jsx"));
+const LoginPage = lazy(() => import("./pages/LoginPage.jsx"));
+const DownloadPage = lazy(() => import("./pages/DownloadPage.jsx"));
+const HowToPlayPage = lazy(() => import("./pages/HowToPlayPage.jsx"));
+const AdminPage = lazy(() => import("./pages/AdminPage.jsx"));
+const ReferralPage = lazy(() => import("./pages/ReferralPage.jsx"));
+const AffiliatePage = lazy(() => import("./pages/AffiliatePage.jsx"));
+
+function RequireAuth({ user, children }) {
   const location = useLocation();
   if (!user) {
-    // Preserve the referral code through the redirect so it reaches /login
-    // even if the user landed on a protected page via ?ref=CODE.
     const ref = new URLSearchParams(window.location.search).get("ref")
       || localStorage.getItem("referral") || null;
     return <Navigate to="/login" state={{ from: location.pathname, ref }} replace />;
@@ -48,6 +47,21 @@ function ReferralCapture() {
   return null;
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return <div style={{ padding: 40, textAlign: "center" }}>
+        <h2>Ошибка</h2>
+        <p>{this.state.error?.message}</p>
+        <button onClick={() => window.location.reload()}>Перезагрузить</button>
+      </div>;
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState(getUser);
 
@@ -67,20 +81,28 @@ export default function App() {
       <div className="min-h-screen bg-black text-white">
         <ReferralCapture />
         <Navbar user={user} />
-        <Routes>
-          <Route path="/"           element={<HomePage />} />
-          <Route path="/login"      element={<LoginPage onLogin={handleLogin} />} />
-          <Route path="/rules"      element={<RulesPage />} />
-          <Route path="/download"   element={<DownloadPage />} />
-          <Route path="/howtoplay"  element={<HowToPlayPage />} />
-          <Route path="/cabinet"    element={<RequireAuth><CabinetPage user={user} /></RequireAuth>} />
-          <Route path="/topup"      element={<RequireAuth><TopupPage user={user} /></RequireAuth>} />
-          <Route path="/support"    element={<RequireAuth><SupportPage user={user} /></RequireAuth>} />
-          <Route path="/admin"      element={<RequireAdmin user={user}><AdminPage user={user} /></RequireAdmin>} />
-          <Route path="/affiliate"  element={<ReferralPage />} />
-          <Route path="/affiliate/dashboard" element={<RequireAuth><AffiliatePage user={user} /></RequireAuth>} />
-          <Route path="*"           element={<Navigate to="/" replace />} />
-        </Routes>
+        <ErrorBoundary>
+          <Suspense fallback={
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <div className="w-8 h-8 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+          }>
+            <Routes>
+              <Route path="/"           element={<HomePage />} />
+              <Route path="/login"      element={<LoginPage onLogin={handleLogin} />} />
+              <Route path="/rules"      element={<RulesPage />} />
+              <Route path="/download"   element={<DownloadPage />} />
+              <Route path="/howtoplay"  element={<HowToPlayPage />} />
+              <Route path="/cabinet"    element={<RequireAuth user={user}><CabinetPage user={user} /></RequireAuth>} />
+              <Route path="/topup"      element={<RequireAuth user={user}><TopupPage user={user} /></RequireAuth>} />
+              <Route path="/support"    element={<RequireAuth user={user}><SupportPage user={user} /></RequireAuth>} />
+              <Route path="/admin"      element={<RequireAdmin user={user}><AdminPage user={user} /></RequireAdmin>} />
+              <Route path="/affiliate"  element={<ReferralPage />} />
+              <Route path="/affiliate/dashboard" element={<RequireAuth user={user}><AffiliatePage user={user} /></RequireAuth>} />
+              <Route path="*"           element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </BrowserRouter>
   );

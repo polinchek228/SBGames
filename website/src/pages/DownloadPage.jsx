@@ -102,6 +102,7 @@ export default function DownloadPage() {
           <motion.a
             href={selectedAsset.url}
             download
+            aria-label={`Скачать ${selectedPlatform.label}`}
             whileTap={{ scale: 0.97 }}
             className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-[13px] text-black transition-colors hover:opacity-90"
             style={{ background: selectedPlatform.color, flexShrink: 0 }}

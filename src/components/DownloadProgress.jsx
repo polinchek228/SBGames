@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { listen } from "../lib/tauri.js";
 
 export default function DownloadProgress() {
   const [progress, setProgress] = useState(null);
+  const unlistenRef = useRef(null);
 
   useEffect(() => {
-    let unlisten;
     listen("download_progress", (e) => {
       setProgress(e.payload);
-    }).then(fn => { unlisten = fn; });
-    return () => { if (unlisten) unlisten(); };
+    }).then(fn => { unlistenRef.current = fn; });
+    return () => { unlistenRef.current?.(); unlistenRef.current = null; };
   }, []);
 
   const formatSize = (bytes) => {

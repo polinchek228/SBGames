@@ -179,7 +179,7 @@ pub async fn launch_instance(
         }
     }
 
-    apply_jvm_args(&mut cmd, &resolved, &cfg, &inst_dir);
+    apply_jvm_args(&mut cmd, &resolved, &cfg, &inst_dir, &version_id);
     cmd.arg(&resolved.main_class);
     cmd.args(&resolved.game_args);
     cmd.current_dir(&inst_dir);
@@ -194,6 +194,40 @@ pub async fn launch_instance(
     // Сохранить pid для single-launch проверки.
     let pid_file = crate::minecraft_dir().join(".minecraft.pid");
     let _ = std::fs::write(&pid_file, pid.to_string());
+
+    // Win32: помещаем Java в Job Object для контроля над деревом процессов
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::System::JobObjects::{
+            CreateJobObjectW, AssignProcessToJobObject,
+            SetInformationJobObject, JobObjectBasicUIRestrictions,
+            JOBOBJECT_BASIC_UI_RESTRICTIONS,
+        };
+        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_ALL_ACCESS};
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job != 0 {
+                let proc = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
+                if proc != 0 {
+                    let ui_restrict = JOBOBJECT_BASIC_UI_RESTRICTIONS {
+                        UIRestrictionsClass: 0x40,
+                    };
+                    SetInformationJobObject(
+                        job,
+                        JobObjectBasicUIRestrictions,
+                        &ui_restrict as *const _ as *const _,
+                        std::mem::size_of::<JOBOBJECT_BASIC_UI_RESTRICTIONS>() as u32,
+                    );
+                    AssignProcessToJobObject(job, proc);
+                    CloseHandle(proc);
+                }
+                // Job handle lives for the launcher's lifetime
+                let _ = job as usize;
+            }
+        }
+    }
 
     // Записать last_played.
     cfg.last_played = Some(now_secs());
@@ -233,22 +267,13 @@ pub async fn launch_instance(
         });
     }
 
-    // На unix нужен reaper-поток: wait() на Java, иначе после выхода остаётся
-    // зомби до закрытия лаунчера. Заодно чистим pid-файл.
-    // На Windows forget безопасен (нет зомби-модели).
-    #[cfg(unix)]
+    // Reaper-поток: wait() на Java, чистим pid-файл при завершении.
     {
         let pid_file_clone = pid_file.clone();
         std::thread::spawn(move || {
-            // wait() блокирует пока Java не завершится; убирает зомби.
             let _ = child.wait();
             let _ = std::fs::remove_file(&pid_file_clone);
         });
-    }
-    #[cfg(not(unix))]
-    {
-        // Не ждём завершения — отдаём pid родителю.
-        std::mem::forget(child);
     }
 
     emit(&app, "Запущено", 100, 100);
@@ -412,10 +437,17 @@ fn apply_jvm_args(
     resolved: &ResolvedLaunch,
     cfg: &InstanceConfig,
     inst_dir: &Path,
+    version_id: &str,
 ) {
     // RAM.
     cmd.arg(format!("-Xms{}m", cfg.min_ram_mb.max(256)));
     cmd.arg(format!("-Xmx{}m", cfg.max_ram_mb.max(512)));
+
+    // Native library path — needed for LWJGL and other natives extracted to natives/
+    let natives_dir = inst_dir.join("natives");
+    if natives_dir.exists() {
+        cmd.arg(format!("-Djava.library.path={}", natives_dir.display()));
+    }
 
     // Пользовательские jvm_args из конфига.
     for a in &cfg.jvm_args {
@@ -435,32 +467,88 @@ fn apply_jvm_args(
         return;
     }
 
-    // Classpath: оцениваем длину. На Windows лимит ~32k для cmd, но CreateProcess
-    // держит ~32767. Перестраховываемся на >16k → wrapped-manifest jar.
-    let cp_len: usize = resolved
-        .libraries
-        .iter()
-        .map(|p| p.to_string_lossy().len() + 1)
-        .sum();
+    // Forge 1.18+ требует --module-path для boot модулей (BootstrapLauncher, securejarhandler, asm-*, JarJarFileSystems).
+    // Иначе Package.getImplementationVersion() возвращает null и Forge падает.
+    let is_forge = version_id.contains("forge");
     let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let cp_string = resolved
-        .libraries
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect::<Vec<_>>()
-        .join(sep);
 
-    if cfg!(target_os = "windows") && cp_len > 16000 {
-        // Wrapped manifest jar.
-        let wrap_path = inst_dir.join(".classpath.jar");
-        if crate::generate_wrapped_classpath_manifest(&wrap_path, &resolved.libraries, inst_dir)
-            .is_ok()
-        {
-            cmd.arg("-cp").arg(wrap_path.to_string_lossy().to_string());
+    if is_forge {
+        // Split libraries: boot modules -> module-path, rest -> -cp
+        let mut boot_modules: Vec<&PathBuf> = Vec::new();
+        let mut rest_classpath: Vec<&PathBuf> = Vec::new();
+        for p in &resolved.libraries {
+            let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if name.starts_with("bootstraplauncher-")
+                || name.starts_with("securejarhandler-")
+                || name.starts_with("asm-")
+                || name.starts_with("JarJarFileSystems-")
+            {
+                boot_modules.push(p);
+            } else {
+                rest_classpath.push(p);
+            }
+        }
+
+        // 1) Boot modules -> --module-path + --add-modules
+        if !boot_modules.is_empty() {
+            let mp = boot_modules.iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(&sep);
+            cmd.arg("--module-path").arg(mp);
+            cmd.arg("--add-modules").arg("ALL-MODULE-PATH");
+        }
+
+        // 2) Forge-specific JVM properties
+        cmd.arg(format!("-DlibraryDirectory={}", inst_dir.join("libraries").display()));
+        cmd.arg("-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-");
+        cmd.arg("-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar");
+
+        // 3) Generate sbg-classpath.jar (wrapped manifest) and sbg-classpath.txt
+        let classpath_jar_path = inst_dir.join("sbg-classpath.jar");
+        let rest_paths: Vec<PathBuf> = rest_classpath.iter().map(|p| (*p).clone()).collect();
+        let _ = crate::generate_wrapped_classpath_manifest(&classpath_jar_path, &rest_paths, inst_dir);
+
+        let classpath_txt_path = inst_dir.join("sbg-classpath.txt");
+        let mut txt_content = String::new();
+        for p in &rest_classpath {
+            txt_content.push_str(&p.to_string_lossy());
+            txt_content.push('\n');
+        }
+        let _ = std::fs::write(&classpath_txt_path, txt_content);
+
+        cmd.arg(format!("-DlegacyClassPath.file={}", classpath_txt_path.display()));
+
+        // 4) Classpath: only sbg-classpath.jar
+        if classpath_jar_path.exists() {
+            cmd.arg("-cp").arg(classpath_jar_path.display().to_string());
         } else {
+            // Fallback: use full classpath if jar generation failed
+            let cp_string = rest_classpath.iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(&sep);
             cmd.arg("-cp").arg(cp_string);
         }
     } else {
-        cmd.arg("-cp").arg(cp_string);
+        // Non-Forge: regular classpath
+        let cp_len: usize = resolved.libraries.iter()
+            .map(|p| p.to_string_lossy().len() + 1)
+            .sum();
+        let cp_string = resolved.libraries.iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(&sep);
+
+        if cfg!(target_os = "windows") && cp_len > 16000 {
+            let wrap_path = inst_dir.join(".classpath.jar");
+            if crate::generate_wrapped_classpath_manifest(&wrap_path, &resolved.libraries, inst_dir).is_ok() {
+                cmd.arg("-cp").arg(wrap_path.display().to_string());
+            } else {
+                cmd.arg("-cp").arg(cp_string);
+            }
+        } else {
+            cmd.arg("-cp").arg(cp_string);
+        }
     }
 }

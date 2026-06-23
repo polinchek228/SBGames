@@ -26,6 +26,8 @@ export default function UpdateNotifier() {
     setError(null);
     try {
       await invoke("install_update");
+      setDownloading(false);
+      setUpdate(null);
     } catch (e) {
       setError(e?.toString() || "Ошибка обновления");
       setDownloading(false);
@@ -138,12 +140,11 @@ export default function UpdateNotifier() {
                   overflow: "hidden",
                 }}>
                   <motion.div
-                    initial={{ width: "0%" }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 30, ease: "linear" }}
+                    animate={{ x: ["-100%", "200%"] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
                     style={{
-                      height: "100%", borderRadius: 2,
-                      background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
+                      height: "100%", borderRadius: 2, width: "40%",
+                      background: "linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, transparent)",
                     }}
                   />
                 </div>

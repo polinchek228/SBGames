@@ -45,10 +45,10 @@ export default function HomePage() {
           {/* dark overlay so text reads over photo */}
           <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, rgba(0,0,0,0.5), rgba(0,0,0,0.85))", borderRadius: 24 }} />
           <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontSize: 64, fontWeight: 900, letterSpacing: "0.01em", lineHeight: 1, marginBottom: 4 }}>
+          <div style={{ fontSize: "clamp(32px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.01em", lineHeight: 1, marginBottom: 4 }}>
             SB GAMES
           </div>
-          <div style={{ fontSize: 60, fontWeight: 900, lineHeight: 0.95, textTransform: "uppercase", color: "rgba(255,255,255,0.22)", marginBottom: 22 }}>
+          <div style={{ fontSize: "clamp(28px, 7vw, 60px)", fontWeight: 900, lineHeight: 0.95, textTransform: "uppercase", color: "rgba(255,255,255,0.22)", marginBottom: 22 }}>
             КОМПЛЕКС<br />СЕРВЕРОВ
           </div>
           <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 16, fontWeight: 700, maxWidth: 460, margin: "0 auto 30px" }}>
@@ -121,7 +121,7 @@ export default function HomePage() {
         </motion.div>
 
         {/* КОМЬЮНИТИ + НОВОСТИ */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.55fr", gap: 20, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: window.innerWidth > 768 ? "1fr 1.55fr" : "1fr", gap: 20, marginBottom: 20 }}>
 
           {/* КОМЬЮНИТИ */}
           <motion.div

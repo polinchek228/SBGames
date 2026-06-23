@@ -28,12 +28,12 @@ export default function Navbar({ user }) {
         backdropFilter:"blur(24px)", WebkitBackdropFilter:"blur(24px)",
       }}>
         <Link to="/" style={{ display:"flex", alignItems:"center", gap:9, padding:"5px 12px 5px 6px" }}>
-          <div style={LOGO}><img src="/logo.jpg" alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/></div>
+          <div style={LOGO}><img src="/logo.jpg" alt="SBGames" style={{ width:"100%", height:"100%", objectFit:"cover" }}/></div>
           <span style={{ fontSize:14, fontWeight:800, letterSpacing:"0.02em", whiteSpace:"nowrap", color:"#fff" }}>
             SBGames
           </span>
         </Link>
-        <div style={{ width:1, height:20, background:"rgba(255,255,255,0.1)", margin:"0 6px", flexShrink:0 }} />
+        <div role="separator" aria-hidden="true" style={{ width:1, height:20, background:"rgba(255,255,255,0.1)", margin:"0 6px", flexShrink:0 }} />
 
         {visibleNav.map(({ to, label, icon:Icon }) => {
           const active = pathname === to;

@@ -6,8 +6,14 @@ export default function FilePicker({ accept, title, hint, onSelect, onClose }) {
   const [dragging, setDragging] = useState(false);
   const [chosen, setChosen] = useState(null);
 
+  const MAX_SIZE = 10 * 1024 * 1024; // 10MB limit
+
   const processFile = (file) => {
     if (!file) return;
+    if (file.size > MAX_SIZE) {
+      alert("Файл слишком большой (максимум 10 МБ)");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => setChosen({ file, preview: e.target.result });
     reader.readAsDataURL(file);
@@ -17,7 +23,14 @@ export default function FilePicker({ accept, title, hint, onSelect, onClose }) {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file) processFile(file);
+    if (file) {
+      // Validate against accept prop if provided
+      if (accept && !file.type.match(accept.replace(/\*/g, ".*"))) {
+        alert("Неподходящий тип файла");
+        return;
+      }
+      processFile(file);
+    }
   };
 
   const handleInput = (e) => {
@@ -63,7 +76,7 @@ export default function FilePicker({ accept, title, hint, onSelect, onClose }) {
           >
             {chosen ? (
               <>
-                <img src={chosen.preview} alt="" className="h-16 rounded-lg object-contain" style={{ imageRendering: "pixelated" }} />
+                <img src={chosen.preview} alt="Предпросмотр" className="h-16 rounded-lg object-contain" style={{ imageRendering: "pixelated" }} />
                 <p className="text-[11px] text-white/50">{chosen.file.name}</p>
               </>
             ) : (

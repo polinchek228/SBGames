@@ -204,6 +204,7 @@ export default function TopupPage({ user }) {
         <button
           onClick={handlePay}
           disabled={!finalAmount || finalAmount < 50 || loading}
+          aria-label={`Пополнить на ${finalAmount || 0} SBT`}
           className="w-full rounded-xl py-4 flex items-center justify-center gap-2 font-bold text-[14px] text-white transition-all"
           style={{
             background: finalAmount >= 50 ? "linear-gradient(90deg, #2563eb, #7c3aed)" : "rgba(255,255,255,0.06)",

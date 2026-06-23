@@ -308,7 +308,7 @@ function ProfileTab({ user, equip }) {
                 {editingBio ? (
                   <div className="flex flex-col gap-2">
                     <textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={200} rows={2}
-                      placeholder="Расскажи о себе..."
+                      aria-label="О себе" placeholder="Расскажи о себе..."
                       className="rounded-xl px-3 py-2 text-[11px] outline-none resize-none transition-all duration-200"
                       style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.08)" }}
                       onFocus={e => e.currentTarget.style.borderColor = "rgba(37,99,235,0.5)"}
@@ -333,7 +333,7 @@ function ProfileTab({ user, equip }) {
                       style={{ color: savedBio ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.25)" }}>
                       {savedBio || "Нет описания"}
                     </p>
-                    <button onClick={() => setEditingBio(true)} className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
+                    <button onClick={() => setEditingBio(true)} aria-label="Редактировать профиль" className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
                       style={{ color: "rgba(255,255,255,0.35)" }}
                       onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
                       onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.35)"}>
@@ -351,7 +351,7 @@ function ProfileTab({ user, equip }) {
               {/* SBT badge — same size as avatar */}
               <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
                 style={{ background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
-                <img src="/money.png" alt="" className="w-7 h-7 object-contain"
+                <img src="/money.png" alt="SBT" className="w-7 h-7 object-contain"
                   style={{ filter: "drop-shadow(0 0 6px rgba(250,204,21,0.6))" }}
                   onError={(e) => { e.currentTarget.style.display = "none"; }} />
                 <span className="text-[22px] font-black text-white tabular-nums leading-none">
@@ -394,9 +394,9 @@ function ProfileTab({ user, equip }) {
                       <div className="h-[70px] flex items-center justify-center relative"
                         style={{ background: `radial-gradient(ellipse at 50% 120%, ${rarity.color}12 0%, transparent 70%)` }}>
                         {item.image ? (
-                          <img src={item.image} alt="" className="w-12 h-12 object-cover rounded-lg" onError={e => { e.currentTarget.style.display = "none"; }} />
+                          <img src={item.image} alt={item.name || "Предмет"} className="w-12 h-12 object-cover rounded-lg" onError={e => { e.currentTarget.style.display = "none"; }} />
                         ) : item.icon ? (
-                          <img src={item.icon} alt="" className="w-10 h-10 object-contain" onError={e => { e.currentTarget.style.display = "none"; }} />
+                          <img src={item.icon} alt={item.name || "Предмет"} className="w-10 h-10 object-contain" onError={e => { e.currentTarget.style.display = "none"; }} />
                         ) : (
                           <div className="w-10 h-10 rounded-xl" style={{ background: `${rarity.color}20` }} />
                         )}
@@ -906,7 +906,7 @@ function ModrinthPanel({ type, allowedSlugs }) {
             >
               <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
                 {proj.icon_url
-                  ? <img src={proj.icon_url} alt="" className="w-full h-full object-cover" />
+                  ? <img src={proj.icon_url} alt={proj.title || "Проект"} className="w-full h-full object-cover" />
                   : <div className="w-full h-full flex items-center justify-center"><Package size={14} className="text-white/20" /></div>
                 }
               </div>
@@ -937,7 +937,7 @@ function ModrinthPanel({ type, allowedSlugs }) {
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
                 {selected.icon_url
-                  ? <img src={selected.icon_url} alt="" className="w-full h-full object-cover" />
+                  ? <img src={selected.icon_url} alt={selected.title || "Проект"} className="w-full h-full object-cover" />
                   : <Package size={20} className="text-white/20" />
                 }
               </div>
@@ -1165,7 +1165,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
             <div className="flex items-center gap-2 flex-shrink-0 mt-2">
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
                 style={{ background: "rgba(255,255,255,0.06)" }}>
-                <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain"
+                <img src="/money.png" alt="SBT" className="w-3.5 h-3.5 object-contain"
                   onError={(e) => { e.currentTarget.style.display = "none"; }} />
                 <span className="text-[13px] font-black text-white tabular-nums leading-none">
                   {(profile?.balance ?? 0).toLocaleString("ru-RU")}

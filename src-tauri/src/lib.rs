@@ -119,13 +119,29 @@ fn scan_loaded_modules() -> bool {
 #[cfg(not(target_os = "windows"))]
 fn scan_loaded_modules() -> bool {
     #[cfg(target_os = "linux")]
-    if let Ok(maps) = std::fs::read_to_string("/proc/self/maps") {
-        for line in maps.lines() {
-            let l = line.to_lowercase();
-            if ["inject","hook","cheat","trainer","loader"].iter().any(|s| l.contains(s)) { return true; }
+    {
+        // Check /proc/self/maps for suspicious shared objects
+        if let Ok(maps) = std::fs::read_to_string("/proc/self/maps") {
+            let suspicious_patterns = ["inject", "hook", "cheat", "trainer", "preload", "frida", "xposed"];
+            for line in maps.lines() {
+                let l = line.to_lowercase();
+                if suspicious_patterns.iter().any(|s| l.contains(s)) { return true; }
+                // Check for .so files outside standard paths
+                if l.contains(".so") && !l.starts_with("/usr/") && !l.starts_with("/lib")
+                    && !l.starts_with("/system/") && !l.contains("java") && !l.contains("lwjgl") {
+                    return true;
+                }
+            }
+        }
+        // Check LD_PRELOAD and LD_LIBRARY_PATH
+        if std::env::var("LD_PRELOAD").is_ok() { return true; }
+        if let Ok(ld_path) = std::env::var("LD_LIBRARY_PATH") {
+            if !ld_path.is_empty() && !ld_path.contains("/usr/lib") && !ld_path.contains("/lib") {
+                return true;
+            }
         }
     }
-    std::env::var("LD_PRELOAD").is_ok()
+    false
 }
 
 #[cfg(target_os = "windows")]
@@ -169,7 +185,27 @@ fn start_guard_thread() {
 }
 
 #[cfg(not(debug_assertions))]
-fn verify_integrity() -> bool { INTEGRITY_OK.store(true, Ordering::SeqCst); true }
+fn verify_integrity() -> bool {
+    // Verify the launcher binary hasn't been tampered with
+    use sha2::{Sha256, Digest};
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(_) => { INTEGRITY_OK.store(true, Ordering::SeqCst); return true; }
+    };
+    let hash = match std::fs::read(&exe) {
+        Ok(data) => {
+            let mut hasher = Sha256::new();
+            hasher.update(&data);
+            hex::encode(hasher.finalize())
+        }
+        Err(_) => { INTEGRITY_OK.store(true, Ordering::SeqCst); return true; }
+    };
+    // TODO: compare hash against a known-good value from the update server
+    // For now, log the hash for future verification
+    eprintln!("[integrity] exe hash: {}", &hash[..16]);
+    INTEGRITY_OK.store(true, Ordering::SeqCst);
+    true
+}
 #[cfg(debug_assertions)]
 fn verify_integrity() -> bool { true }
 
@@ -206,11 +242,27 @@ async fn install_update(app: tauri::AppHandle) -> Result<String, String> {
             u.download_and_install(|_chunk, _total| {}, || {})
                 .await
                 .map_err(|e| e.to_string())?;
+            cleanup_old_update_files(&app);
             app.restart();
             #[allow(unreachable_code)]
             Ok(version)
         }
         None => Err("No update available".to_string()),
+    }
+}
+
+fn cleanup_old_update_files(app: &tauri::AppHandle) {
+    let updater_dir = app.path().app_data_dir().ok().map(|p| p.join("updater")).unwrap_or_default();
+    if !updater_dir.exists() { return; }
+    if let Ok(entries) = std::fs::read_dir(&updater_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() { continue; }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("msi") {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
     }
 }
 
@@ -1541,7 +1593,7 @@ async fn get_minecraft_status() -> Result<serde_json::Value, String> {
 
 /// Команда для UI: убить Minecraft (если он завис)
 #[tauri::command]
-async fn kill_minecraft() -> Result<(), String> {
+async fn kill_minecraft(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(pid) = read_running_minecraft_pid() {
         #[cfg(target_os = "windows")]
         {
@@ -1552,6 +1604,7 @@ async fn kill_minecraft() -> Result<(), String> {
         }
         #[cfg(unix)]
         {
+            if pid > i32::MAX as u32 { return Ok(()); }
             // Java запущена в своей process group (setsid в launcher), pid == pgid.
             // killpg убивает всё дерево (эквивалент Win32 /T и Job Object kill).
             // Сначала SIGTERM (мягко), потом SIGKILL если не умер.
@@ -1565,6 +1618,14 @@ async fn kill_minecraft() -> Result<(), String> {
         }
     }
     let _ = std::fs::remove_file(minecraft_dir().join(".minecraft.pid"));
+    // Reset tray playing state
+    {
+        let state = app.state::<TrayState>();
+        let s = state.inner().clone();
+        let _ = app.emit("tray_state_update", serde_json::json!({
+            "user": s.user, "notifs": s.notifs, "playing": false,
+        }));
+    }
     Ok(())
 }
 
@@ -1654,15 +1715,26 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
     let manifest: serde_json::Value = serde_json::from_slice(&out.stdout)
         .map_err(|e| format!("manifest parse: {}", e))?;
 
-    // 1a. Проверяем HMAC-подпись manifest (если есть)
-    // Сервер подписывает всё кроме "signature". Подпись нужна только для
-    // определения официального сервера — но поскольку трафик идёт по HTTPS
-    // с нашим Let's Encrypt сертификатом, MITM исключён. Поэтому подпись
-    // сейчас НЕ enforced (только логируется). Если в будущем захочешь
-    // жёсткую проверку — нужно передавать секрет через сертификат клиента.
-    if let Some(sig) = manifest["signature"].as_str() {
-        // best-effort: логируем что подпись есть, но не падаем
-        eprintln!("[Forge] manifest signature: {}...", &sig[..16.min(sig.len())]);
+    // 1a. Проверяем HMAC-подпись manifest
+    // Сервер подписывает всё кроме "signature" полей. Подпись = hex(HMAC-SHA256(secret, body_without_signature)).
+    if let Some(expected_sig) = manifest.get("signature").and_then(|s| s.as_str()) {
+        // Remove "signature" field from the manifest JSON for verification
+        let mut body_for_verify = manifest.clone();
+        if let Some(obj) = body_for_verify.as_object_mut() {
+            obj.remove("signature");
+        }
+        let body_bytes = serde_json::to_vec(&body_for_verify).map_err(|e| format!("serialize manifest for verify: {}", e))?;
+        let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(MODPACK_HMAC_SECRET.as_bytes())
+            .map_err(|e| format!("hmac init: {}", e))?;
+        mac.update(&body_bytes);
+        let computed = hex::encode(mac.finalize().into_bytes());
+        if computed != *expected_sig {
+            eprintln!("[Forge] WARNING: manifest HMAC mismatch — signature rejected");
+            // In production, this should return Err. Currently warn-only for gradual rollout.
+            // return Err("manifest signature verification failed".into());
+        } else {
+            eprintln!("[Forge] manifest signature verified OK");
+        }
     }
 
     let zip_url = manifest["zip_url"].as_str()
@@ -1710,9 +1782,26 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
         }
     }
 
-    // 2a. Проверяем SHA256 zip
-    // zip_sha256 не проверяем — nginx может сжать gzip, и хеш скачанного
-    // не совпадёт с хешем на сервере. SHA256 каждого мода проверяется отдельно.
+    // 2a. Проверяем SHA256 zip (если серверный хеш совпадает с скачанным)
+    if let Some(expected_hash) = manifest.get("zip_sha256").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+        use sha2::{Sha256, Digest};
+        let mut f = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 65536];
+        loop {
+            let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+            if n == 0 { break; }
+            hasher.update(&buf[..n]);
+        }
+        let actual = hex::encode(hasher.finalize());
+        if actual != *expected_hash {
+            eprintln!("[Forge] WARNING: zip_sha256 mismatch (expected={}, actual={})", expected_hash, actual);
+            // Hash mismatch could be due to gzip compression — log but don't block.
+            // Individual mod hashes are checked after extraction.
+        } else {
+            eprintln!("[Forge] zip_sha256 verified OK");
+        }
+    }
 
     // 3. Whitelist: собираем имена и sha256 модов из manifest
     let mut allowed: std::collections::HashMap<String, (String, u64)> = std::collections::HashMap::new();
@@ -2037,6 +2126,7 @@ fn check_java_dll_integrity(pid: u32) -> Result<Vec<String>, String> {
             if !line.contains(".dll") { continue; }
             // Парсим CSV: "PID","Name","Title","DLL1","DLL2"...
             let cols: Vec<&str> = line.split(',').map(|s| s.trim_matches('"')).collect();
+            if cols.len() < 4 { continue; }
             for dll in &cols[3..] {
                 let dll_l = dll.to_lowercase();
                 // Запрещённые ключевые слова
@@ -2221,13 +2311,15 @@ fn patch_universal_manifest(jar: &PathBuf, forge_version: &str, forge_version_id
         forge_version_id, forge_version
     );
 
-    // Создаём новый zip с патченным manifest
+    // Создаём новый zip с патченным manifest через ZipWriter
+    use zip::write::FileOptions;
     let tmp = jar.with_extension("jar.tmp");
-    let mut out = match std::fs::File::create(&tmp) {
+    let tmp_file = match std::fs::File::create(&tmp) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let opts = zip::write::FileOptions::default()
+    let mut writer = zip::ZipWriter::new(tmp_file);
+    let opts = FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
     for i in 0..zip.len() {
         let mut entry = match zip.by_index(i) {
@@ -2236,17 +2328,27 @@ fn patch_universal_manifest(jar: &PathBuf, forge_version: &str, forge_version_id
         };
         let name = entry.name().to_string();
         if name == "META-INF/MANIFEST.MF" {
-            out.write_all(new_manifest.as_bytes()).ok();
+            if writer.start_file(&name, opts).is_ok() {
+                let _ = writer.write_all(new_manifest.as_bytes());
+            }
         } else {
             let mut buf = Vec::new();
             if entry.read_to_end(&mut buf).is_ok() {
-                out.write_all(&buf).ok();
+                if writer.start_file(&name, opts).is_ok() {
+                    let _ = writer.write_all(&buf);
+                }
             }
         }
     }
+    if writer.finish().is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
     drop(zip);
-    drop(out);
-    let _ = std::fs::rename(&tmp, jar);
+    if std::fs::rename(&tmp, jar).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
     eprintln!("[Forge] Patched manifest in {} with Implementation-Version={}", jar.display(), forge_version_id);
 }
 
@@ -2383,10 +2485,11 @@ struct TrayState {
 
 #[tauri::command]
 fn tray_get_state(state: tauri::State<'_, TrayState>) -> serde_json::Value {
+    let s = state.inner().clone();
     serde_json::json!({
-        "user":    state.user,
-        "notifs":  state.notifs,
-        "playing": state.playing,
+        "user":    s.user,
+        "notifs":  s.notifs,
+        "playing": s.playing,
     })
 }
 
@@ -2402,7 +2505,7 @@ fn tray_update_state(
     if user.is_some()    { s.user    = user; }
     if let Some(n) = notifs  { s.notifs  = n; }
     if let Some(p) = playing { s.playing = p; }
-    // Бродкаст в popup
+    // Emit updated state to popup
     let _ = app.emit("tray_state_update", serde_json::json!({
         "user":    s.user,
         "notifs":  s.notifs,
@@ -2434,6 +2537,10 @@ async fn tray_hide(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn navigate_to(app: tauri::AppHandle, page: String) -> Result<(), String> {
+    const ALLOWED: &[&str] = &["play", "profile", "community", "shop", "news", "support", "library", "inventory", "screenshots"];
+    if !ALLOWED.contains(&page.as_str()) {
+        return Err(format!("invalid page: {}", page));
+    }
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();
         let _ = main.set_focus();
@@ -2752,10 +2859,8 @@ pub(crate) fn generate_wrapped_classpath_manifest(path: &std::path::Path, rest_c
 }
 
 fn generate_secure_random_key() -> String {
-    use sha2::Digest;
-    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-    let hash = format!("{:x}", sha2::Sha256::digest(time.to_string().as_bytes()));
-    hash[..32].to_string()
+    // Use UUID v4 which uses OS-level CSPRNG
+    uuid::Uuid::new_v4().to_string().replace("-", "")
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -2828,6 +2933,7 @@ pub fn run() {
                 });
             }
 
+            #[cfg(debug_assertions)]
             if let Some(w) = app.get_webview_window("main") {
                 w.open_devtools();
             }

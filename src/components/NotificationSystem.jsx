@@ -205,6 +205,7 @@ function Toast({ notif, onDismiss }) {
           {/* Close */}
           <button
             onClick={() => onDismiss(notif.id)}
+            aria-label="Закрыть уведомление"
             className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all duration-100"
             style={{ color: "rgba(255,255,255,0.2)" }}
             onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
@@ -274,6 +275,8 @@ export function NotificationBell() {
           onClick={toggle}
           animate={controls}
           whileTap={{ scale: 0.88 }}
+          aria-label={`Уведомления${unread > 0 ? `, ${unread} непрочитанных` : ""}`}
+          aria-expanded={open}
           className="relative w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150"
           style={open
             ? { background: "rgba(37,99,235,0.2)", color: "#60a5fa" }

@@ -1,21 +1,23 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   GameController, User, ShoppingBag,
   Newspaper, Headset, UsersThree, SignOut,
 } from "@phosphor-icons/react";
 import Titlebar from "../components/Titlebar.jsx";
-import PlayPage from "./PlayPage.jsx";
-import ProfilePage from "./ProfilePage.jsx";
-import NewsPage from "./NewsPage.jsx";
-import ShopPage from "./ShopPage.jsx";
-import SupportPage from "./SupportPage.jsx";
-import CommunityPage from "./CommunityPage.jsx";
 import DownloadProgress from "../components/DownloadProgress.jsx";
 import { NotificationBell, useNotifications, pushNotification } from "../components/NotificationSystem.jsx";
-import { notifyDesktop, setDiscordPresence, invoke, safeInvoke } from "../lib/tauri.js";
+import { setDiscordPresence, invoke, safeInvoke } from "../lib/tauri.js";
 import { initWS, onWSMessage } from "../lib/ws.js";
 import { CATALOG_BY_ID } from "./catalog.js";
+
+// Lazy-load heavy pages for code splitting
+const PlayPage = lazy(() => import("./PlayPage.jsx"));
+const ProfilePage = lazy(() => import("./ProfilePage.jsx"));
+const NewsPage = lazy(() => import("./NewsPage.jsx"));
+const ShopPage = lazy(() => import("./ShopPage.jsx"));
+const SupportPage = lazy(() => import("./SupportPage.jsx"));
+const CommunityPage = lazy(() => import("./CommunityPage.jsx"));
 
 const NAV_ITEMS = [
   { id: "play",        label: "ИГРАТЬ",      icon: GameController },
@@ -73,7 +75,6 @@ function GlobalBackground({ page }) {
 export default function MainLayout({ user, onLogout }) {
   const [page, setPage] = useState("play");
   const [viewUserId, setViewUserId] = useState(null);
-  const [friendBadge, setFriendBadge] = useState(0);
   const [balance, setBalance] = useState(user?.balance ?? 0);
   const [communityOpen, setCommunityOpen] = useState(false);
 
@@ -92,19 +93,15 @@ export default function MainLayout({ user, onLogout }) {
         const diff = msg.balance - balanceRef.current;
         setBalance(msg.balance);
         pushNotification("Баланс пополнен", `+${diff} SBT · Новый баланс: ${msg.balance} SBT`, "balance");
-        await notifyDesktop("SB Games", `Баланс пополнен: ${msg.balance} SBT`);
       }
       if (msg.type === "friend_accepted") {
         pushNotification("Новый друг", `${msg.byUsername} принял вашу заявку`, "friend");
-        await notifyDesktop("SB Games", `${msg.byUsername} принял заявку в друзья`);
       }
       if (msg.type === "friend_request_received") {
-        pushNotification("Заявка в друзья", `${msg.request.fromUsername} хочет добавить вас`, "friend");
-        await notifyDesktop("SB Games", `${msg.request.fromUsername} хочет добавить вас в друзья`);
+        pushNotification("Заявка в друзья", `${msg.request.fromUsername} хотите добавить вас`, "friend");
       }
       if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
         pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
-        await notifyDesktop("Поддержка SB Games", `Ответ по обращению #${msg.ticket.id}`);
       }
     });
 
@@ -176,13 +173,18 @@ export default function MainLayout({ user, onLogout }) {
   }, [inbox]);
 
   const renderPage = (id) => {
+    const fallback = (
+      <div className="flex items-center justify-center h-full">
+        <div className="w-6 h-6 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
     switch (id) {
-      case "play":        return <PlayPage user={user} onOpenCommunity={() => setCommunityOpen(v => !v)} />;
-      case "profile":     return <ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} />;
-      case "community":   return <CommunityPage user={user} onBadgeChange={setFriendBadge} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} suppressNotifications={communityOpen && page !== "community"} />;
-      case "news":        return <NewsPage />;
-      case "shop":        return <ShopPage user={user} onBalanceChange={setBalance} />;
-      case "support":     return <SupportPage user={user} />;
+      case "play":        return <Suspense fallback={fallback}><PlayPage user={user} onOpenCommunity={() => setCommunityOpen(v => !v)} /></Suspense>;
+      case "profile":     return <Suspense fallback={fallback}><ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} /></Suspense>;
+      case "community":   return <Suspense fallback={fallback}><CommunityPage user={user} onBadgeChange={() => {}} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} suppressNotifications={communityOpen && page !== "community"} /></Suspense>;
+      case "news":        return <Suspense fallback={fallback}><NewsPage /></Suspense>;
+      case "shop":        return <Suspense fallback={fallback}><ShopPage user={user} onBalanceChange={setBalance} /></Suspense>;
+      case "support":     return <Suspense fallback={fallback}><SupportPage user={user} /></Suspense>;
       default:            return null;
     }
   };
@@ -315,7 +317,7 @@ export default function MainLayout({ user, onLogout }) {
                   user={user}
                   mini
                   suppressNotifications={page === "community"}
-                  onBadgeChange={setFriendBadge}
+                  onBadgeChange={() => {}}
                   onViewProfile={(id) => { setViewUserId(id); setPage("profile"); setCommunityOpen(false); }}
                 />
               </div>

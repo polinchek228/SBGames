@@ -43,6 +43,7 @@ export default function CustomCursor() {
     let serverId  = null;
     let flashAnim = null;
     let raf;
+    let lastSrc = "";
 
     const styleEl = document.createElement("style");
     styleEl.id = "custom-cursor-style";
@@ -79,6 +80,7 @@ export default function CustomCursor() {
     }
 
     const loop = () => {
+      if (!serverId) { raf = requestAnimationFrame(loop); return; }
       const cursor = CURSORS[serverId];
       const isThemed = !!cursor && !!spriteUrls[serverId];
 
@@ -92,7 +94,8 @@ export default function CustomCursor() {
         const drawSize = 24 * SPRITE_SCALE;
         themedWrap.style.transform =
           `translate(${mx - cursor.tipX * SPRITE_SCALE}px, ${my - cursor.tipY * SPRITE_SCALE}px) scale(${sc})`;
-        themedImg.src = spriteUrls[serverId];
+        const src = spriteUrls[serverId];
+        if (src !== lastSrc) { themedImg.src = src; lastSrc = src; }
         themedGlow.style.opacity = hovering ? "0.5" : "0.25";
       } else {
         const sz = hovering ? 24 : 18;
@@ -201,7 +204,7 @@ export default function CustomCursor() {
           transform:"translate(-12px, -12px)",
         }}/>
         {/* Сам пиксельный спрайт — pixelated рендер */}
-        <img ref={themedImgRef} alt="" style={{
+        <img ref={themedImgRef} alt="Курсор" style={{
           display:"block",
           width:24 * SPRITE_SCALE,
           height:24 * SPRITE_SCALE,

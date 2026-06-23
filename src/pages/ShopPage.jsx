@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Storefront,
-  ShoppingCartSimple, Gift, Info, X,
-  ArrowsLeftRight, CaretLeft, Plus,
+  ShoppingCartSimple, Gift, X,
+  ArrowsLeftRight, CaretLeft, Plus, Tag,
 } from "@phosphor-icons/react";
 import { authedFetch, API_URL } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
@@ -165,7 +165,7 @@ function DonateView({ user, onBalanceChange }) {
   };
   useEffect(() => { localStorage.setItem("sbg_donate_category", category); }, [category]);
 
-  const filtered = items.filter(i => category === "Все" || i.category === category);
+  const filtered = useMemo(() => items.filter(i => category === "Все" || i.category === category), [items, category]);
   const toggleCart = (id) => setCart(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const findItem = (id) => items.find(i => i.id === id);
 
@@ -184,6 +184,7 @@ function DonateView({ user, onBalanceChange }) {
           {cart.size > 0 && (
             <motion.button initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
               onClick={() => setShowCart(true)}
+              aria-label={`Корзина, ${cart.size} товаров`}
               className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 cursor-pointer transition-all duration-150"
               style={{ background: "rgba(37,99,235,0.15)", color: "#93c5fd" }}
               onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.3)"}
@@ -250,7 +251,7 @@ function DonateView({ user, onBalanceChange }) {
                     </div>
                     <div className="flex items-center gap-2 mt-auto pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                       <div className="flex items-center gap-1 flex-1">
-                        <img src="/money.png" alt="" className="w-3.5 h-3.5 object-contain" style={{ filter: "drop-shadow(0 0 3px rgba(37,99,235,0.6))" }} />
+                        <img src="/money.png" alt="SBT" className="w-3.5 h-3.5 object-contain" style={{ filter: "drop-shadow(0 0 3px rgba(37,99,235,0.6))" }} />
                         <span className="text-[14px] font-black text-white tabular-nums">{(item.price || 0).toLocaleString("ru-RU")}</span>
                         <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>SBT</span>
                       </div>
@@ -278,14 +279,15 @@ function DonateView({ user, onBalanceChange }) {
             <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDetail(null)}>
               <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={e => e.stopPropagation()}
+                role="dialog" aria-modal="true" aria-label={detail.name || "Товар"}
                 className="relative w-full max-w-[440px] rounded-2xl overflow-hidden"
                 style={{ background: "rgba(14,14,14,0.92)", backdropFilter: "blur(24px)", border: "1px solid rgba(255,255,255,0.08)" }}
               >
                 <div className="relative h-[180px] overflow-hidden" style={{ background: thumb ? "#000" : `radial-gradient(ellipse at 50% 130%, ${r.color}35 0%, transparent 70%), linear-gradient(160deg, ${r.color}15 0%, #000 100%)` }}>
-                  {thumb && <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.92 }} />}
+                  {thumb && <img src={thumb} alt={detail.name || "Товар"} className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.92 }} />}
                   {!thumb && <div className="absolute inset-0 flex items-center justify-center"><Gift size={64} weight="fill" style={{ color: r.color, filter: `drop-shadow(0 0 20px ${r.color}50)` }} /></div>}
                   <div className="absolute top-4 right-4"><span className="text-[9px] font-bold tracking-wider px-2.5 py-1 rounded-lg" style={{ color: r.color, background: "rgba(0,0,0,0.7)", border: `1px solid ${r.color}30` }}>{r.label.toUpperCase()}</span></div>
-                  <button onClick={() => setDetail(null)} className="absolute top-4 left-4 w-8 h-8 rounded-xl flex items-center justify-center transition-all" style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.5)" }} onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }} onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.5)"; e.currentTarget.style.background = "rgba(0,0,0,0.5)"; }}><X size={14} /></button>
+                  <button onClick={() => setDetail(null)} aria-label="Закрыть" className="absolute top-4 left-4 w-8 h-8 rounded-xl flex items-center justify-center transition-all" style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.5)" }} onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }} onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.5)"; e.currentTarget.style.background = "rgba(0,0,0,0.5)"; }}><X size={14} /></button>
                 </div>
                 <div className="p-6">
                   {detail.subcategory && <p className="text-[10px] font-bold tracking-wide uppercase mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>{detail.subcategory}</p>}
@@ -294,7 +296,7 @@ function DonateView({ user, onBalanceChange }) {
                   {detail.description && <p className="text-[13px] leading-relaxed mb-5" style={{ color: "rgba(255,255,255,0.75)" }}>{detail.description}</p>}
                   <div className="flex items-center justify-between pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                     <div className="flex items-center gap-2">
-                      <img src="/money.png" alt="" className="w-5 h-5" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
+                      <img src="/money.png" alt="SBT" className="w-5 h-5" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
                       <span className="text-[22px] font-black text-white tabular-nums">{(detail.price || 0).toLocaleString("ru-RU")}</span>
                       <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.75)" }}>SBT</span>
                     </div>
@@ -313,11 +315,12 @@ function DonateView({ user, onBalanceChange }) {
           <motion.div className="fixed inset-0 z-50 flex justify-end" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCart(false)} />
             <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              role="dialog" aria-modal="true" aria-label="Корзина"
               className="relative z-10 w-[380px] h-full flex flex-col" style={{ background: "rgba(10,10,14,0.88)", backdropFilter: "blur(20px)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}
             >
               <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center gap-2.5"><ShoppingCartSimple size={16} weight="fill" style={{ color: "#93c5fd" }} /><p className="text-[14px] font-bold text-white">Корзина ({cart.size})</p></div>
-                <button onClick={() => setShowCart(false)} className="w-7 h-7 rounded-lg flex items-center justify-center transition-all" style={{ color: "rgba(255,255,255,0.6)" }} onMouseEnter={e => e.currentTarget.style.color = "#fff"} onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}><X size={14} /></button>
+                <button onClick={() => setShowCart(false)} aria-label="Закрыть корзину" className="w-7 h-7 rounded-lg flex items-center justify-center transition-all" style={{ color: "rgba(255,255,255,0.6)" }} onMouseEnter={e => e.currentTarget.style.color = "#fff"} onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}><X size={14} /></button>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-3">
                 {[...cart].map(id => {
@@ -327,15 +330,15 @@ function DonateView({ user, onBalanceChange }) {
                   return (
                     <motion.div key={id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background: "rgba(255,255,255,0.03)" }}>
                       <div className="w-10 h-10 rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center" style={{ background: thumb ? "#000" : `${r.color}15` }}>
-                        {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : <Gift size={18} weight="fill" style={{ color: r.color }} />}
+                        {thumb ? <img src={thumb} alt={item.name || "Товар"} className="w-full h-full object-cover" /> : <Gift size={18} weight="fill" style={{ color: r.color }} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         {item.name && <p className="text-[12px] font-semibold text-white truncate">{item.name}</p>}
                         <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.6)" }}>{r.label}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"><img src="/money.png" alt="" className="w-3 h-3" /><span className="text-[12px] font-bold text-white tabular-nums">{(item.price || 0).toLocaleString("ru-RU")}</span></div>
-                        <button onClick={() => toggleCart(id)} className="w-6 h-6 rounded-lg flex items-center justify-center transition-all" style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5" }}><X size={11} /></button>
+                        <div className="flex items-center gap-1"><img src="/money.png" alt="SBT" className="w-3 h-3" /><span className="text-[12px] font-bold text-white tabular-nums">{(item.price || 0).toLocaleString("ru-RU")}</span></div>
+                        <button onClick={() => toggleCart(id)} aria-label="Удалить из корзины" className="w-6 h-6 rounded-lg flex items-center justify-center transition-all" style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5" }}><X size={11} /></button>
                       </div>
                     </motion.div>
                   );
@@ -345,7 +348,7 @@ function DonateView({ user, onBalanceChange }) {
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>Итого:</span>
                   <div className="flex items-center gap-1.5">
-                    <img src="/money.png" alt="" className="w-4 h-4" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
+                    <img src="/money.png" alt="SBT" className="w-4 h-4" style={{ filter: "drop-shadow(0 0 4px rgba(37,99,235,0.6))" }} />
                     <span className="text-[18px] font-black text-white tabular-nums">{[...cart].reduce((sum, id) => sum + (findItem(id)?.price || 0), 0).toLocaleString("ru-RU")}</span>
                     <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.75)" }}>SBT</span>
                   </div>
@@ -418,6 +421,7 @@ function MarketplaceView() {
         </div>
         <button onClick={() => setSellOpen(true)}
           disabled={owned.length === 0}
+          aria-label="Продать предметы"
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white disabled:opacity-30"
           style={{ background: "linear-gradient(90deg, #6366f1, #a855f7)" }}>
           <Plus size={12} weight="bold" />Продать
@@ -571,7 +575,7 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
             <p className="text-[13px] font-bold text-white">Выставить на продажу</p>
             <p className="text-[10px] text-white/55 mt-0.5">Предмет уйдёт из инвентаря, деньги поступят после покупки</p>
           </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg text-white/55 hover:text-white hover:bg-white/[0.07] flex items-center justify-center">
+          <button onClick={onClose} aria-label="Закрыть" className="w-7 h-7 rounded-lg text-white/55 hover:text-white hover:bg-white/[0.07] flex items-center justify-center">
             <X size={12} />
           </button>
         </div>

@@ -132,7 +132,7 @@ export default function SupportPage({ user }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: connected ? "#34d399" : "rgba(255,255,255,0.15)", boxShadow: connected ? "0 0 6px rgba(52,211,153,0.5)" : "none" }} />
-                  <button onClick={() => setView("new")} style={{
+                  <button onClick={() => setView("new")} aria-label="Новое обращение" style={{
                     width: 28, height: 28, borderRadius: 9, background: "rgba(37,99,235,0.15)", border: "none",
                     color: "#60a5fa", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
                   }}
@@ -357,6 +357,7 @@ function NewTicketForm({ user, onBack, onCreated }) {
         <div>
           <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 8 }}>Описание</p>
           <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
+            aria-label="Описание проблемы"
             placeholder="Подробно опишите проблему..."
             style={{
               width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 12,
@@ -492,6 +493,7 @@ function ChatView({ ticket, messages, user, onBack, onSend }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
+            aria-label="Написать сообщение"
             placeholder="Написать..."
             rows={1}
             style={{
@@ -502,7 +504,7 @@ function ChatView({ ticket, messages, user, onBack, onSend }) {
             onFocus={e => e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)"}
             onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"}
           />
-          <button type="submit" disabled={!input.trim()} style={{
+          <button type="submit" disabled={!input.trim()} aria-label="Отправить" style={{
             width: 40, height: 40, borderRadius: 12, flexShrink: 0, border: "none",
             background: input.trim() ? "rgba(37,99,235,0.7)" : "rgba(255,255,255,0.05)",
             color: input.trim() ? "#fff" : "rgba(255,255,255,0.4)",

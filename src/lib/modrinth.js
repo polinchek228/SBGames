@@ -104,6 +104,17 @@ export async function getMcVersionsByLoader(loader) {
   return all;
 }
 
+export async function getLatestVersions(projectIds, mcVersion, loader) {
+  const results = {};
+  await Promise.all(projectIds.map(async id => {
+    try {
+      const versions = await getProjectVersions(id, mcVersion, loader);
+      if (versions.length) results[id] = versions[0].version_number;
+    } catch {}
+  }));
+  return results;
+}
+
 export async function getModrinthLoaders() {
   try {
     const res = await fetch(`${BASE}/tag/loader`, { headers: { "User-Agent": "SBGames-Launcher/1.0" } });

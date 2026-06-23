@@ -56,8 +56,8 @@ pub fn find_local_java(version: u8) -> Option<PathBuf> {
     if !root.exists() {
         return None;
     }
-    // walkdir ищет javaw.exe / java. Берём первый найденный.
-    for entry in walkdir::WalkDir::new(&root).into_iter().flatten() {
+    // walkdir ищет javaw.exe / java. Не следуем за symlinks для безопасности.
+    for entry in walkdir::WalkDir::new(&root).follow_links(false).into_iter().flatten() {
         let path = entry.path();
         if path.is_file() {
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -85,8 +85,7 @@ fn adoptium_os() -> &'static str {
 }
 
 fn adoptium_arch() -> &'static str {
-    // Поддерживаем x64 — наиболее распространённая архитектура у игроков.
-    "x64"
+    if cfg!(target_arch = "aarch64") { "aarch64" } else { "x64" }
 }
 
 /// Гарантированно получить Java нужной версии: вернуть локальную или скачать.
@@ -181,6 +180,7 @@ pub async fn ensure_java(version: u8, app: &tauri::AppHandle) -> Result<PathBuf,
 }
 
 fn sha256_of_file(path: &PathBuf) -> Result<String, String> {
+    if std::fs::metadata(path).map(|m| m.len()).unwrap_or(0) == 0 { return Ok(String::new()); }
     let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 65536];

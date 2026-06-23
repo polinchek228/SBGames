@@ -15,7 +15,7 @@ export default function Titlebar() {
         data-tauri-drag-region
         className="flex items-center gap-2 cursor-default"
       >
-        <img src="/logo.jpg" alt="" className="w-4 h-4 rounded object-cover opacity-50" />
+        <img src="/logo.jpg" alt="SB Games" className="w-4 h-4 rounded object-cover opacity-50" />
         <span className="text-[11px] font-semibold text-white/35 tracking-wider">SB Games</span>
       </div>
 
@@ -24,6 +24,7 @@ export default function Titlebar() {
         {/* Minimize */}
         <button
           onClick={winMinimize}
+          aria-label="Свернуть"
           className="w-8 h-6 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center transition-all duration-150 group"
         >
           <svg width="8" height="1" viewBox="0 0 8 1" fill="currentColor" className="text-white/40 group-hover:text-white/80">
@@ -33,6 +34,7 @@ export default function Titlebar() {
         {/* Maximize */}
         <button
           onClick={winMaximize}
+          aria-label="Развернуть"
           className="w-8 h-6 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center transition-all duration-150 group"
         >
           <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/40 group-hover:text-white/80">
@@ -42,6 +44,7 @@ export default function Titlebar() {
         {/* Close */}
         <button
           onClick={winClose}
+          aria-label="Закрыть"
           className="w-8 h-6 rounded-lg bg-white/[0.06] hover:bg-red-600 flex items-center justify-center transition-all duration-150 group"
         >
           <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" className="text-white/40 group-hover:text-white">

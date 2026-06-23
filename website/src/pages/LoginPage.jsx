@@ -238,6 +238,11 @@ export default function LoginPage({ onLogin }) {
     return () => clearInterval(interval);
   }, [step, loginCode]);
 
+  // Cleanup Google polling interval on unmount
+  useEffect(() => {
+    return () => clearInterval(googlePollRef.current);
+  }, []);
+
   const handleNick = async (e) => {
     e.preventDefault();
     const clean = nick.trim().replace(/^@/, "");
@@ -644,7 +649,7 @@ export default function LoginPage({ onLogin }) {
 
 function BackBtn({ onClick }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} aria-label="Назад" style={{
       background: "transparent", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 12,
       cursor: "pointer", padding: "0 0 16px", fontFamily: "inherit",
       display: "inline-flex", alignItems: "center", gap: 4, transition: "color 0.15s",

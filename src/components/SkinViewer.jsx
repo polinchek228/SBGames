@@ -46,7 +46,6 @@ export default function SkinViewer({ username, customSkin }) {
       // Throttle render loop to ~30fps to cut GPU usage
       viewer.clock.autoStart = false;
       let lastFrame = 0;
-      const origAnimate = viewer.renderer.setAnimationLoop.bind(viewer.renderer);
       // skinview3d manages its own RAF loop; limit via global RAF override on the viewer
       // We use the IntersectionObserver to stop/resume instead
       viewerRef.current = viewer;
@@ -65,15 +64,7 @@ export default function SkinViewer({ username, customSkin }) {
       // Pause rendering when off-screen
       const io = new IntersectionObserver(([entry]) => {
         if (!viewerRef.current) return;
-        if (entry.isIntersecting) {
-          viewerRef.current.renderer.setAnimationLoop(viewerRef.current._animationLoop || null);
-          viewerRef.current.animationLoop = undefined;
-        } else {
-          // Store the current loop fn then stop it
-          if (viewerRef.current.renderer) {
-            viewerRef.current.renderer.setAnimationLoop(null);
-          }
-        }
+        viewerRef.current.renderPaused = !entry.isIntersecting;
       }, { threshold: 0.01 });
       if (canvasRef.current) io.observe(canvasRef.current);
       viewerRef.current._io = io;

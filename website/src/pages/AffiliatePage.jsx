@@ -579,7 +579,7 @@ function ManagerTab() {
           }}>
             Telegram: @sb7games
           </a>
-          <a href="mailto:support@sb-capital.group" style={{
+          <a href="mailto:support@sb-capital.group" aria-label="Написать в поддержку" style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             padding: "12px 24px", borderRadius: 12, fontSize: 13, fontWeight: 700,
             background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",

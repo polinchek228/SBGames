@@ -21,6 +21,7 @@ export default function SupportModal({ user, onClose }) {
 
   return (
     <motion.div
+      role="dialog" aria-modal="true" aria-label="Обращение в поддержку"
       className="fixed inset-0 z-50 flex items-center justify-center"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -305,6 +306,7 @@ function SupportChat({ ticketId, user }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
+          aria-label="Написать сообщение"
           placeholder="Написать сообщение..."
           rows={1}
           className="flex-1 rounded-xl bg-white/[0.05] border border-white/[0.08] focus:border-blue-500/30 text-white placeholder-white/20 text-[13px] px-3.5 py-2.5 outline-none resize-none transition-all duration-150"

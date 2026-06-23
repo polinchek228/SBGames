@@ -501,7 +501,7 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
             style={{ background: "rgba(239,68,68,0.08)", color: "rgba(252,165,165,0.5)" }}
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.18)"; e.currentTarget.style.color = "#fca5a5"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "rgba(252,165,165,0.5)"; }}
-            title="Закрыть тикет"
+            title="Закрыть тикет" aria-label="Закрыть тикет"
           >
             <X size={13} />
           </motion.button>
@@ -523,6 +523,7 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
               <textarea
                 value={reqText}
                 onChange={e => setReqText(e.target.value)}
+                aria-label="Реквизиты для оплаты"
                 placeholder={"Карта: 2200 0000 0000 0000\nБанк: Сбербанк\nПолучатель: Иван И.\n\nСумма: " + (ticket.paymentAmount || "?") + " ₽"}
                 rows={4}
                 className="w-full rounded-xl text-[12px] px-3 py-2.5 outline-none resize-none"
@@ -570,7 +571,7 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
               >
                 <Coins size={12} />Выдать и закрыть
               </motion.button>
-              <button onClick={() => setShowPay(false)}
+              <button onClick={() => setShowPay(false)} aria-label="Закрыть"
                 className="px-2 py-1.5 rounded-xl text-[11px] transition-colors"
                 style={{ color: "rgba(255,255,255,0.5)" }}
               >✕</button>
@@ -646,12 +647,13 @@ function ChatView({ ticket, messages, user, onBack, onSend, onSendRequisites, on
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
+            aria-label={isAdmin ? "Ответить" : "Написать сообщение"}
             placeholder={isAdmin ? "Ответить..." : "Написать..."}
             rows={1}
             className="flex-1 rounded-2xl text-[13px] px-4 py-2.5 outline-none resize-none transition-all duration-150"
             style={{ background: "rgba(255,255,255,0.05)", color: "#fff", maxHeight: 80, caretColor: "#60a5fa" }}
           />
-          <motion.button type="submit" disabled={!input.trim()} whileTap={{ scale: 0.88 }}
+          <motion.button type="submit" disabled={!input.trim()} whileTap={{ scale: 0.88 }} aria-label="Отправить"
             className="w-9 h-9 flex-shrink-0 rounded-2xl flex items-center justify-center transition-all duration-150"
             style={{ background: input.trim() ? "rgba(37,99,235,0.7)" : "rgba(255,255,255,0.05)", color: input.trim() ? "#fff" : "rgba(255,255,255,0.45)" }}
           >
@@ -797,6 +799,7 @@ function NewTicketForm({ user, onBack, onCreated }) {
           <p className="text-[10px] uppercase tracking-widest font-semibold mb-2"
             style={{ color: "rgba(255,255,255,0.65)" }}>Описание</p>
           <textarea value={text} onChange={e => setText(e.target.value)}
+            aria-label="Описание проблемы"
             placeholder="Подробно опишите проблему..."
             rows={6}
             className="w-full rounded-2xl text-[13px] px-4 py-3 outline-none resize-none transition-all duration-150"

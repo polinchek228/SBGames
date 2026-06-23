@@ -130,7 +130,12 @@ pub fn instances_root() -> PathBuf {
 }
 
 pub fn instance_dir(id: &str) -> PathBuf {
-    instances_root().join(id)
+    // Sanitize: only allow alphanumeric, hyphens, underscores
+    let safe: String = id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+    if safe.is_empty() {
+        return instances_root().join("_invalid");
+    }
+    instances_root().join(&safe)
 }
 
 pub fn instance_json_path(id: &str) -> PathBuf {
@@ -171,13 +176,15 @@ pub fn load(id: &str) -> Result<InstanceConfig, String> {
     serde_json::from_str(&text).map_err(|e| format!("parse {}: {}", path.display(), e))
 }
 
-/// Сохранить конфиг (перезаписать instance.json).
+/// Сохранить конфиг (атомарная запись через tmp + rename).
 pub fn save(cfg: &InstanceConfig) -> Result<(), String> {
     let dir = instance_dir(&cfg.id);
     std::fs::create_dir_all(&dir).map_err(|e| format!("create dir {}: {}", dir.display(), e))?;
     let path = instance_json_path(&cfg.id);
+    let tmp = path.with_extension("json.tmp");
     let text = serde_json::to_string_pretty(cfg).map_err(|e| format!("serialize: {}", e))?;
-    std::fs::write(&path, text).map_err(|e| format!("write {}: {}", path.display(), e))
+    std::fs::write(&tmp, &text).map_err(|e| format!("write tmp: {}", e))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("rename: {}", e))
 }
 
 fn emit_status(app: &tauri::AppHandle, msg: &str) {
@@ -211,8 +218,12 @@ pub fn instance_list() -> Vec<InstanceConfig> {
             }
         }
     }
-    // Свеже-сыгранные — наверх.
-    out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    // Свеже-сыгранные — наверх (по last_played, затем по created_at).
+    out.sort_by(|a, b| {
+        let a_played = a.last_played.unwrap_or(0);
+        let b_played = b.last_played.unwrap_or(0);
+        b_played.cmp(&a_played).then(b.created_at.cmp(&a.created_at))
+    });
     out
 }
 
@@ -270,7 +281,6 @@ pub fn instance_update(cfg: InstanceConfig) -> Result<(), String> {
 #[tauri::command]
 pub fn instance_open_folder(id: String) -> Result<(), String> {
     let dir = instance_dir(&id);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {}: {}", dir.display(), e))?;
     open_in_file_manager(&dir)
 }
 

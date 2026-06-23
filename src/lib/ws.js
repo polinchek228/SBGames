@@ -5,6 +5,7 @@ import { WS_URL, getToken } from "./api.js";
 
 let socket = null;
 let reconnectTimer = null;
+let heartbeatTimer = null;
 let reconnectDelay = 1000;
 const MAX_DELAY = 30_000;
 let dead = false;
@@ -18,45 +19,46 @@ function connect() {
 
   try {
     socket = new WebSocket(WS_URL);
-    console.log("[ws] connecting to", WS_URL);
   } catch (e) {
-    console.error("[ws] connect failed:", e);
     scheduleReconnect();
     return;
   }
 
   socket.onopen = () => {
-    console.log("[ws] connected, readyState:", socket.readyState);
     reconnectDelay = 1000;
     if (pendingAuth) {
       try {
         socket.send(JSON.stringify(pendingAuth));
-        console.log("[ws] auth sent, userId:", pendingAuth.userId);
-      } catch (e) { console.error("[ws] auth send failed:", e); }
-      authenticated = true;
+        // Auth sent (userId not logged for security)
+      } catch {}
     }
+    // Start heartbeat to detect half-open connections
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(() => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        try { socket.send(JSON.stringify({ type: "ping" })); } catch {}
+      }
+    }, 30_000);
     listeners.forEach(fn => fn({ type: "_ws_status", connected: true }));
   };
 
   socket.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.type === "_auth_ok") { authenticated = true; console.log("[ws] auth OK"); return; }
-      if (msg.type === "auth_error") { console.error("[ws] auth_error:", msg.message); return; }
+      if (msg.type === "_auth_ok") { authenticated = true; pendingAuth = null; return; }
+      if (msg.type === "auth_error") { authenticated = false; return; }
       listeners.forEach(fn => { try { fn(msg); } catch {} });
     } catch {}
   };
 
   socket.onclose = (e) => {
-    console.log("[ws] closed, code:", e.code, "reason:", e.reason);
     authenticated = false;
     socket = null;
     listeners.forEach(fn => fn({ type: "_ws_status", connected: false }));
     scheduleReconnect();
   };
 
-  socket.onerror = (e) => {
-    console.error("[ws] error:", e);
+  socket.onerror = () => {
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
   };
 }
@@ -74,9 +76,7 @@ export function initWS(userId, username) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     try {
       socket.send(JSON.stringify(pendingAuth));
-      console.log("[ws] re-auth sent, userId:", userId);
     } catch {}
-    authenticated = true;
     return;
   }
   connect();
@@ -86,11 +86,8 @@ export function sendWS(data) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     try {
       socket.send(JSON.stringify(data));
-    } catch (e) {
-      console.error("[ws] send failed:", e);
-    }
+    } catch {}
   } else {
-    console.warn("[ws] send skipped, socket state:", socket?.readyState, "dead:", dead);
   }
 }
 
@@ -106,6 +103,7 @@ export function isWSConnected() {
 export function destroyWS() {
   dead = true;
   clearTimeout(reconnectTimer);
+  clearInterval(heartbeatTimer);
   listeners.clear();
   authenticated = false;
   pendingAuth = null;

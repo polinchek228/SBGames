@@ -39,7 +39,7 @@ export default function NewsPage() {
             Из канала @sb7games
           </p>
         </div>
-        <button onClick={() => fetchNews(true)}
+        <button onClick={() => fetchNews(true)} aria-label="Обновить новости"
           className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
           style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)" }}
         >
@@ -73,18 +73,19 @@ export default function NewsPage() {
           >
             <div className="absolute inset-0 bg-black/75" onClick={() => setDetail(null)} />
             <motion.div
+              role="dialog" aria-modal="true" aria-label="Новость"
               initial={{ scale: 0.93, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.93 }}
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
               className="relative z-10 w-[520px] max-h-[70vh] flex flex-col rounded-2xl overflow-hidden"
               style={{ background: "rgba(12,12,12,0.88)", backdropFilter: "blur(20px)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }}
             >
               {detail.photo && (
-                <img src={detail.photo} alt="" className="w-full h-48 object-cover flex-shrink-0" />
+                <img src={detail.photo} alt={detail.title || "Новость"} className="w-full h-48 object-cover flex-shrink-0" />
               )}
               <div className="p-5 overflow-y-auto flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[15px] font-bold text-white leading-snug">{detail.title || "Новость"}</p>
-                  <button onClick={() => setDetail(null)}
+                  <button onClick={() => setDetail(null)} aria-label="Закрыть"
                     className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
                     style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.65)" }}
                   >
@@ -119,7 +120,7 @@ function NewsCard({ item, i, onClick }) {
       {/* Photo or placeholder */}
       <div className="h-36 flex-shrink-0 overflow-hidden" style={{ background: "rgba(17,17,17,0.5)" }}>
         {item.photo ? (
-          <img src={item.photo} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          <img src={item.photo} alt={item.title || "Новость"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Megaphone size={32} style={{ color: "rgba(255,255,255,0.08)" }} />

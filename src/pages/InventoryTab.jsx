@@ -37,7 +37,7 @@ const SERVER_FILTERS = [
   { id: "global",  label: "Глобальные" },
 ];
 
-function ItemCard({ item, equipped, onEquip, onUnequip, busy }) {
+function ItemCard({ item, equipped, onEquip, onUnequip, busy, onClick }) {
   const rarity = RARITY[item.rarity] || RARITY.common;
   const isEquipped = equipped;
 
@@ -48,6 +48,7 @@ function ItemCard({ item, equipped, onEquip, onUnequip, busy }) {
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-200"
+      onClick={() => onClick?.(item)}
       style={{
         background: isEquipped ? `${rarity.glow}` : "rgba(255,255,255,0.06)",
         border: isEquipped ? `1.5px solid ${rarity.color}40` : "1.5px solid rgba(255,255,255,0.12)",
@@ -182,7 +183,7 @@ function ItemDetail({ item, equipped, onEquip, onUnequip, busy, onClose }) {
             </span>
           </div>
         </div>
-        <button onClick={onClose}
+        <button onClick={onClose} aria-label="Закрыть"
           className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all"
           style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}
           onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
@@ -517,6 +518,7 @@ export default function InventoryTab({ user }) {
                           onEquip={handleEquip}
                           onUnequip={handleUnequip}
                           busy={busy === item.id}
+                          onClick={setSelected}
                         />
                       ))}
                     </AnimatePresence>
@@ -549,7 +551,8 @@ export default function InventoryTab({ user }) {
                     || cosmeticEquip?.badge === item.id
                     || cosmeticEquip?.avatar_animated === item.id;
                   return (
-                    <div key={item.id} className="group relative rounded-2xl overflow-hidden transition-all duration-200"
+                    <div key={item.id} className="group relative rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer"
+                      onClick={() => setSelected(item)}
                       style={{
                         background: isEquipped ? `${meta.color}12` : "rgba(255,255,255,0.05)",
                         border: isEquipped ? `1.5px solid ${meta.color}40` : "1.5px solid rgba(255,255,255,0.1)",

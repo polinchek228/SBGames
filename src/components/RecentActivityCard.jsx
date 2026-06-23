@@ -123,7 +123,7 @@ export default function RecentActivityCard({ userId }) {
               const img = SERVER_IMAGE[srv];
               return (
                 <div key={srv} className="flex items-center gap-3 group">
-                  {img && <img src={img} alt="" className="w-7 h-7 rounded-lg flex-shrink-0 object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
+                  {img && <img src={img} alt={SERVER_LABEL[srv] || srv} className="w-7 h-7 rounded-lg flex-shrink-0 object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
                   {!img && <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)" }} />}
                   <span className="text-[12px] font-bold text-white/95 w-20 truncate group-hover:text-white transition-colors">
                     {SERVER_LABEL[srv] || srv.toUpperCase()}

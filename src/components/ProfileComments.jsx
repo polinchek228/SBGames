@@ -68,6 +68,7 @@ export default function ProfileComments({ targetId, viewer, onOpenProfile }) {
         <div className="rounded-2xl p-3 flex flex-col gap-2"
           style={{ background: "rgba(255,255,255,0.04)" }}>
           <textarea value={text} onChange={e => setText(e.target.value.slice(0, 200))}
+            aria-label="Напиши комментарий"
             placeholder="Напиши комментарий…"
             rows={2}
             maxLength={200}

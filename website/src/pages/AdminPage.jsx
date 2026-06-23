@@ -117,7 +117,7 @@ export default function AdminPage({ user }) {
               {modal.title && (
                 <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ fontSize: 16, fontWeight: 800 }}>{modal.title}</div>
-                  <button onClick={() => setModal(null)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+                  <button onClick={() => setModal(null)} aria-label="Закрыть" style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
                 </div>
               )}
               <div style={{ padding: modal.title ? 24 : 0 }}>{modal.body}</div>
@@ -151,19 +151,34 @@ function TicketsSection({ user }) {
 
   useEffect(() => {
     if (!user?.id) return;
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", userId: user.id, username: user.username, token: getToken() }));
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === "new_ticket") setTickets(p => [msg.ticket, ...p.filter(t => t.id !== msg.ticket.id)]);
-        if (msg.type === "ticket_update") setTickets(p => p.map(t => t.id === msg.ticket.id ? { ...t, ...msg.ticket } : t));
-        if (msg.type === "ticket_messages") setMessages(msg.messages || []);
-        if (msg.type === "message" && active?.id === msg.ticketId) setMessages(p => p.find(m => m.id === msg.message.id) ? p : [...p, msg.message]);
-      } catch {}
-    };
-    return () => ws.close();
+    let retries = 0;
+    const MAX_RETRIES = 5;
+    let timeoutId;
+    let closed = false;
+
+    function connect() {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+      ws.onopen = () => { retries = 0; ws.send(JSON.stringify({ type: "auth", userId: user.id, username: user.username, token: getToken() })); };
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "new_ticket") setTickets(p => [msg.ticket, ...p.filter(t => t.id !== msg.ticket.id)]);
+          if (msg.type === "ticket_update") setTickets(p => p.map(t => t.id === msg.ticket.id ? { ...t, ...msg.ticket } : t));
+          if (msg.type === "ticket_messages") setMessages(msg.messages || []);
+          if (msg.type === "message" && active?.id === msg.ticketId) setMessages(p => p.find(m => m.id === msg.message.id) ? p : [...p, msg.message]);
+        } catch {}
+      };
+      ws.onclose = () => {
+        if (!closed && retries < MAX_RETRIES) {
+          retries++;
+          timeoutId = setTimeout(connect, 3000);
+        }
+      };
+    }
+
+    connect();
+    return () => { closed = true; clearTimeout(timeoutId); wsRef.current?.close(); };
   }, [user?.id]);
 
   useEffect(() => { api.get("/admin/tickets").then(d => setTickets(d.tickets || [])).catch(() => {}); }, []);
@@ -567,7 +582,7 @@ function ShopSection() {
 function SelectBox({ value, onChange, options }) {
   return (
     <div style={{ position: "relative" }}>
-      <select value={value} onChange={e => onChange(e.target.value)} style={{
+      <select value={value} onChange={e => onChange(e.target.value)} aria-label="Выбор категории" style={{
         appearance: "none", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 9,
         padding: "9px 32px 9px 13px", color: "#fff", fontSize: 13, outline: "none", cursor: "pointer", fontFamily: "inherit",
       }}>

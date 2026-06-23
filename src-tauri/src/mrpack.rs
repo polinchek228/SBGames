@@ -219,6 +219,12 @@ async fn download_mrpack_file(
     cfg: &mut InstanceConfig,
 ) -> Result<(), String> {
     let dest = inst_dir.join(&mf.path);
+    // Path traversal guard: dest must stay inside inst_dir
+    let canonical_inst = inst_dir.canonicalize().map_err(|e| format!("canonicalize inst_dir: {}", e))?;
+    let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.clone());
+    if !canonical_dest.starts_with(&canonical_inst) {
+        return Err(format!("path traversal blocked: {}", mf.path));
+    }
     if dest.exists() {
         return Ok(());
     }
@@ -242,13 +248,32 @@ async fn download_mrpack_file(
     let mut ok = false;
     for u in &mf.downloads {
         if download_file(u, &dest, app).await.is_ok() {
-            // sha512 проверка.
+            // Integrity check: sha512 first, then sha1 fallback
             if let Some(expected) = &mf.sha512 {
                 if let Ok(actual) = sha512_of_file(&dest) {
                     if actual != *expected {
                         let _ = std::fs::remove_file(&dest);
                         continue;
                     }
+                }
+            } else if let Some(expected_sha1) = &mf.sha1 {
+                if let Ok(actual) = sha1_of_file(&dest) {
+                    if actual != *expected_sha1 {
+                        let _ = std::fs::remove_file(&dest);
+                        continue;
+                    }
+                }
+            } else {
+                // No hash at all — reject file
+                let _ = std::fs::remove_file(&dest);
+                continue;
+            }
+            // File size check if provided
+            if mf.file_size > 0 {
+                let actual_size = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+                if actual_size != mf.file_size {
+                    let _ = std::fs::remove_file(&dest);
+                    continue;
                 }
             }
             ok = true;
@@ -302,6 +327,10 @@ fn extract_overrides(
         if rel.is_empty() {
             continue;
         }
+        // Path traversal guard: reject entries with ".." components
+        if rel.contains("..") || rel.starts_with('/') {
+            continue;
+        }
         tasks.push((i, inst_dir.join(rel), is_dir || name.ends_with('/')));
     }
 
@@ -323,6 +352,20 @@ fn extract_overrides(
 fn sha512_of_file(path: &Path) -> Result<String, String> {
     let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha512::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn sha1_of_file(path: &Path) -> Result<String, String> {
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = sha1::Sha1::new();
     let mut buf = [0u8; 65536];
     loop {
         let n = f.read(&mut buf).map_err(|e| e.to_string())?;

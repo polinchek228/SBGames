@@ -20,7 +20,20 @@ const router = express.Router();
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 const MODPACK_DIR = process.env.MODPACK_DIR || "/opt/sbgames-modpack";
-const HMAC_SECRET = process.env.MODPACK_HMAC_SECRET || "sbg-modpack-secret-2026-rotate-quarterly";
+
+// Ed25519 приватный ключ для подписи манифеста. PEM в env (PKCS#8).
+// Генерация пары:
+//   openssl genpkey -algorithm ed25519 -out modpack-sign.key
+//   openssl pkey -in modpack-sign.key -pubout -outform DER | tail -c 32 | base64
+// Приватный (PEM) → MODPACK_SIGN_PRIVKEY на сервере; публичный (base64 32B) → клиент.
+const SIGN_PRIVKEY_PEM = process.env.MODPACK_SIGN_PRIVKEY || "";
+let signKey = null;
+if (SIGN_PRIVKEY_PEM) {
+  try { signKey = crypto.createPrivateKey({ key: SIGN_PRIVKEY_PEM, format: "pem" }); }
+  catch (e) { console.error("[modpack] bad MODPACK_SIGN_PRIVKEY:", e.message); }
+} else {
+  console.warn("[modpack] MODPACK_SIGN_PRIVKEY not set — manifest will be UNSIGNED and clients will reject it");
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function buildManifest() {
@@ -73,10 +86,17 @@ function buildManifest() {
         zip_sha256,
         mods,
     };
-    // HMAC-подпись (на всё кроме signature)
-    const sigPayload = JSON.stringify(manifest);
-    const sig = crypto.createHmac("sha256", HMAC_SECRET).update(sigPayload).digest("hex");
-    manifest.signature = sig;
+    // Ed25519-подпись. Подписываем канонизированный JSON манифеста БЕЗ поля
+    // signature. Клиент проверяет подпись вшитым публичным ключом и
+    // отклоняет манифест при невалидной/отсутствующей подписи (fail-closed).
+    if (signKey) {
+        const sigPayload = Buffer.from(JSON.stringify(manifest), "utf8");
+        const sig = crypto.sign(null, sigPayload, signKey); // Ed25519: algo = null
+        manifest.signature = sig.toString("base64");
+    } else {
+        // Ключ не настроен — отдаём без подписи. Клиент это отвергнет.
+        manifest.signature = "";
+    }
     return manifest;
 }
 

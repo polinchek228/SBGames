@@ -17,8 +17,12 @@
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
-/* Remove outline */
-input:focus, button:focus { outline: none; }
+/* Remove outline only for mouse clicks — keep keyboard focus visible */
+input:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
+input:focus-visible, button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.8);
+  outline-offset: 2px;
+}
 
 
 /* Animations for library items */

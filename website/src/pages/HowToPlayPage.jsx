@@ -46,7 +46,7 @@ export default function HowToPlayPage() {
           </div>
         </motion.div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 64 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 64 }}>
           {STEPS.map((s, i) => (
             <motion.div
               key={s.n}

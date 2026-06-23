@@ -186,7 +186,7 @@ app.use("/servers", express.static(
 // CSP is intentionally minimal GЗц this is an API server, not serving HTML pages.
 // The strict CSP was causing Mac/webview clients to fail loading resources.
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {},
   crossOriginEmbedderPolicy: false,
   crossOriginOpenerPolicy:    false,
   crossOriginResourcePolicy:  { policy: "cross-origin" },
@@ -284,7 +284,7 @@ const makeLimit = (windowMs, max, msg) => rateLimit({
   standardHeaders: true,
   legacyHeaders:  false,
   keyGenerator:   req => getIP(req),
-  skip:           req => isAdmin(req.body?.username) || isAdminId(String(req.body?.tgUser?.id || "")),
+  skip:           () => false,
 });
 
 const authLimiter      = makeLimit(60_000, 30,  "Слишком много попыток входа");
@@ -385,7 +385,7 @@ app.get("/update/:target/:arch/:currentVersion", (req, res) => {
 app.use("/update", express.static(updatesDir, { maxAge: "1d", etag: true }));
 
 // Debug: updater diagnostics (accessible via /health)
-app.get("/update-debug", (_req, res) => {
+app.get("/update-debug", requireAuth, (_req, res) => {
   const latest = detectLatestVersion();
   const files = listUpdates();
   res.json({ latest, files, dir: updatesDir, exists: fs.existsSync(updatesDir) });
@@ -438,6 +438,11 @@ app.use((req, _res, next) => {
 function sanitize(str, max = 500) {
   if (typeof str !== "string") return "";
   return sanitizeHtml(str.slice(0, max), { allowedTags: [], allowedAttributes: {} }).trim();
+}
+// Escape Markdown special characters for Telegram bot messages
+function sanitizeMarkdown(str) {
+  if (typeof str !== "string") return "";
+  return str.replace(/[_*\[\]()~`>#+\-=|{}.!\\]/g, "\\$&");
 }
 function signToken(userId, tokenVersion = 0) { return jwt.sign({ sub: userId, ver: tokenVersion }, JWT_SECRET, { expiresIn: "7d" }); }
 function verifyToken(token) { try { return jwt.verify(token, JWT_SECRET); } catch { return null; } }
@@ -610,7 +615,8 @@ app.get("/auth/google/init", (req, res) => {
 app.get("/auth/google/callback", async (req, res) => {
   const { code, state, error } = req.query;
   if (error || !code || !state) {
-    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Ошибка входа через Google</p><p style="color:rgba(255,255,255,0.5);font-size:14px">${error || "Нет кода авторизации"}</p></div></body></html>`);
+    const esc = String(error || "Нет кода авторизации").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    return res.status(400).send(`<html><body style="background:#0a0a0f;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><p style="font-size:18px;font-weight:700;color:#f87171">Ошибка входа через Google</p><p style="color:rgba(255,255,255,0.5);font-size:14px">${esc}</p></div></body></html>`);
   }
 
   const pending = googlePending.get(state);
@@ -754,16 +760,16 @@ app.get("/user/search", async (req, res) => {
   res.json(found ? { found: true, id: found.id, username: found.username } : { found: false });
 });
 
-app.get("/online", (_, res) => {
+app.get("/online", requireAuth, (_, res) => {
   res.json({ users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username })) });
 });
 
-app.get("/support/tickets", (req, res) => {
+app.get("/support/tickets", requireAuth, (req, res) => {
   const list = [...tickets.values()].map(t => ({ id: t.id, category: t.category, username: t.username, status: t.status, createdAt: t.createdAt, preview: t.preview, unread: t.unread || 0 }));
   res.json({ tickets: list.sort((a, b) => b.createdAt - a.createdAt) });
 });
 
-app.get("/support/ticket/:id", (req, res) => {
+app.get("/support/ticket/:id", requireAuth, (req, res) => {
   const t = tickets.get(Number(req.params.id));
   if (!t) return res.status(404).json({ message: "Тикет не найден" });
   res.json(t);
@@ -818,11 +824,15 @@ async function requireAdmin(req, res) {
 app.get("/admin/users", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const all = await redisAccounts.allValues();
-  const users = all.map(a => ({
+  const allUsers = all.map(a => ({
     id: a.id, username: a.username, telegram: a.telegram,
     balance: a.balance ?? 0, role: a.role, createdAt: a.createdAt,
-  }));
-  res.json({ users: users.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) });
+  })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const page = parseInt(req.query.page) || 1;
+  const limit = 50;
+  const offset = (page - 1) * limit;
+  const users = allUsers.slice(offset, offset + limit);
+  res.json({ users, total: allUsers.length, page, limit });
 });
 
 app.post("/admin/set-role", async (req, res) => {
@@ -848,14 +858,30 @@ app.post("/admin/set-balance", async (req, res) => {
   res.json({ ok: true, balance });
 });
 
+app.post("/admin/grant-sbt", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { userId, amount } = req.body;
+  if (!userId || typeof amount !== "number" || amount === 0) return res.status(400).json({ message: "Bad request" });
+  const acc = await redisAccounts.get(String(userId));
+  if (!acc) return res.status(404).json({ message: "User not found" });
+  acc.balance = (acc.balance ?? 0) + amount;
+  await redisAccounts.set(String(userId), acc);
+  sendToUser(String(userId), { type: "balance_update", balance: acc.balance });
+  res.json({ ok: true, balance: acc.balance });
+});
+
 app.get("/admin/tickets", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
-  const list = [...tickets.values()].map(t => ({
+  const all = [...tickets.values()].map(t => ({
     id: t.id, category: t.category, username: t.username,
     status: t.status, createdAt: t.createdAt, preview: t.preview,
     unread: t.unread || 0, userId: t.userId,
-  }));
-  res.json({ tickets: list.sort((a, b) => b.createdAt - a.createdAt) });
+  })).sort((a, b) => b.createdAt - a.createdAt);
+  const page = parseInt(req.query.page) || 1;
+  const limit = 50;
+  const offset = (page - 1) * limit;
+  const tickets_list = all.slice(offset, offset + limit);
+  res.json({ tickets: tickets_list, total: all.length, page, limit });
 });
 
 app.post("/admin/ticket/:id/status", async (req, res) => {
@@ -2141,10 +2167,6 @@ app.put("/api/groups/:id/closed", requireAuth, async (req, res) => {
   res.json({ ok: true, group: pub });
 });
 
-app.get("/online", (_, res) => {
-  res.json({ users: [...wsClients.values()].filter(c => c.userId && c.username).map(c => ({ id: c.userId, username: c.username })) });
-});
-
 // ─── Affiliate / Referral System ─────────────────────────────────────────────
 const LEVELS = [
   { level: 1, percent: 30, minReferrals: 0 },
@@ -3030,7 +3052,7 @@ const TICKET_STATUS_LABELS = { open: "открыт", in_progress: "в работ
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function mainMenu(chatId, account) {
-  const name  = account?.username || "игрок";
+  const name  = sanitizeMarkdown(account?.username || "игрок");
   const bal   = (account?.balance ?? 0).toLocaleString("ru-RU");
   const isAdm = account?.role === "admin";
   bot.sendMessage(chatId,
@@ -3065,7 +3087,7 @@ async function showAdminTicketList(chatId, filter = "open") {
   }
 
   const ticketBtns = list.map(t => [{
-    text: `#${t.id} [${TICKET_STATUS_LABELS[t.status] || t.status}] ${t.username} — ${t.category.slice(0, 20)}${t.unread ? ` (${t.unread} новых)` : ""}`,
+    text: `#${t.id} [${TICKET_STATUS_LABELS[t.status] || t.status}] ${sanitizeMarkdown(t.username)} — ${t.category.slice(0, 20)}${t.unread ? ` (${t.unread} новых)` : ""}`,
     callback_data: `admin_ticket_${t.id}`,
   }]);
 
@@ -3595,7 +3617,7 @@ bot.on("message", async (msg) => {
         await saveReferral(tgId, newData);
       }
     }
-    bot.sendMessage(chatId, `Добро пожаловать, *${clean}*! Ты теперь в системе.`, { parse_mode: "Markdown", reply_markup: USER_KB });
+    bot.sendMessage(chatId, `Добро пожаловать, *${sanitizeMarkdown(clean)}*! Ты теперь в системе.`, { parse_mode: "Markdown", reply_markup: USER_KB });
     return;
   }
 
@@ -3735,16 +3757,12 @@ bot.on("callback_query", async (q) => {
 bot.on("polling_error", (err) => { if (!err.message?.includes("409")) console.error("[bot]", err.message); });
 
 
-// --- Website static serving -----------------------------------------------------
-const websiteDir = require("path").join(__dirname, "website-dist");
+// --- Website static serving (SPA catch-all) ------------------------------------
+const websiteDir = require("path").join(__dirname, "website", "dist");
 if (fs.existsSync(websiteDir)) {
   app.use(express.static(websiteDir, { maxAge: "1d", etag: true, index: "index.html" }));
-  app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/auth/") || req.path.startsWith("/api/") || req.path.startsWith("/payments/") ||
-        req.path.startsWith("/admin/") || req.path.startsWith("/support/") || req.path.startsWith("/update/") ||
-        req.path.startsWith("/affiliate/") || req.path.startsWith("/invite/") || req.path.startsWith("/online") ||
-        req.path.startsWith("/news") || req.path.startsWith("/downloads/") || req.path.startsWith("/health")) return next();
-    res.sendFile(require("path").join(websiteDir, "index.html"), err => { if (err) next(); });
+  app.get('*', (req, res) => {
+    res.sendFile(require("path").join(websiteDir, 'index.html'));
   });
 }
 

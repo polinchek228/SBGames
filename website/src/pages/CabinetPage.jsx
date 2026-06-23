@@ -127,7 +127,7 @@ export default function CabinetPage({ user }) {
             <label
               className="flex items-center gap-1.5 text-[11px] font-semibold transition-opacity"
               style={{ cursor: skinUnlocked ? "pointer" : "default", color: skinUnlocked ? "#60a5fa" : "rgba(255,255,255,0.2)", opacity: skinUnlocked ? 1 : 0.6 }}>
-              <UploadSimple size={12} />
+              <UploadSimple size={12} aria-hidden="true" />
               {skinUnlocked ? "Загрузить" : "1000 SBT"}
               {skinUnlocked && (
                 <input type="file" accept="image/png" style={{ display: "none" }}

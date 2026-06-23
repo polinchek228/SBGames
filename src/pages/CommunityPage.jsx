@@ -569,7 +569,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 </div>
               </div>
               {!activeCall && (
-                <button onClick={() => startDMCall(chatWith)}
+                <button onClick={() => startDMCall(chatWith)} aria-label="Позвонить"
                   className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
                   style={{ background: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.3)"}
@@ -741,6 +741,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 />
                 <motion.button onClick={sendFriendRequest}
                   whileTap={{ scale: 0.9 }}
+                  aria-label="Добавить друга"
                   className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
                   style={{ background: "rgba(37,99,235,0.7)", color: "#fff" }}>
                   <UserCirclePlus size={18} />
@@ -1096,7 +1097,7 @@ function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, onl
           className="flex-1 rounded-xl text-[13px] px-4 py-3 outline-none"
           style={{ background: "rgba(255,255,255,0.06)", color: "#fff", caretColor: "#fff" }}
         />
-        <button type="submit" disabled={!input.trim()}
+        <button type="submit" disabled={!input.trim()} aria-label="Отправить сообщение"
           className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-30"
           style={{ background: "#2563EB", color: "#fff" }}>
           <PaperPlaneTilt size={16} weight="fill" />
@@ -1854,7 +1855,7 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
     <>
       <div className="flex items-center gap-3 px-5 py-3.5 flex-shrink-0"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-        <button onClick={onBack || onLeave} className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+        <button onClick={onBack || onLeave} aria-label="Назад" className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
           style={{ color: "rgba(255,255,255,0.4)" }}
           onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
           onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
@@ -1875,7 +1876,7 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
             {groupVoiceIds.length > 0 && <span style={{ color: "#4ade80" }}> &middot; {groupVoiceIds.length} в голосе</span>}
           </p>
         </div>
-        <button onClick={() => setShowMembers(!showMembers)}
+        <button onClick={() => setShowMembers(!showMembers)} aria-label={showMembers ? "Скрыть участников" : "Показать участников"} aria-expanded={showMembers}
           className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
           style={{ background: showMembers ? "rgba(255,255,255,0.1)" : "transparent", color: "rgba(255,255,255,0.5)" }}
           onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
@@ -2153,7 +2154,7 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
         style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
         <textarea value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(e); } }}
-          placeholder="Сообщение команде..." rows={1}
+          aria-label="Сообщение команде" placeholder="Сообщение команде..." rows={1}
           className="flex-1 rounded-xl text-[13px] px-4 py-3 outline-none resize-none"
           style={{ background: "rgba(255,255,255,0.05)", color: "#fff", maxHeight: 80, caretColor: "#c4b5fd" }} />
         <button type="submit" disabled={!input.trim()}
