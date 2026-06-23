@@ -7,11 +7,11 @@ import { pushLocalActivity } from "../components/RecentActivityCard.jsx";
 import { searchMods, searchResourcePacks, searchShaders, getPopular, getProjectVersions, getProject, downloadUrl, formatDownloads, truncateText, getMcVersions, getModrinthLoaders, getLatestVersions } from "../lib/modrinth.js";
 
 const SERVERS = [
-  { id: "starwars", name: "STARWARS", subtitle: "╨ù╨▓╤æ╨╖╨┤╨╜╤ï╨╡ ╨Æ╨╛╨╣╨╜╤ï", description: "╨Æ╤ü╤é╨░╨╜╤î ╨╜╨░ ╤ü╤é╨╛╤Ç╨╛╨╜╤â ╨₧╤Ç╨┤╨╡╨╜╨░ ╨ö╨╢╨╡╨┤╨░╨╡╨▓ ╨╕╨╗╨╕ ╨ó╤æ╨╝╨╜╨╛╨╣ ╤ü╤é╨╛╤Ç╨╛╨╜╤ï.", bg: "linear-gradient(160deg, #0a0a1f 0%, #050510 60%, #000 100%)", accent: "#818cf8", online: 0, image: "https://games.sb-capital.group/servers/starwars.jpg" },
-  { id: "minigames", name: "MINIGAMES", subtitle: "╨£╨╕╨╜╨╕-╨╕╨│╤Ç╤ï", description: "BedWars, SkyWars, TheBridge ╨╕ ╨┤╨╡╤ü╤Å╤é╨║╨╕ ╨┤╤Ç╤â╨│╨╕╤à ╨╝╨╕╨╜╨╕-╨╕╨│╤Ç.", bg: "linear-gradient(160deg, #0f1f0a 0%, #051005 60%, #000 100%)", accent: "#22c55e", online: 0, image: "https://games.sb-capital.group/servers/minigames.jpg" },
-  { id: "gta", name: "GTA", subtitle: "Grand Theft Auto RP", description: "╨û╨╕╨▓╨╕ ╨▓ ╨│╨╛╤Ç╨╛╨┤╨╡ ╨▒╨╡╨╖ ╨┐╤Ç╨░╨▓╨╕╨╗. ╨Ü╤Ç╨╕╨╝╨╕╨╜╨░╨╗, ╨▒╨╕╨╖╨╜╨╡╤ü, ╨┐╨╛╨╗╨╕╤å╨╕╤Å ╨╕ ╤à╨░╨╛╤ü.", bg: "linear-gradient(160deg, #1f0a0a 0%, #100505 60%, #000 100%)", accent: "#ef4444", online: 0, image: "https://games.sb-capital.group/servers/gta.jpg" },
-  { id: "vanilla_plus", name: "VANILA+", subtitle: "╨Æ╨░╨╜╨╕╨╗╤î╨╜╤ï╨╣+", description: "╨Ü╨╗╨░╤ü╤ü╨╕╤ç╨╡╤ü╨║╨╕╨╣ Minecraft ╤ü ╨╜╨╡╨▒╨╛╨╗╤î╤ê╨╕╨╝╨╕ ╤â╨╗╤â╤ç╤ê╨╡╨╜╨╕╤Å╨╝╨╕.", bg: "linear-gradient(160deg, #0a1a1f 0%, #050d10 60%, #000 100%)", accent: "#06b6d4", online: 0, image: "https://games.sb-capital.group/servers/vanilla.jpg" },
-  { id: "anarchy", name: "╨É╨¥╨É╨á╨Ñ╨ÿ╨»", subtitle: "╨æ╨╡╨╖ ╨┐╤Ç╨░╨▓╨╕╨╗", description: "╨ƒ╨╛╨╗╨╜╨░╤Å ╤ü╨▓╨╛╨▒╨╛╨┤╨░ ╨┤╨╡╨╣╤ü╤é╨▓╨╕╨╣. ╨£╨╕╤Ç ╨│╨┤╨╡ ╤ü╨╕╨╗╨░ ╤Ç╨╡╤ê╨░╨╡╤é ╨▓╤ü╤æ.", bg: "linear-gradient(160deg, #1f1a0a 0%, #100d05 60%, #000 100%)", accent: "#f59e0b", online: 0, image: "https://games.sb-capital.group/servers/anarchy.jpg" },
+  { id: "starwars", name: "STARWARS", subtitle: "Звёздные Войны", description: "Встань на сторону Ордена Джедаев или Тёмной стороны.", bg: "linear-gradient(160deg, #0a0a1f 0%, #050510 60%, #000 100%)", accent: "#818cf8", online: 0, image: "https://games.sb-capital.group/servers/starwars.jpg" },
+  { id: "minigames", name: "MINIGAMES", subtitle: "Мини-игры", description: "BedWars, SkyWars, TheBridge и десятки других мини-игр.", bg: "linear-gradient(160deg, #0f1f0a 0%, #051005 60%, #000 100%)", accent: "#22c55e", online: 0, image: "https://games.sb-capital.group/servers/minigames.jpg" },
+  { id: "gta", name: "GTA", subtitle: "Grand Theft Auto RP", description: "Живи в городе без правил. Криминал, бизнес, полиция и хаос.", bg: "linear-gradient(160deg, #1f0a0a 0%, #100505 60%, #000 100%)", accent: "#ef4444", online: 0, image: "https://games.sb-capital.group/servers/gta.jpg" },
+  { id: "vanilla_plus", name: "VANILA+", subtitle: "Ванильный+", description: "Классический Minecraft с небольшими улучшениями.", bg: "linear-gradient(160deg, #0a1a1f 0%, #050d10 60%, #000 100%)", accent: "#06b6d4", online: 0, image: "https://games.sb-capital.group/servers/vanilla.jpg" },
+  { id: "anarchy", name: "АНАРХИЯ", subtitle: "Без правил", description: "Полная свобода действий. Мир где сила решает всё.", bg: "linear-gradient(160deg, #1f1a0a 0%, #100d05 60%, #000 100%)", accent: "#f59e0b", online: 0, image: "https://games.sb-capital.group/servers/anarchy.jpg" },
 ];
 
 const FALLBACK_VERSIONS = [
@@ -22,9 +22,9 @@ const FALLBACK_VERSIONS = [
 ];
 
 const TABS = [
-  { id: "mods", label: "╨£╨╛╨┤╤ï", icon: Package, accent: "#a855f7", type: "mod" },
-  { id: "resourcepacks", label: "╨á╨╡╤ü╤â╤Ç╤ü╨┐╨░╨║╨╕", icon: FileImage, accent: "#06b6d4", type: "resourcepack" },
-  { id: "shaders", label: "╨¿╨╡╨╣╨┤╨╡╤Ç╤ï", icon: Sparkles, accent: "#f59e0b", type: "shader" },
+  { id: "mods", label: "Моды", icon: Package, accent: "#a855f7", type: "mod" },
+  { id: "resourcepacks", label: "Ресурспаки", icon: FileImage, accent: "#06b6d4", type: "resourcepack" },
+  { id: "shaders", label: "Шейдеры", icon: Sparkles, accent: "#f59e0b", type: "shader" },
 ];
 
 const FABRIC_API_PROJECT = "P7dR8mSH";
@@ -49,7 +49,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   // Dynamic versions & loaders from API
   const [mcVersions, setMcVersions] = useState(FALLBACK_VERSIONS);
-  const [loaders, setLoaders] = useState([{ id: "forge", label: "Forge" }, { id: "fabric", label: "Fabric" }, { id: "quilt", label: "Quilt" }, { id: "neoforge", label: "NeoForge" }, { id: "all", label: "╨Æ╤ü╨╡" }]);
+  const [loaders, setLoaders] = useState([{ id: "forge", label: "Forge" }, { id: "fabric", label: "Fabric" }, { id: "quilt", label: "Quilt" }, { id: "neoforge", label: "NeoForge" }, { id: "all", label: "Все" }]);
   const [loadingMcData, setLoadingMcData] = useState(true);
 
   // Modrinth state
@@ -87,7 +87,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const profileMenuRef = useRef(null);
 
-  // Sidebar menu (╨ö╨₧╨ƒ)
+  // Sidebar menu (ДОП)
   const [showSidebarMenu, setShowSidebarMenu] = useState(false);
   const [sidebarMenuTab, setSidebarMenuTab] = useState("servers"); // servers | modpacks
   const sidebarMenuRef = useRef(null);
@@ -140,7 +140,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
   useEffect(() => { if (guardModal) localStorage.setItem("sbg_play_guardModal", JSON.stringify(guardModal)); else localStorage.removeItem("sbg_play_guardModal"); }, [guardModal]);
   useEffect(() => { localStorage.setItem("sbg_custom_modpacks", JSON.stringify(customModpacks)); }, [customModpacks]);
 
-  // ╨£╨╕╨│╤Ç╨░╤å╨╕╤Å: ╤ü╤é╨░╤Ç╤ï╨╡ ╨╝╨╛╨┤╨┐╨░╨║╨╕ ╨▒╨╡╨╖ instanceId ΓåÆ ╤ü╨╛╨╖╨┤╨░╤é╤î ╨╕╨╜╤ü╤é╨░╨╜╤ü╤ï ╨╜╨░ ╨▒╤ì╨║╨╡.
+  // Миграция: старые модпаки без instanceId → создать инстансы на бэке.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -180,7 +180,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
         if (versions?.length) setMcVersions(versions);
         if (modrinthLoaders?.length) {
           const mapped = modrinthLoaders.map(l => ({ id: l.slug, label: l.name || l.slug }));
-          if (mapped.length) setLoaders([...mapped, { id: "all", label: "╨Æ╤ü╨╡" }]);
+          if (mapped.length) setLoaders([...mapped, { id: "all", label: "Все" }]);
         }
       } catch {}
       setLoadingMcData(false);
@@ -207,19 +207,19 @@ export default function PlayPage({ user, onOpenCommunity }) {
   useEffect(() => {
     if (!selected) {
       window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } }));
-      setDiscordPresence("╨Æ ╨╗╨░╤â╨╜╤ç╨╡╤Ç╨╡", "╨Æ╤ï╨▒╨╕╤Ç╨░╨╡╤é ╤ü╨╡╤Ç╨▓╨╡╤Ç", "sbgames");
+      setDiscordPresence("В лаунчере", "Выбирает сервер", "sbgames");
       return;
     }
     window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
-    setDiscordPresence(`╨Æ╤ï╨▒╨╕╤Ç╨░╨╡╤é ╤ü╨╡╤Ç╨▓╨╡╤Ç: ${selected.name}`, "╨Æ ╨╗╨░╤â╨╜╤ç╨╡╤Ç╨╡", "sbgames");
+    setDiscordPresence(`Выбирает сервер: ${selected.name}`, "В лаунчере", "sbgames");
   }, [selected]);
 
   useEffect(() => {
-    setDiscordPresence("╨Æ ╨╗╨░╤â╨╜╤ç╨╡╤Ç╨╡", "╨Æ╤ï╨▒╨╕╤Ç╨░╨╡╤é ╤ü╨╡╤Ç╨▓╨╡╤Ç", "sbgames");
+    setDiscordPresence("В лаунчере", "Выбирает сервер", "sbgames");
     return () => { window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } })); };
   }, []);
 
-  // ╨ö╨₧╨ƒ-╨╝╨╡╨╜╤Ä ╨╖╨░╨║╤Ç╤ï╨▓╨░╨╡╤é╤ü╤Å ╨║╨╗╨╕╨║╨╛╨╝ ╨┐╨╛ ╨╖╨░╤é╨╡╨╝╨╜╨╡╨╜╨╕╤Ä ╨╕╨╗╨╕ ╨║╨╜╨╛╨┐╨║╨╡ X (╤ü╨╝. ╨╝╨╛╨┤╨░╨╗╨║╤â ╨╜╨╕╨╢╨╡)
+  // ДОП-меню закрывается кликом по затемнению или кнопке X (см. модалку ниже)
 
   // Load popular items when tab/version/loader changes
   const loadPopular = useCallback(async (version, loader, tab) => {
@@ -331,11 +331,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
     if (!exists) setDraft(prev => ({ ...prev, [key]: [...prev[key], item] }));
   };
 
-  // ΓöÇΓöÇ Server sync: fetch /api/mods/manifest and compare ΓöÇΓöÇ
-  // TODO: Rust backend ΓÇö ╨┤╨╛╨▒╨░╨▓╨╕╤é╤î endpoint /api/mods/manifest ╨║╨╛╤é╨╛╤Ç╤ï╨╣ ╨▓╨╛╨╖╨▓╤Ç╨░╤ë╨░╨╡╤é
-  // ╨░╨║╤é╤â╨░╨╗╤î╨╜╤ï╨╣ ╨╝╨░╨╜╨╕╤ä╨╡╤ü╤é ╨╝╨╛╨┤╨╛╨▓ ╤ü ╤ü╨╡╤Ç╨▓╨╡╤Ç╨░ (╤ü╨┐╨╕╤ü╨╛╨║ ╨╝╨╛╨┤╨╛╨▓, ╨▓╨╡╤Ç╤ü╨╕╨╣, ╤à╨╡╤ê╨╡╨╣).
-  // ╨í╨╡╨╣╤ç╨░╤ü fetch ╨╕╨┤╤æ╤é ╨╜╨░╨┐╤Ç╤Å╨╝╤â╤Ä ╨╜╨░ games.sb-capital.group, ╨╜╨╛ ╨┤╨╗╤Å instance-level
-  // ╤ü╨╕╨╜╤à╤Ç╨╛╨╜╨╕╨╖╨░╤å╨╕╨╕ ╨╜╤â╨╢╨╡╨╜ Rust-side ╨╝╨░╨╜╨╕╤ä╨╡╤ü╤é ╤ü ╤à╤Ç╨░╨╜╨╡╨╜╨╕╨╡╨╝ ╨▓ instance config.
+  // ── Server sync: fetch /api/mods/manifest and compare ──
+  // TODO: Rust backend — добавить endpoint /api/mods/manifest который возвращает
+  // актуальный манифест модов с сервера (список модов, версий, хешей).
+  // Сейчас fetch идёт напрямую на games.sb-capital.group, но для instance-level
+  // синхронизации нужен Rust-side манифест с хранением в instance config.
   const syncWithServer = async () => {
     setSyncing(true);
     setSyncResult(null);
@@ -359,15 +359,15 @@ export default function PlayPage({ user, onOpenCommunity }) {
     setSyncing(false);
   };
 
-  // ΓöÇΓöÇ Compatibility check via Modrinth API ΓöÇΓöÇ
-  // TODO: Rust backend ΓÇö ╨║╨╡╤ê╨╕╤Ç╨╛╨▓╨░╤é╤î ╤Ç╨╡╨╖╤â╨╗╤î╤é╨░╤é╤ï ╨┐╤Ç╨╛╨▓╨╡╤Ç╨║╨╕ ╤ü╨╛╨▓╨╝╨╡╤ü╤é╨╕╨╝╨╛╤ü╤é╨╕
-  // ╤ç╤é╨╛╨▒╤ï ╨╜╨╡ ╨┤╨╡╨╗╨░╤é╤î ╨╖╨░╨┐╤Ç╨╛╤ü ╨║ Modrinth API ╨┐╤Ç╨╕ ╨║╨░╨╢╨┤╨╛╨╝ ╨╛╤é╨║╤Ç╤ï╤é╨╕╨╕ ╨▒╨╕╨╗╨┤╨╡╤Ç╨░.
-  // ╨ó╨░╨║╨╢╨╡ ╨╝╨╛╨╢╨╜╨╛ ╨┤╨╛╨▒╨░╨▓╨╕╤é╤î offline-╨┐╤Ç╨╛╨▓╨╡╤Ç╨║╤â ╨┐╨╛ ╨╗╨╛╨║╨░╨╗╤î╨╜╨╛╨╝╤â ╨║╨╡╤ê╤â ╨▓╨╡╤Ç╤ü╨╕╨╣.
+  // ── Compatibility check via Modrinth API ──
+  // TODO: Rust backend — кешировать результаты проверки совместимости
+  // чтобы не делать запрос к Modrinth API при каждом открытии билдера.
+  // Также можно добавить offline-проверку по локальному кешу версий.
   const checkCompatibility = async () => {
     const allMods = [...draft.mods, ...draft.resourcePacks, ...draft.shaders].filter(m => m.projectId && !m.auto && !m.local);
     if (allMods.length === 0) { setCompatWarnings([]); return; }
     const warnings = [];
-    // TODO: batch check ΓÇö currently checks first 10 mods to avoid rate limiting
+    // TODO: batch check — currently checks first 10 mods to avoid rate limiting
     const toCheck = allMods.slice(0, 10);
     for (const mod of toCheck) {
       try {
@@ -375,7 +375,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
         if (res.ok) {
           const versions = await res.json();
           if (versions.length === 0) {
-            warnings.push({ title: mod.title, slug: mod.slug, reason: `╨¥╨╡╤é ╨▓╨╡╤Ç╤ü╨╕╨╣ ╨┤╨╗╤Å ${draft.mcVersion} (${draft.loader})` });
+            warnings.push({ title: mod.title, slug: mod.slug, reason: `Нет версий для ${draft.mcVersion} (${draft.loader})` });
           }
         }
       } catch {}
@@ -445,12 +445,12 @@ export default function PlayPage({ user, onOpenCommunity }) {
       ...(draft.shaders || []).filter(m => !m.disabled).map(m => ({ ...m, kind: "shaderpacks" })),
     ];
     const cfg = {
-      id: draft.instanceId || "", // ╨┐╤â╤ü╤é╨╛╨╣ ΓåÆ ╨▒╤ì╨║ ╤ü╨│╨╡╨╜╨╡╤Ç╨╕╤Ç╤â╨╡╤é uuid
+      id: draft.instanceId || "", // пустой → бэк сгенерирует uuid
       name: draft.name.trim(),
       mcVersion: draft.mcVersion,
       loader: (draft.loader || "vanilla").toLowerCase(),
       loaderVersion: draft.loaderVersion || null,
-      javaVersion: 0, // ╨▒╤ì╨║ ╤ü╨░╨╝ ╨▓╤ï╨▓╨╛╨┤╨╕╤é ╨╕╨╖ mcVersion
+      javaVersion: 0, // бэк сам выводит из mcVersion
       minRamMb: 512,
       maxRamMb: (ramGb || 4) * 1024,
       jvmArgs: [],
@@ -498,13 +498,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
   const selectCustom = (mp) => {
     setSelected({ id: `custom_${mp.id}`, name: mp.name, subtitle: `${mp.loader.toUpperCase()} ${mp.mcVersion}`,
-      description: `╨£╨╛╨┤╤ï: ${mp.mods.length} | ╨á╨╡╤ü╤â╤Ç╤ü╨┐╨░╨║╨╕: ${mp.resourcePacks.length} | ╨¿╨╡╨╣╨┤╨╡╤Ç╤ï: ${mp.shaders.length}${mp.launchCount ? ` | ╨ù╨░╨┐╤â╤ü╨║╨╛╨▓: ${mp.launchCount}` : ""}${mp.lastLaunchedAt ? ` | ╨ƒ╨╛╤ü╨╗╨╡╨┤╨╜╨╕╨╣: ${new Date(mp.lastLaunchedAt).toLocaleDateString("ru-RU")}` : ""}`,
+      description: `Моды: ${mp.mods.length} | Ресурспаки: ${mp.resourcePacks.length} | Шейдеры: ${mp.shaders.length}${mp.launchCount ? ` | Запусков: ${mp.launchCount}` : ""}${mp.lastLaunchedAt ? ` | Последний: ${new Date(mp.lastLaunchedAt).toLocaleDateString("ru-RU")}` : ""}`,
       bg: "linear-gradient(160deg, #1a0a2e 0%, #0d0520 60%, #000 100%)", accent: "#a855f7", customPack: mp });
     setShowBuilder(false);
     setShowSidebarMenu(false);
   };
 
-  // ΓöÇΓöÇ Feature: Backup before update ΓöÇΓöÇ
+  // ── Feature: Backup before update ──
   const backupCurrentMods = () => {
     const key = `sbg_backup_${draft.name || "unnamed"}_${Date.now()}`;
     const backup = { name: draft.name, mcVersion: draft.mcVersion, loader: draft.loader, mods: draft.mods, resourcePacks: draft.resourcePacks, shaders: draft.shaders, timestamp: Date.now() };
@@ -516,7 +516,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     return backup;
   };
 
-  // ΓöÇΓöÇ Feature: Update All ΓöÇΓöÇ
+  // ── Feature: Update All ──
   const updateAllMods = async () => {
     setUpdatingAll(true);
     backupCurrentMods();
@@ -544,7 +544,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     setUpdatingAll(false);
   };
 
-  // ΓöÇΓöÇ Feature: Export modpack ΓöÇΓöÇ
+  // ── Feature: Export modpack ──
   const exportModpack = () => {
     const data = { name: draft.name, mcVersion: draft.mcVersion, loader: draft.loader, mods: draft.mods, resourcePacks: draft.resourcePacks, shaders: draft.shaders, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -558,7 +558,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     URL.revokeObjectURL(url);
   };
 
-  // ΓöÇΓöÇ Feature: Import from URL ΓöÇΓöÇ
+  // ── Feature: Import from URL ──
   const importFromUrl = async () => {
     const raw = importUrl.trim();
     if (!raw) return;
@@ -589,7 +589,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     setImportingUrl(false);
   };
 
-  // ΓöÇΓöÇ Feature: Profiles ΓöÇΓöÇ
+  // ── Feature: Profiles ──
   const saveProfile = () => {
     if (!draft.name.trim()) return;
     const profile = { name: draft.name.trim(), mcVersion: draft.mcVersion, loader: draft.loader, mods: draft.mods, resourcePacks: draft.resourcePacks, shaders: draft.shaders, savedAt: Date.now() };
@@ -618,7 +618,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     if (!selected) return;
     setLaunching(true);
     setLaunchError(null);
-    await setDiscordPresence(`╨ÿ╨│╤Ç╨░╨╡╤é ╨╜╨░ ${selected.name}`, "╨Æ ╨╕╨│╤Ç╨╡ ┬╖ SB Games", "sbgames");
+    await setDiscordPresence(`Играет на ${selected.name}`, "В игре · SB Games", "sbgames");
     const startedAt = Date.now();
     try {
       if (selected.id?.startsWith("custom_") && selected.customPack?.instanceId) {
@@ -699,7 +699,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
           {selected ? (
             <>
-              {selected.image && <img src={selected.image} alt={selected.name || "╨í╨╡╤Ç╨▓╨╡╤Ç"} className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.25 }} onError={e => e.currentTarget.style.display = "none"} />}
+              {selected.image && <img src={selected.image} alt={selected.name || "Сервер"} className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.25 }} onError={e => e.currentTarget.style.display = "none"} />}
               <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 30% 80%, ${selected.accent}20, transparent 60%)` }} />
               <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%)" }} />
             </>
@@ -711,7 +711,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
         </motion.div>
       </AnimatePresence>
 
-      {/* ΓöÇΓöÇ Sidebar ΓöÇΓöÇ */}
+      {/* ── Sidebar ── */}
       <div className="absolute left-0 top-0 bottom-0 z-20" style={{ width: 220, padding: "16px 0 16px 16px" }}>
         <div className="h-full rounded-2xl flex flex-col overflow-hidden"
           style={{ background: "rgba(8,8,8,0.92)", border: "1px solid rgba(255,255,255,0.07)", boxShadow: "0 8px 48px rgba(0,0,0,0.8)", backdropFilter: "blur(24px)" }}>
@@ -720,7 +720,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <div className="w-6 h-6 rounded-md overflow-hidden flex-shrink-0"><img src="/logo.jpg" alt="SBGames" className="w-full h-full object-cover" /></div>
               <p className="text-[13px] font-black tracking-wide" style={{ background: "linear-gradient(135deg, #3b82f6, #60a5fa, #93c5fd)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>SBGames</p>
             </div>
-            <p className="text-[9px] font-semibold tracking-[0.15em] uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>╨¥╨░╤ç╨╜╨╕╤é╨╡ ╨╕╨│╤Ç╨░╤é╤î</p>
+            <p className="text-[9px] font-semibold tracking-[0.15em] uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>Начните играть</p>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2">
@@ -733,7 +733,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     <motion.div animate={{ opacity: active ? 1 : 0.45 }} whileHover={{ opacity: active ? 1 : 0.75 }} transition={{ duration: 0.15 }} className="relative rounded-xl overflow-hidden"
                       style={{ boxShadow: active ? `0 0 12px rgba(37,99,235,0.4), 0 4px 20px ${srv.accent}20` : "none", border: "none" }}>
                       <div className="h-[90px] relative" style={{ background: srv.bg }}>
-                        {srv.image && <img src={srv.image} alt={srv.name || "╨í╨╡╤Ç╨▓╨╡╤Ç"} className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
+                        {srv.image && <img src={srv.image} alt={srv.name || "Сервер"} className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                         {active && <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 30% 100%, rgba(37,99,235,0.15), transparent 65%)` }} />}
                         {active && <motion.div layoutId="srv-bar" className="absolute bottom-0 left-3 right-3 h-[2.5px] rounded-full" style={{ background: "linear-gradient(90deg, transparent, #2563eb, transparent)" }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />}
@@ -755,12 +755,12 @@ export default function PlayPage({ user, onOpenCommunity }) {
               );
             })}
 
-            {/* ╨Ü╨░╤ü╤é╨╛╨╝╨╜╤ï╨╡ ╤ü╨▒╨╛╤Ç╨║╨╕ ╨▓ ╨╛╤ü╨╜╨╛╨▓╨╜╨╛╨╝ ╤ü╨┐╨╕╤ü╨║╨╡ */}
+            {/* Кастомные сборки в основном списке */}
             {customModpacks.length > 0 && (
               <>
                 <div className="flex items-center gap-1.5 px-1 pt-1 pb-0.5">
                   <Folder size={9} style={{ color: "rgba(96,165,250,0.6)" }} />
-                  <p className="text-[9px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.3)" }}>╨£╨╛╨╕ ╤ü╨▒╨╛╤Ç╨║╨╕</p>
+                  <p className="text-[9px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.3)" }}>Мои сборки</p>
                 </div>
                 {customModpacks.map(mp => {
                   const activeC = selected?.id === `custom_${mp.id}` && !showBuilder;
@@ -777,18 +777,18 @@ export default function PlayPage({ user, onOpenCommunity }) {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-bold text-white truncate leading-tight">{mp.name}</p>
-                            <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} ┬╖ {mp.mods.length} ╨╝╨╛╨┤╨╛╨▓{mp.launchCount ? ` ┬╖ ${mp.launchCount} ╨╖╨░╨┐╤â╤ü╨║╨╛╨▓` : ""}</p>
+                            <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} · {mp.mods.length} модов{mp.launchCount ? ` · ${mp.launchCount} запусков` : ""}</p>
                           </div>
                         </motion.div>
                       </button>
                       {/* Hover actions: edit / delete */}
                       <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover/mp:opacity-100 transition-opacity">
                         <button onClick={(e) => { e.stopPropagation(); openBuilder(mp); }}
-                          className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10" title="╨á╨╡╨┤╨░╨║╤é╨╕╤Ç╨╛╨▓╨░╤é╤î">
+                          className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10" title="Редактировать">
                           <Settings size={10} style={{ color: "rgba(255,255,255,0.55)" }} />
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); deleteModpack(mp.id); }}
-                          className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-red-500/15" title="╨ú╨┤╨░╨╗╨╕╤é╤î">
+                          className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-red-500/15" title="Удалить">
                           <Trash2 size={10} style={{ color: "rgba(239,68,68,0.7)" }} />
                         </button>
                       </div>
@@ -799,7 +799,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
             )}
           </div>
 
-          {/* Footer: Create modpack (primary) + ╨ö╨₧╨ƒ (icon button) */}
+          {/* Footer: Create modpack (primary) + ДОП (icon button) */}
           <div className="px-2.5 pt-1 pb-2.5 flex-shrink-0 flex items-center gap-2 relative" ref={sidebarMenuRef}>
             <button onClick={() => openBuilder(null)} className="flex-1 text-left focus:outline-none">
               <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.985 }}
@@ -812,10 +812,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   boxShadow: showBuilder ? "0 0 16px rgba(37,99,235,0.4)" : "none",
                 }}>
                 <Plus size={14} style={{ color: showBuilder ? "#fff" : "rgba(255,255,255,0.7)" }} />
-                <span className="text-[11px] font-bold truncate" style={{ color: showBuilder ? "#fff" : "rgba(255,255,255,0.85)" }}>╨í╨╛╨╖╨┤╨░╤é╤î ╤ü╨▒╨╛╤Ç╨║╤â</span>
+                <span className="text-[11px] font-bold truncate" style={{ color: showBuilder ? "#fff" : "rgba(255,255,255,0.85)" }}>Создать сборку</span>
               </motion.div>
             </button>
-            <button onClick={() => setShowSidebarMenu(!showSidebarMenu)} title="╨ö╨╛╨┐╨╛╨╗╨╜╨╕╤é╨╡╨╗╤î╨╜╨╛"
+            <button onClick={() => setShowSidebarMenu(!showSidebarMenu)} title="Дополнительно"
               className="w-[38px] h-[38px] rounded-xl flex items-center justify-center transition-all flex-shrink-0"
               style={{
                 background: showSidebarMenu ? "rgba(37,99,235,0.22)" : "rgba(255,255,255,0.05)",
@@ -830,7 +830,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
         </div>
       </div>
 
-      {/* ΓòÉΓòÉΓòÉ ╨ö╨₧╨ƒ ΓÇö ╨╝╨╛╨┤╨░╨╗╤î╨╜╨╛╨╡ ╨╛╨║╨╜╨╛ ╤ü ╨▓╨║╨╗╨░╨┤╨║╨░╨╝╨╕ ΓòÉΓòÉΓòÉ */}
+      {/* ═══ ДОП — модальное окно с вкладками ═══ */}
       <AnimatePresence>
         {showSidebarMenu && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 flex items-center justify-center"
@@ -845,10 +845,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <MoreHorizontal size={16} style={{ color: "rgba(255,255,255,0.6)" }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-black text-white leading-tight">╨ö╨╛╨┐╨╛╨╗╨╜╨╕╤é╨╡╨╗╤î╨╜╨╛</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{sidebarMenuTab === "servers" ? `${SERVERS.length} ╤ü╨╡╤Ç╨▓╨╡╤Ç╨╛╨▓` : `${customModpacks.length} ╤ü╨▒╨╛╤Ç╨╛╨║`}</p>
+                  <p className="text-[14px] font-black text-white leading-tight">Дополнительно</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{sidebarMenuTab === "servers" ? `${SERVERS.length} серверов` : `${customModpacks.length} сборок`}</p>
                 </div>
-                <button onClick={() => setShowSidebarMenu(false)} aria-label="╨ù╨░╨║╤Ç╤ï╤é╤î" className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}
+                <button onClick={() => setShowSidebarMenu(false)} aria-label="Закрыть" className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}><X size={13} /></button>
               </div>
@@ -856,8 +856,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
               {/* Tabs */}
               <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.04)" }}>
                 {[
-                  { id: "servers", label: "╨í╨╡╤Ç╨▓╨╡╤Ç╤ï", icon: UsersThree },
-                  { id: "modpacks", label: "╨í╨▒╨╛╤Ç╨║╨╕", icon: FolderOpen },
+                  { id: "servers", label: "Серверы", icon: UsersThree },
+                  { id: "modpacks", label: "Сборки", icon: FolderOpen },
                 ].map(t => (
                   <button key={t.id} onClick={() => setSidebarMenuTab(t.id)}
                     className="flex-1 h-9 rounded-lg flex items-center justify-center gap-2 text-[12px] font-bold transition-all"
@@ -886,7 +886,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                         onMouseEnter={e => { if (!activeS) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
                         onMouseLeave={e => { if (!activeS) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}>
                         <div className="w-11 h-11 rounded-lg flex-shrink-0 overflow-hidden relative" style={{ background: srv.bg }}>
-                          {srv.image && <img src={srv.image} alt={srv.name || "╨í╨╡╤Ç╨▓╨╡╤Ç"} className="w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
+                          {srv.image && <img src={srv.image} alt={srv.name || "Сервер"} className="w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
                           <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.4))" }} />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -911,8 +911,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
                         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
                           <FolderOpen size={22} style={{ color: "rgba(255,255,255,0.2)" }} />
                         </div>
-                        <p className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>╨ƒ╨╛╨║╨░ ╨╜╨╡╤é ╤ü╨▒╨╛╤Ç╨╛╨║</p>
-                        <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.25)" }}>╨í╨╛╨╖╨┤╨░╨╣ ╤ü╨▓╨╛╤Ä ╨┐╨╡╤Ç╨▓╤â╤Ä ╤ü╨▒╨╛╤Ç╨║╤â ╨╝╨╛╨┤╨╛╨▓</p>
+                        <p className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>Пока нет сборок</p>
+                        <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.25)" }}>Создай свою первую сборку модов</p>
                       </div>
                     ) : (
                       customModpacks.map(mp => {
@@ -928,16 +928,16 @@ export default function PlayPage({ user, onOpenCommunity }) {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="text-[12px] font-bold text-white truncate leading-tight">{mp.name}</p>
-                                <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} ┬╖ {mp.mods.length} ╨╝╨╛╨┤╨╛╨▓{mp.launchCount ? ` ┬╖ ${mp.launchCount} ╨╖╨░╨┐╤â╤ü╨║╨╛╨▓` : ""}</p>
+                                <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} · {mp.mods.length} модов{mp.launchCount ? ` · ${mp.launchCount} запусков` : ""}</p>
                               </div>
                             </button>
                             <div className="flex gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity">
                               <button onClick={(e) => { e.stopPropagation(); openBuilder(mp); setShowSidebarMenu(false); }}
-                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 transition-colors" title="╨á╨╡╨┤╨░╨║╤é╨╕╤Ç╨╛╨▓╨░╤é╤î">
+                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 transition-colors" title="Редактировать">
                                 <Settings size={11} style={{ color: "rgba(255,255,255,0.45)" }} />
                               </button>
                               <button onClick={(e) => { e.stopPropagation(); deleteModpack(mp.id); }}
-                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-red-500/15 transition-colors" title="╨ú╨┤╨░╨╗╨╕╤é╤î">
+                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-red-500/15 transition-colors" title="Удалить">
                                 <Trash2 size={11} style={{ color: "rgba(239,68,68,0.6)" }} />
                               </button>
                             </div>
@@ -945,14 +945,14 @@ export default function PlayPage({ user, onOpenCommunity }) {
                         );
                       })
                     )}
-                    {/* ╨í╨╛╨╖╨┤╨░╤é╤î ╤ü╨▒╨╛╤Ç╨║╤â ΓÇö ╨▓╨╜╨╕╨╖╤â, ╨░╨║╤å╨╡╨╜╤é╨╜╨░╤Å ╨║╨╜╨╛╨┐╨║╨░ */}
+                    {/* Создать сборку — внизу, акцентная кнопка */}
                     <button onClick={() => { openBuilder(null); setShowSidebarMenu(false); }}
                       className="w-full mt-2 rounded-xl flex items-center justify-center gap-2 px-3 h-11 transition-all"
                       style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", border: "1px solid rgba(96,165,250,0.4)", boxShadow: "0 0 18px rgba(37,99,235,0.3)" }}
                       onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 0 24px rgba(37,99,235,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 0 18px rgba(37,99,235,0.3)"; e.currentTarget.style.transform = "translateY(0)"; }}>
                       <Plus size={14} style={{ color: "#fff" }} />
-                      <span className="text-[12px] font-black text-white">╨í╨╛╨╖╨┤╨░╤é╤î ╤ü╨▒╨╛╤Ç╨║╤â</span>
+                      <span className="text-[12px] font-black text-white">Создать сборку</span>
                     </button>
                   </>
                 )}
@@ -962,22 +962,22 @@ export default function PlayPage({ user, onOpenCommunity }) {
         )}
       </AnimatePresence>
 
-      {/* ΓöÇΓöÇ Content ΓöÇΓöÇ */}
+      {/* ── Content ── */}
       {showBuilder ? (
-        /* ΓòÉΓòÉΓòÉ BUILDER ΓòÉΓòÉΓòÉ */
+        /* ═══ BUILDER ═══ */
         <div className="absolute inset-0 flex" style={{ paddingLeft: 252 }}>
-          {/* Left panel ΓÇö opaque */}
+          {/* Left panel — opaque */}
           <div className="w-[320px] flex flex-col border-r" style={{ background: "rgba(10,10,14,0.95)", borderColor: "rgba(255,255,255,0.06)", backdropFilter: "blur(12px)" }}>
             <div className="p-5 flex flex-col gap-4 flex-1 overflow-y-auto">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[15px] font-black text-white mb-1">{draft.name || "╨¥╨╛╨▓╨░╤Å ╤ü╨▒╨╛╤Ç╨║╨░"}</p>
-                  <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>╨¥╨░╤ü╤é╤Ç╨╛╨╣ ╤ü╨▓╨╛╤Ä ╤ü╨▒╨╛╤Ç╨║╤â ╨╝╨╛╨┤╨╛╨▓</p>
+                  <p className="text-[15px] font-black text-white mb-1">{draft.name || "Новая сборка"}</p>
+                  <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Настрой свою сборку модов</p>
                 </div>
                 <button onClick={() => openBuilder(null)} className="h-7 px-2.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all"
                   style={{ background: "rgba(168,85,247,0.12)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.25)" }}
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.2)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.12)"}>
-                  <Plus size={10} /> ╨¥╨╛╨▓╨░╤Å
+                  <Plus size={10} /> Новая
                 </button>
               </div>
 
@@ -985,13 +985,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
               {profiles.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                    <Folder size={10} /> ╨ƒ╤Ç╨╛╤ä╨╕╨╗╨╕
+                    <Folder size={10} /> Профили
                   </span>
                   <div className="relative" ref={profileMenuRef}>
                     <button onClick={() => setShowProfileMenu(!showProfileMenu)}
                       className="w-full rounded-xl text-[12px] px-3 py-2.5 flex items-center justify-between outline-none transition-all"
                       style={{ background: "rgba(255,255,255,0.05)", color: activeProfile ? "#e5e7eb" : "rgba(255,255,255,0.4)" }}>
-                      <span className="truncate">{activeProfile || "╨Æ╤ï╨▒╤Ç╨░╤é╤î ╨┐╤Ç╨╛╤ä╨╕╨╗╤î"}</span>
+                      <span className="truncate">{activeProfile || "Выбрать профиль"}</span>
                       <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
                     </button>
                     {showProfileMenu && (
@@ -1017,18 +1017,18 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
               {/* Name */}
               <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>╨¥╨░╨╖╨▓╨░╨╜╨╕╨╡</span>
-                <input value={draft.name} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))} placeholder="╨£╨╛╤Å ╤ü╨▒╨╛╤Ç╨║╨░"
+                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Название</span>
+                <input value={draft.name} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))} placeholder="Моя сборка"
                   className="w-full rounded-xl text-[13px] px-3 py-2.5 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
               </div>
 
               {/* MC Version + Loader in row */}
               <div className="flex gap-2">
                 <div className="flex flex-col gap-1.5 flex-1">
-                  <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>╨Æ╨╡╤Ç╤ü╨╕╤Å</span>
+                  <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Версия</span>
                   <div className="relative">
                     <select value={draft.mcVersion} onChange={e => setDraft(p => ({ ...p, mcVersion: e.target.value }))}
-                      aria-label="╨Æ╨╡╤Ç╤ü╨╕╤Å Minecraft"
+                      aria-label="Версия Minecraft"
                       className="w-full rounded-xl text-[12px] px-3 py-2.5 outline-none appearance-none cursor-pointer" style={{ background: "rgba(255,255,255,0.05)", color: "#e5e7eb" }}>
                       {mcVersions.map(v => (
                         <option key={v.id} value={v.id} style={{ background: "#1a1a24", color: "#e5e7eb" }}>
@@ -1040,10 +1040,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5 flex-1">
-                  <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>╨ù╨░╨│╤Ç╤â╨╖╤ç╨╕╨║</span>
+                  <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузчик</span>
                   <div className="relative">
                     <select value={draft.loader} onChange={e => setDraft(p => ({ ...p, loader: e.target.value }))}
-                      aria-label="╨ù╨░╨│╤Ç╤â╨╖╤ç╨╕╨║"
+                      aria-label="Загрузчик"
                       className="w-full rounded-xl text-[12px] px-3 py-2.5 outline-none appearance-none cursor-pointer" style={{ background: "rgba(255,255,255,0.05)", color: "#e5e7eb" }}>
                       {loaders.map(l => (
                         <option key={l.id} value={l.id} style={{ background: "#1a1a24", color: "#e5e7eb" }}>{l.label}</option>
@@ -1076,16 +1076,16 @@ export default function PlayPage({ user, onOpenCommunity }) {
                               border: `1px solid ${item.disabled ? "rgba(255,255,255,0.02)" : `${tab.accent}15`}`,
                               opacity: item.disabled ? 0.4 : 1,
                             }}>
-                            {item.icon_url ? <img src={item.icon_url} alt={item.title || "╨£╨╛╨┤"} className="w-5 h-5 rounded flex-shrink-0" /> : <tab.icon size={10} style={{ color: tab.accent, flexShrink: 0 }} />}
+                            {item.icon_url ? <img src={item.icon_url} alt={item.title || "Мод"} className="w-5 h-5 rounded flex-shrink-0" /> : <tab.icon size={10} style={{ color: tab.accent, flexShrink: 0 }} />}
                             <span className="text-[11px] text-white truncate flex-1">{item.title}{item.auto ? " (auto)" : ""}{item.local ? " (local)" : ""}</span>
                             {/* Version comparison indicator */}
                             {!item.auto && !item.local && latest && (
-                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" title={isOutdated ? `╨₧╨▒╨╜╨╛╨▓╨╗╨╡╨╜╨╕╨╡: ${latest}` : isUpToDate ? "╨ƒ╨╛╤ü╨╗╨╡╨┤╨╜╤Å╤Å ╨▓╨╡╤Ç╤ü╨╕╤Å" : ""}
+                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" title={isOutdated ? `Обновление: ${latest}` : isUpToDate ? "Последняя версия" : ""}
                                 style={{ background: isOutdated ? "#f59e0b" : isUpToDate ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
                             )}
                             <span className="text-[9px] flex-shrink-0" style={{ color: isOutdated ? "#fbbf24" : "rgba(255,255,255,0.3)" }}>{item.version}</span>
                             {!item.auto && !item.local && (
-                              <button onClick={() => toggleDisabled(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 transition-all" title={item.disabled ? "╨Æ╨║╨╗╤Ä╤ç╨╕╤é╤î" : "╨₧╤é╨║╨╗╤Ä╤ç╨╕╤é╤î"}>
+                              <button onClick={() => toggleDisabled(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 transition-all" title={item.disabled ? "Включить" : "Отключить"}>
                                 <div className="w-3.5 h-2 rounded-full transition-all" style={{ background: item.disabled ? "rgba(255,255,255,0.15)" : "rgba(74,222,128,0.5)", position: "relative" }}>
                                   <div className="w-1.5 h-1.5 rounded-full absolute top-[1px] transition-all" style={{ background: "#fff", left: item.disabled ? "1px" : "11px" }} />
                                 </div>
@@ -1126,7 +1126,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.12)" }}>
                 <Info size={13} style={{ color: "#a855f7", flexShrink: 0, marginTop: 1 }} />
                 <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-                  ╨É╨╜╤é╨╕╤ç╨╕╤é ╨╜╨╡ ╤Ç╨░╤ü╨┐╤Ç╨╛╤ü╤é╤Ç╨░╨╜╤Å╨╡╤é╤ü╤Å ╨╜╨░ ╨┐╨╛╨╗╤î╨╖╨╛╨▓╨░╤é╨╡╨╗╤î╤ü╨║╨╕╨╡ ╤ü╨▒╨╛╤Ç╨║╨╕. Fabric API ╨┤╨╛╨▒╨░╨▓╨╗╤Å╨╡╤é╤ü╤Å ╨░╨▓╤é╨╛╨╝╨░╤é╨╕╤ç╨╡╤ü╨║╨╕.
+                  Античит не распространяется на пользовательские сборки. Fabric API добавляется автоматически.
                 </p>
               </div>
 
@@ -1135,14 +1135,14 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)" }}>
                   <Play size={13} style={{ color: "#22c55e", flexShrink: 0, marginTop: 1 }} />
                   <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-                    ╨ù╨░╨┐╤â╤ü╨║╨╛╨▓: {draft.launchCount || 0}{draft.lastLaunchedAt ? ` ┬╖ ╨ƒ╨╛╤ü╨╗╨╡╨┤╨╜╨╕╨╣: ${new Date(draft.lastLaunchedAt).toLocaleDateString("ru-RU")}` : ""}
+                    Запусков: {draft.launchCount || 0}{draft.lastLaunchedAt ? ` · Последний: ${new Date(draft.lastLaunchedAt).toLocaleDateString("ru-RU")}` : ""}
                   </p>
                 </div>
               )}
 
               {/* Import from archive */}
               <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>╨ÿ╨╝╨┐╨╛╤Ç╤é</span>
+                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Импорт</span>
                 <label className="flex items-center justify-center gap-2 h-10 rounded-xl cursor-pointer transition-all"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.45)" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.4)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
@@ -1161,13 +1161,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     });
                     e.target.value = "";
                   }} />
-                  <Package size={13} /> ╨ö╨╛╨▒╨░╨▓╨╕╤é╤î ╨╕╨╖ ╨░╤Ç╤à╨╕╨▓╨░ (.zip / .jar)
+                  <Package size={13} /> Добавить из архива (.zip / .jar)
                 </label>
               </div>
 
               {/* Import from Modrinth URL */}
               <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>╨ÿ╨╝╨┐╨╛╤Ç╤é ╨┐╨╛ ╤ü╤ü╤ï╨╗╨║╨╡</span>
+                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Импорт по ссылке</span>
                 <div className="flex gap-1.5">
                   <input value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="modrinth.com/mod/sodium"
                     onKeyDown={e => { if (e.key === "Enter") importFromUrl(); }}
@@ -1183,7 +1183,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               {/* Action buttons: Update All / Backup / Export / Save Profile */}
               <div className="flex flex-col gap-1.5">
                 <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  <ShieldCheck size={10} /> ╨ö╨╡╨╣╤ü╤é╨▓╨╕╤Å
+                  <ShieldCheck size={10} /> Действия
                 </span>
                 <div className="grid grid-cols-2 gap-1.5">
                   <button onClick={updateAllMods} disabled={updatingAll || (!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length)}
@@ -1191,41 +1191,41 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     style={{ background: "rgba(34,197,94,0.1)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)" }}
                     onMouseEnter={e => { if (!updatingAll) e.currentTarget.style.background = "rgba(34,197,94,0.18)"; }} onMouseLeave={e => e.currentTarget.style.background = "rgba(34,197,94,0.1)"}>
                     {updatingAll ? <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" /> : <RefreshCw size={10} />}
-                    ╨₧╨▒╨╜╨╛╨▓╨╕╤é╤î ╨▓╤ü╤æ
+                    Обновить всё
                   </button>
                   <button onClick={backupCurrentMods} disabled={!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length}
                     className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
                     style={{ background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }}
                     onMouseEnter={e => e.currentTarget.style.background = "rgba(245,158,11,0.18)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(245,158,11,0.1)"}>
-                    <Save size={10} /> ╨æ╤ì╨║╨░╨┐
+                    <Save size={10} /> Бэкап
                   </button>
                   <button onClick={exportModpack}
                     className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all"
                     style={{ background: "rgba(96,165,250,0.1)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.2)" }}
                     onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.18)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.1)"}>
-                    <Download size={10} /> ╨¡╨║╤ü╨┐╨╛╤Ç╤é
+                    <Download size={10} /> Экспорт
                   </button>
                   <button onClick={saveProfile} disabled={!draft.name.trim()}
                     className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
                     style={{ background: "rgba(168,85,247,0.1)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.2)" }}
                     onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.18)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.1)"}>
-                    <Folder size={10} /> ╨ƒ╤Ç╨╛╤ä╨╕╨╗╤î
+                    <Folder size={10} /> Профиль
                   </button>
                 </div>
               </div>
 
               {/* Screenshots */}
-              {/* TODO: Rust backend ΓÇö ╨┤╨╛╨▒╨░╨▓╨╕╤é╤î ╨┐╨╛╨┤╨┤╨╡╤Ç╨╢╨║╤â screenshots ╨▓ instance config.
-                  ╨í╨╡╨╣╤ç╨░╤ü ╨┐╤â╤é╨╕ ╤à╤Ç╨░╨╜╤Å╤é╤ü╤Å ╤é╨╛╨╗╤î╨║╨╛ ╨▓ localStorage (customModpacks).
-                  ╨¥╤â╨╢╨╜╨╛: 1) ╨┐╨╡╤Ç╨╡╨┤╨░╨▓╨░╤é╤î screenshots ╨▓ instanceCreate(),
-                         2) ╤ü╨╛╤à╤Ç╨░╨╜╤Å╤é╤î ╨▓ instance directory,
-                         3) ╨┤╨╛╨▒╨░╨▓╨╕╤é╤î API ╨┤╨╗╤Å ╨╖╨░╨│╤Ç╤â╨╖╨║╨╕ ╤ü╨║╤Ç╨╕╨╜╤ê╨╛╤é╨╛╨▓ ╨╜╨░ ╤ü╨╡╤Ç╨▓╨╡╤Ç. */}
+              {/* TODO: Rust backend — добавить поддержку screenshots в instance config.
+                  Сейчас пути хранятся только в localStorage (customModpacks).
+                  Нужно: 1) передавать screenshots в instanceCreate(),
+                         2) сохранять в instance directory,
+                         3) добавить API для загрузки скриншотов на сервер. */}
               <div className="flex flex-col gap-1.5">
                 <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  <Camera size={10} /> ╨í╨║╤Ç╨╕╨╜╤ê╨╛╤é╤ï ({(draft.screenshots || []).length})
+                  <Camera size={10} /> Скриншоты ({(draft.screenshots || []).length})
                 </span>
                 <div className="flex gap-1.5">
-                  <input value={screenshotInput} onChange={e => setScreenshotInput(e.target.value)} placeholder="╨ƒ╤â╤é╤î ╨║ ╤ü╨║╤Ç╨╕╨╜╤ê╨╛╤é╤â"
+                  <input value={screenshotInput} onChange={e => setScreenshotInput(e.target.value)} placeholder="Путь к скриншоту"
                     className="flex-1 rounded-lg text-[11px] px-2.5 py-1.5 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }}
                     onKeyDown={e => { if (e.key === "Enter" && screenshotInput.trim()) { setDraft(p => ({ ...p, screenshots: [...(p.screenshots || []), screenshotInput.trim()] })); setScreenshotInput(""); } }} />
                   <button onClick={() => { if (screenshotInput.trim()) { setDraft(p => ({ ...p, screenshots: [...(p.screenshots || []), screenshotInput.trim()] })); setScreenshotInput(""); } }}
@@ -1249,16 +1249,16 @@ export default function PlayPage({ user, onOpenCommunity }) {
             <div className="p-4 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
               <button onClick={() => setShowBuilder(false)} className="flex-1 h-10 rounded-xl text-[12px] font-semibold transition-all"
                 style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>╨₧╤é╨╝╨╡╨╜╨░</button>
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>Отмена</button>
               <button onClick={saveModpack} disabled={!draft.name.trim()}
                 className="flex-1 h-10 rounded-xl text-[12px] font-bold text-white transition-all disabled:opacity-30"
                 style={{ background: draft.name.trim() ? "linear-gradient(135deg, #9333ea, #a855f7)" : "rgba(168,85,247,0.2)", boxShadow: draft.name.trim() ? "0 0 20px rgba(168,85,247,0.3)" : "none" }}>
-                ╨í╨╛╤à╤Ç╨░╨╜╨╕╤é╤î
+                Сохранить
               </button>
             </div>
           </div>
 
-          {/* Right panel: Modrinth browser ΓÇö opaque */}
+          {/* Right panel: Modrinth browser — opaque */}
           <div className="flex-1 flex flex-col" style={{ background: "rgba(10,10,14,0.92)" }}>
             {/* Tabs + search */}
             <div className="flex items-center gap-3 px-6 pt-5 pb-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1275,11 +1275,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 className="h-8 px-3 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
                 style={{ background: syncResult && !syncResult.error ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)", color: syncResult && !syncResult.error ? "#4ade80" : "rgba(255,255,255,0.5)", border: `1px solid ${syncResult && !syncResult.error ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.08)"}` }}>
                 {syncing ? <div className="w-3 h-3 border-[1.5px] border-white/30 border-t-white/70 rounded-full animate-spin" /> : <ArrowUpDown size={12} />}
-                {syncing ? "╨í╨╕╨╜╤à╤Ç╨╛╨╜╨╕╨╖╨░╤å╨╕╤Å..." : "╨í╨╕╨╜╤à╤Ç╨╛╨╜╨╕╨╖╨░╤å╨╕╤Å"}
+                {syncing ? "Синхронизация..." : "Синхронизация"}
               </button>
               <div className="relative" style={{ width: 320 }}>
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(255,255,255,0.3)" }} />
-                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={`╨ƒ╨╛╨╕╤ü╨║ ${currentTab?.label?.toLowerCase()}...`}
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={`Поиск ${currentTab?.label?.toLowerCase()}...`}
                   className="w-full h-9 rounded-xl text-[12px] pl-9 pr-3 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
                 {searching && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" />}
               </div>
@@ -1292,13 +1292,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 border: `1px solid ${syncResult.error ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.15)"}`,
               }}>
                 {syncResult.error ? (
-                  <p className="text-[11px]" style={{ color: "#fca5a5" }}>╨₧╤ê╨╕╨▒╨║╨░: {syncResult.error}</p>
+                  <p className="text-[11px]" style={{ color: "#fca5a5" }}>Ошибка: {syncResult.error}</p>
                 ) : (
                   <>
-                    <p className="text-[11px] font-semibold" style={{ color: "#4ade80" }}>╨í╨╡╤Ç╨▓╨╡╤Ç: {syncResult.total} ╨╝╨╛╨┤╨╛╨▓ ╨▓ ╨╝╨░╨╜╨╕╤ä╨╡╤ü╤é╨╡</p>
-                    {syncResult.missing.length > 0 && <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>╨₧╤é╤ü╤â╤é╤ü╤é╨▓╤â╨╡╤é ╨╗╨╛╨║╨░╨╗╤î╨╜╨╛: {syncResult.missing.length}</p>}
-                    {syncResult.extra.length > 0 && <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>╨¢╨╕╤ê╨╜╨╕╤à (╨╜╨╡ ╨╜╨░ ╤ü╨╡╤Ç╨▓╨╡╤Ç╨╡): {syncResult.extra.length}</p>}
-                    {syncResult.missing.length === 0 && syncResult.extra.length === 0 && <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>╨Æ╤ü╤æ ╤ü╨╕╨╜╤à╤Ç╨╛╨╜╨╕╨╖╨╕╤Ç╨╛╨▓╨░╨╜╨╛</p>}
+                    <p className="text-[11px] font-semibold" style={{ color: "#4ade80" }}>Сервер: {syncResult.total} модов в манифесте</p>
+                    {syncResult.missing.length > 0 && <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>Отсутствует локально: {syncResult.missing.length}</p>}
+                    {syncResult.extra.length > 0 && <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>Лишних (не на сервере): {syncResult.extra.length}</p>}
+                    {syncResult.missing.length === 0 && syncResult.extra.length === 0 && <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>Всё синхронизировано</p>}
                   </>
                 )}
               </div>
@@ -1307,11 +1307,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
             {/* Compatibility warnings */}
             {compatWarnings.length > 0 && (
               <div className="mx-6 mt-2 rounded-xl p-3 flex flex-col gap-1.5" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
-                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#fbbf24" }}>╨ƒ╤Ç╨╛╨▒╨╗╨╡╨╝╤ï ╤ü╨╛╨▓╨╝╨╡╤ü╤é╨╕╨╝╨╛╤ü╤é╨╕</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#fbbf24" }}>Проблемы совместимости</p>
                 {compatWarnings.map((w, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>
                     <AlertTriangle size={10} style={{ color: "#fbbf24", flexShrink: 0 }} />
-                    <span className="font-semibold text-white">{w.title}</span> ΓÇö {w.reason}
+                    <span className="font-semibold text-white">{w.title}</span> — {w.reason}
                   </div>
                 ))}
               </div>
@@ -1324,22 +1324,22 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <button onClick={() => { setSelectedModDetail(null); setModVersions([]); }}
                     className="flex items-center gap-1.5 text-[12px] mb-4 transition-colors" style={{ color: "rgba(255,255,255,0.4)" }}
                     onMouseEnter={e => e.currentTarget.style.color = "#fff"} onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
-                    <ArrowLeft size={14} /> ╨¥╨░╨╖╨░╨┤ ╨║ ╨┐╨╛╨╕╤ü╨║╤â
+                    <ArrowLeft size={14} /> Назад к поиску
                   </button>
                   <div className="flex items-start gap-4 mb-5">
-                    {selectedModDetail.icon_url && <img src={selectedModDetail.icon_url} alt={selectedModDetail.title || "╨£╨╛╨┤"} className="w-16 h-16 rounded-2xl flex-shrink-0" />}
+                    {selectedModDetail.icon_url && <img src={selectedModDetail.icon_url} alt={selectedModDetail.title || "Мод"} className="w-16 h-16 rounded-2xl flex-shrink-0" />}
                     <div className="flex-1 min-w-0">
                       <h2 className="text-[22px] font-black text-white leading-tight">{selectedModDetail.title}</h2>
-                      <p className="text-[12px] mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>{formatDownloads(selectedModDetail.downloads)} ╨╖╨░╨│╤Ç╤â╨╖╨╛╨║ ┬╖ {selectedModDetail.author}</p>
+                      <p className="text-[12px] mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>{formatDownloads(selectedModDetail.downloads)} загрузок · {selectedModDetail.author}</p>
                       <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>{truncateText(selectedModDetail.description, 240)}</p>
                       {selectedModDetail.website_url && <a href={selectedModDetail.website_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] mt-2" style={{ color: "#60a5fa" }}>Modrinth <ExternalLink size={10} /></a>}
                     </div>
                   </div>
-                  <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: "rgba(255,255,255,0.35)" }}>╨Æ╨╡╤Ç╤ü╨╕╨╕</p>
+                  <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: "rgba(255,255,255,0.35)" }}>Версии</p>
                   {loadingVersions ? (
                     <div className="flex items-center justify-center py-12"><div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" /></div>
                   ) : modVersions.length === 0 ? (
-                    <p className="text-[12px] text-center py-8" style={{ color: "rgba(255,255,255,0.3)" }}>╨¥╨╡╤é ╨▓╨╡╤Ç╤ü╨╕╨╣ ╨┤╨╗╤Å {draft.mcVersion}</p>
+                    <p className="text-[12px] text-center py-8" style={{ color: "rgba(255,255,255,0.3)" }}>Нет версий для {draft.mcVersion}</p>
                   ) : (
                     <div className="flex flex-col gap-2">
                       {modVersions.map(ver => {
@@ -1353,14 +1353,14 @@ export default function PlayPage({ user, onOpenCommunity }) {
                               <div className="flex items-center gap-2">
                                 <span className="text-[13px] font-bold" style={{ color: isInstalled ? "#4ade80" : "#fff" }}>{ver.version_number}</span>
                                 <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase" style={{ background: ver.version_type === "release" ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)", color: ver.version_type === "release" ? "#4ade80" : "#fbbf24" }}>{ver.version_type}</span>
-                                {isInstalled && <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "rgba(74,222,128,0.15)", color: "#4ade80" }}>╨ú╨í╨ó╨É╨¥╨₧╨Æ╨¢╨ò╨¥╨É</span>}
+                                {isInstalled && <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "rgba(74,222,128,0.15)", color: "#4ade80" }}>УСТАНОВЛЕНА</span>}
                               </div>
-                              <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{ver.date_published?.slice(0, 10)} ┬╖ {ver.game_versions?.join(", ")}</p>
+                              <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{ver.date_published?.slice(0, 10)} · {ver.game_versions?.join(", ")}</p>
                             </div>
                             <button onClick={() => addModFromVersion(selectedModDetail, ver)} disabled={added && !isInstalled}
                               className="h-8 px-4 rounded-lg text-[11px] font-bold transition-all disabled:opacity-40"
                               style={{ background: isInstalled ? "rgba(34,197,94,0.15)" : added ? "rgba(34,197,94,0.15)" : "linear-gradient(135deg, #9333ea, #a855f7)", color: isInstalled || added ? "#4ade80" : "#fff" }}>
-                              {isInstalled ? <><Check size={12} className="inline mr-1" />╨ú╤ü╤é╨░╨╜╨╛╨▓╨╗╨╡╨╜╨░</> : added ? <><Check size={12} className="inline mr-1" />╨ö╨╛╨▒╨░╨▓╨╗╨╡╨╜</> : <><Download size={12} className="inline mr-1" />╨ö╨╛╨▒╨░╨▓╨╕╤é╤î</>}
+                              {isInstalled ? <><Check size={12} className="inline mr-1" />Установлена</> : added ? <><Check size={12} className="inline mr-1" />Добавлен</> : <><Download size={12} className="inline mr-1" />Добавить</>}
                             </button>
                           </div>
                         );
@@ -1372,7 +1372,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 <>
                   {!searchQuery && popularResults.length > 0 && (
                     <p className="text-[11px] uppercase tracking-widest font-semibold mb-4" style={{ color: "rgba(255,255,255,0.3)" }}>
-                      ╨ƒ╨╛╨┐╤â╨╗╤Å╤Ç╨╜╤ï╨╡ {currentTab?.label?.toLowerCase()}
+                      Популярные {currentTab?.label?.toLowerCase()}
                     </p>
                   )}
                   {displayItems.length === 0 && !searching && (
@@ -1380,8 +1380,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
                       <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(255,255,255,0.04)" }}>
                         <Search size={24} style={{ color: "rgba(255,255,255,0.15)" }} />
                       </div>
-                      <p className="text-[13px] font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>{searchQuery ? "╨¥╨╕╤ç╨╡╨│╨╛ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨╛" : "╨¥╨░╤ç╨╜╨╕ ╨┐╨╛╨╕╤ü╨║ ╨▓ Modrinth"}</p>
-                      <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.2)" }}>╨¥╨░╨╣╨┤╨╕ ╨╕ ╤â╤ü╤é╨░╨╜╨╛╨▓╨╕ ╨╝╨╛╨┤╤ï, ╤Ç╨╡╤ü╤â╤Ç╤ü╨┐╨░╨║╨╕ ╨╕ ╤ê╨╡╨╣╨┤╨╡╤Ç╤ï</p>
+                      <p className="text-[13px] font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>{searchQuery ? "Ничего не найдено" : "Начни поиск в Modrinth"}</p>
+                      <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.2)" }}>Найди и установи моды, ресурспаки и шейдеры</p>
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-3">
@@ -1392,13 +1392,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
                           style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                           onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"} onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"}>
                       <div className="flex items-start gap-3">
-                        {hit.icon_url && <img src={hit.icon_url} alt={hit.title || "╨£╨╛╨┤"} className="w-10 h-10 rounded-xl flex-shrink-0" />}
+                        {hit.icon_url && <img src={hit.icon_url} alt={hit.title || "Мод"} className="w-10 h-10 rounded-xl flex-shrink-0" />}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <p className="text-[13px] font-bold text-white truncate">{hit.title}</p>
                             {added && <Check size={11} style={{ color: "#4ade80", flexShrink: 0 }} />}
                           </div>
-                          <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.4)" }}>{hit.author} ┬╖ {formatDownloads(hit.downloads)}</p>
+                          <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.4)" }}>{hit.author} · {formatDownloads(hit.downloads)}</p>
                           {added && (() => {
                             const allItems = [...draft.mods, ...draft.resourcePacks, ...draft.shaders];
                             const installed = allItems.find(m => m.projectId === hit.project_id);
@@ -1409,7 +1409,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                                 <span className="text-[9px] px-1 py-0.5 rounded" style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}>{installed.version}</span>
                                 {latest && installed.version !== latest && (
                                   <>
-                                    <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.3)" }}>ΓåÆ</span>
+                                    <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.3)" }}>→</span>
                                     <span className="text-[9px] px-1 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.1)", color: "#fbbf24" }}>{latest}</span>
                                   </>
                                 )}
@@ -1427,7 +1427,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   {hasMore && displayItems.length > 0 && !searching && (
                     <button onClick={loadMore} className="w-full mt-4 h-10 rounded-xl text-[12px] font-semibold transition-all"
                       style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}>╨ù╨░╨│╤Ç╤â╨╖╨╕╤é╤î ╨╡╤ë╤æ</button>
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}>Загрузить ещё</button>
                   )}
                 </>
               )}
@@ -1440,7 +1440,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
           <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.8) 100%)" }} />
           <div className="relative z-10 flex flex-col items-center">
             <div className="text-[64px] font-display font-black leading-none tracking-tight text-white text-center" style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}>SB GAMES</div>
-            <div className="text-[56px] font-display font-black leading-none tracking-tight uppercase text-center" style={{ color: "rgba(255,255,255,0.22)" }}>╨Ü╨₧╨£╨ƒ╨¢╨ò╨Ü╨í<br />╨í╨ò╨á╨Æ╨ò╨á╨₧╨Æ</div>
+            <div className="text-[56px] font-display font-black leading-none tracking-tight uppercase text-center" style={{ color: "rgba(255,255,255,0.22)" }}>КОМПЛЕКС<br />СЕРВЕРОВ</div>
           </div>
         </div>
       ) : (
@@ -1454,7 +1454,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
             <button onClick={onOpenCommunity} className="flex items-center gap-2.5 h-[44px] px-5 rounded-2xl transition-all duration-150 flex-shrink-0" style={{ background: "rgba(255,255,255,0.08)" }}
               onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.14)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}>
               <UsersThree size={17} weight="regular" style={{ color: "rgba(255,255,255,0.7)" }} />
-              <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.6)" }}>╨í╨╛╨╛╨▒╤ë╨╡╤ü╤é╨▓╨╛</span>
+              <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.6)" }}>Сообщество</span>
             </button>
             <div className="flex-1" />
             <div className="flex items-center gap-2 rounded-2xl px-3.5 h-[44px]" style={{ background: "rgba(255,255,255,0.08)" }}>
@@ -1465,9 +1465,9 @@ export default function PlayPage({ user, onOpenCommunity }) {
             {mcRunning ? (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2.5 h-[44px] px-6 rounded-2xl font-black text-[13px] tracking-widest uppercase" style={{ background: "rgba(22,163,74,0.15)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.2)" }}>
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> ╨Æ ╨ÿ╨ô╨á╨ò
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> В ИГРЕ
                 </div>
-                <motion.button onClick={handleClose} aria-label="╨ù╨░╨║╤Ç╤ï╤é╤î" whileTap={{ scale: 0.95 }} className="h-[44px] px-4 rounded-2xl font-bold text-[11px] tracking-wider uppercase transition-all"
+                <motion.button onClick={handleClose} aria-label="Закрыть" whileTap={{ scale: 0.95 }} className="h-[44px] px-4 rounded-2xl font-bold text-[11px] tracking-wider uppercase transition-all"
                   style={{ background: "rgba(239,68,68,0.12)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.25)"; e.currentTarget.style.color = "#fff"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.color = "#fca5a5"; }}><X size={14} /></motion.button>
@@ -1478,7 +1478,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 style={{ padding: "0 32px", background: launched ? "#16a34a" : "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", color: "#fff", boxShadow: launched ? "0 0 24px rgba(22,163,74,0.4)" : "0 0 24px rgba(37,99,235,0.4)" }}
                 onMouseEnter={e => { if (!launching && !launched && selected) e.currentTarget.style.background = "linear-gradient(135deg, rgba(29,78,216,0.95), rgba(37,99,235,0.9))"; }}
                 onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = launched ? "#16a34a" : "#2563EB"; }}>
-                {launching ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> ╨ù╨É╨ƒ╨ú╨í╨Ü...</> : launched ? <>Γ£ô ╨ù╨É╨ƒ╨ú╨⌐╨ò╨¥╨₧</> : <>╨ÿ╨ô╨á╨É╨ó╨¼ <Play size={16} weight="fill" /></>}
+                {launching ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> ЗАПУСК...</> : launched ? <>✓ ЗАПУЩЕНО</> : <>ИГРАТЬ <Play size={16} weight="fill" /></>}
               </motion.button>
             )}
             <motion.button onClick={() => setShowSettings(true)} whileTap={{ scale: 0.9 }} className="absolute top-4 right-4 w-9 h-9 rounded-xl flex items-center justify-center transition-all"
@@ -1491,9 +1491,9 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   role="alert"
                   className="absolute bottom-6 left-1/2 -translate-x-1/2 max-w-[480px] rounded-xl px-4 py-3 text-[12px]"
                   style={{ background: "rgba(220,38,38,0.15)", color: "#fca5a5", border: "1px solid rgba(220,38,38,0.3)" }}>
-                  <p className="font-bold mb-1">╨¥╨╡ ╤â╨┤╨░╨╗╨╛╤ü╤î ╨╖╨░╨┐╤â╤ü╤é╨╕╤é╤î</p>
+                  <p className="font-bold mb-1">Не удалось запустить</p>
                   <p className="text-[11px] opacity-80">{launchError}</p>
-                  <button onClick={() => setLaunchError(null)} aria-label="╨ù╨░╨║╤Ç╤ï╤é╤î ╨╛╤ê╨╕╨▒╨║╤â" className="absolute top-1 right-2 text-[14px] opacity-50 hover:opacity-100" style={{ color: "#fca5a5" }}>├ù</button>
+                  <button onClick={() => setLaunchError(null)} aria-label="Закрыть ошибку" className="absolute top-1 right-2 text-[14px] opacity-50 hover:opacity-100" style={{ color: "#fca5a5" }}>×</button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1501,27 +1501,27 @@ export default function PlayPage({ user, onOpenCommunity }) {
         </div>
       )}
 
-      {/* ΓöÇΓöÇ Modals ΓöÇΓöÇ */}
+      {/* ── Modals ── */}
       <AnimatePresence>
         {showSettings && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 flex items-center justify-center"
             style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) setShowSettings(false); }}>
             <motion.div initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 12 }} transition={{ duration: 0.18 }}
-              role="dialog" aria-modal="true" aria-label="╨¥╨░╤ü╤é╤Ç╨╛╨╣╨║╨╕ ╨╖╨░╨┐╤â╤ü╨║╨░"
+              role="dialog" aria-modal="true" aria-label="Настройки запуска"
               className="w-[420px] rounded-2xl p-5 flex flex-col gap-4" style={{ background: "rgba(10,10,14,0.98)", boxShadow: "0 8px 40px rgba(0,0,0,0.7)" }}>
               <div className="flex items-center justify-between">
-                <p className="text-[14px] font-bold text-white">╨¥╨░╤ü╤é╤Ç╨╛╨╣╨║╨╕ ╨╖╨░╨┐╤â╤ü╨║╨░</p>
-                <button onClick={() => setShowSettings(false)} aria-label="╨ù╨░╨║╤Ç╤ï╤é╤î ╨╜╨░╤ü╤é╤Ç╨╛╨╣╨║╨╕" className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ color: "rgba(255,255,255,0.3)" }}
+                <p className="text-[14px] font-bold text-white">Настройки запуска</p>
+                <button onClick={() => setShowSettings(false)} aria-label="Закрыть настройки" className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ color: "rgba(255,255,255,0.3)" }}
                   onMouseEnter={e => e.currentTarget.style.color = "#fff"} onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}><X size={12} /></button>
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] uppercase tracking-widest font-semibold flex items-center gap-2" style={{ color: "rgba(255,255,255,0.4)" }}><HardDrive size={11} />╨₧╨┐╨╡╤Ç╨░╤é╨╕╨▓╨╜╨░╤Å ╨┐╨░╨╝╤Å╤é╤î</span>
-                  <span className="text-[12px] font-bold text-white tabular-nums">{ramGb} ╨ô╨æ</span>
+                  <span className="text-[11px] uppercase tracking-widest font-semibold flex items-center gap-2" style={{ color: "rgba(255,255,255,0.4)" }}><HardDrive size={11} />Оперативная память</span>
+                  <span className="text-[12px] font-bold text-white tabular-nums">{ramGb} ГБ</span>
                 </div>
                 <input type="range" min="1" max="16" step="1" value={ramGb} onChange={e => setRamGb(parseInt(e.target.value))} className="w-full accent-blue-500" />
                 <div className="flex gap-2 mt-1">
-                  {[{ label: "╨í╨╗╨░╨▒╤ï╨╣ ╨ƒ╨Ü", ram: 2 }, { label: "╨æ╨░╨╗╨░╨╜╤ü", ram: 4 }, { label: "╨£╨░╨║╤ü╨╕╨╝╤â╨╝", ram: 8 }].map(p => (
+                  {[{ label: "Слабый ПК", ram: 2 }, { label: "Баланс", ram: 4 }, { label: "Максимум", ram: 8 }].map(p => (
                     <button key={p.label} onClick={() => setRamGb(p.ram)}
                       className="flex-1 h-8 rounded-lg text-[10px] font-bold transition-all"
                       style={{
@@ -1529,17 +1529,17 @@ export default function PlayPage({ user, onOpenCommunity }) {
                         color: ramGb === p.ram ? "#93c5fd" : "rgba(255,255,255,0.4)",
                         border: `1px solid ${ramGb === p.ram ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.06)"}`,
                       }}>
-                      {p.label} ({p.ram} ╨ô╨æ)
+                      {p.label} ({p.ram} ГБ)
                     </button>
                   ))}
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <span className="text-[11px] uppercase tracking-widest font-semibold flex items-center gap-2" style={{ color: "rgba(255,255,255,0.4)" }}><Cpu size={11} />╨ƒ╤â╤é╤î ╨║ Java</span>
-                <input value={javaPath} onChange={e => setJavaPath(e.target.value)} placeholder="╨░╨▓╤é╨╛╨┤╨╡╤é╨╡╨║╤é"
+                <span className="text-[11px] uppercase tracking-widest font-semibold flex items-center gap-2" style={{ color: "rgba(255,255,255,0.4)" }}><Cpu size={11} />Путь к Java</span>
+                <input value={javaPath} onChange={e => setJavaPath(e.target.value)} placeholder="автодетект"
                   className="w-full rounded-xl text-[12px] px-3 py-2 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff", fontFamily: "monospace" }} />
               </div>
-              <button onClick={() => setShowSettings(false)} className="w-full h-9 rounded-xl text-[12px] font-semibold text-white" style={{ background: "rgba(37,99,235,0.7)" }}>╨í╨╛╤à╤Ç╨░╨╜╨╕╤é╤î</button>
+              <button onClick={() => setShowSettings(false)} className="w-full h-9 rounded-xl text-[12px] font-semibold text-white" style={{ background: "rgba(37,99,235,0.7)" }}>Сохранить</button>
             </motion.div>
           </motion.div>
         )}
@@ -1548,16 +1548,16 @@ export default function PlayPage({ user, onOpenCommunity }) {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 flex items-center justify-center p-6"
             style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) handleModpackCancel(); }}>
             <motion.div initial={{ scale: 0.92, y: 12, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 280, damping: 26 }}
-              role="dialog" aria-modal="true" aria-label="╨ƒ╤Ç╨╡╨┤╤â╨┐╤Ç╨╡╨╢╨┤╨╡╨╜╨╕╨╡"
+              role="dialog" aria-modal="true" aria-label="Предупреждение"
               className="w-full max-w-[520px] rounded-3xl p-6 flex flex-col gap-4"
               style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", border: "1px solid rgba(239,68,68,0.35)", boxShadow: "0 0 80px rgba(239,68,68,0.25), 0 24px 60px rgba(0,0,0,0.7)" }}>
               <div className="flex items-start gap-3">
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}><AlertTriangle size={22} weight="fill" style={{ color: "#fca5a5" }} /></div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[15px] font-black text-white">╨₧╨▒╨╜╨░╤Ç╤â╨╢╨╡╨╜╨░ ╨┐╨╛╨┤╨╛╨╖╤Ç╨╕╤é╨╡╨╗╤î╨╜╨░╤Å ╨░╨║╤é╨╕╨▓╨╜╨╛╤ü╤é╤î</p>
-                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>╨£╨╛╨┤-╨┐╨░╨║ ╤ü╨║╨╛╨╝╨┐╤Ç╨╛╨╝╨╡╤é╨╕╤Ç╨╛╨▓╨░╨╜. ╨ù╨░╨┐╤â╤ü╨║ ╨╖╨░╨▒╨╗╨╛╨║╨╕╤Ç╨╛╨▓╨░╨╜.</p>
+                  <p className="text-[15px] font-black text-white">Обнаружена подозрительная активность</p>
+                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>Мод-пак скомпрометирован. Запуск заблокирован.</p>
                 </div>
-                <button onClick={handleModpackCancel} aria-label="╨ù╨░╨║╤Ç╤ï╤é╤î" className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}><X size={14} /></button>
+                <button onClick={handleModpackCancel} aria-label="Закрыть" className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}><X size={14} /></button>
               </div>
               <div className="rounded-2xl p-3 max-h-[280px] overflow-y-auto" style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.05)" }}>
                 {modpackReport.rejected?.length > 0 && modpackReport.rejected.map((issue, i) => (
@@ -1573,8 +1573,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 ))}
               </div>
               <div className="flex gap-2">
-                <button onClick={handleModpackCancel} className="flex-1 h-11 rounded-xl text-[12px] font-semibold" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)" }}>╨₧╤é╨╝╨╡╨╜╨░</button>
-                <button onClick={handleModpackClean} className="flex-1 h-11 rounded-xl text-[12px] font-bold text-white" style={{ background: "#2563eb" }}>╨ú╨┤╨░╨╗╨╕╤é╤î ╨╕ ╨┐╤Ç╨╛╨┤╨╛╨╗╨╢╨╕╤é╤î</button>
+                <button onClick={handleModpackCancel} className="flex-1 h-11 rounded-xl text-[12px] font-semibold" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)" }}>Отмена</button>
+                <button onClick={handleModpackClean} className="flex-1 h-11 rounded-xl text-[12px] font-bold text-white" style={{ background: "#2563eb" }}>Удалить и продолжить</button>
               </div>
             </motion.div>
           </motion.div>
@@ -1592,8 +1592,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <Download size={15} style={{ color: "#a855f7" }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-black text-white leading-tight">╨ù╨░╨▓╨╕╤ü╨╕╨╝╨╛╤ü╤é╨╕</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{depModal.parent} ╤é╤Ç╨╡╨▒╤â╨╡╤é {depModal.deps.length} {depModal.deps.length === 1 ? "╨╖╨░╨▓╨╕╤ü╨╕╨╝╨╛╤ü╤é╤î" : "╨╖╨░╨▓╨╕╤ü╨╕╨╝╨╛╤ü╤é╨╡╨╣"}</p>
+                  <p className="text-[13px] font-black text-white leading-tight">Зависимости</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{depModal.parent} требует {depModal.deps.length} {depModal.deps.length === 1 ? "зависимость" : "зависимостей"}</p>
                 </div>
               </div>
               <div className="rounded-xl p-2 space-y-1" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.05)" }}>
@@ -1606,9 +1606,9 @@ export default function PlayPage({ user, onOpenCommunity }) {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setDepModal(null)} className="flex-1 h-9 rounded-xl text-[12px] font-semibold"
-                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>╨ƒ╤Ç╨╛╨┐╤â╤ü╤é╨╕╤é╤î</button>
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>Пропустить</button>
                 <button onClick={addAllDeps} className="flex-1 h-9 rounded-xl text-[12px] font-bold text-white"
-                  style={{ background: "linear-gradient(135deg, #9333ea, #a855f7)" }}>╨ö╨╛╨▒╨░╨▓╨╕╤é╤î ╨▓╤ü╤æ</button>
+                  style={{ background: "linear-gradient(135deg, #9333ea, #a855f7)" }}>Добавить всё</button>
               </div>
             </motion.div>
           </motion.div>
@@ -1623,15 +1623,15 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <div className="flex items-start gap-3">
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}><ShieldAlert size={22} weight="fill" style={{ color: "#fca5a5" }} /></div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[15px] font-black text-white">╨ù╨░╤ë╨╕╤é╨░ SB Games</p>
-                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>{guardModal.reason === "inject" ? "╨ÿ╨╜╨╢╨╡╨║╤é DLL" : "╨ÿ╨╖╨╝╨╡╨╜╨╡╨╜╨╕╤Å ╨▓ ╨╝╨╛╨┤-╨┐╨░╨║╨╡"}</p>
+                  <p className="text-[15px] font-black text-white">Защита SB Games</p>
+                  <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>{guardModal.reason === "inject" ? "Инжект DLL" : "Изменения в мод-паке"}</p>
                 </div>
-                <button onClick={() => setGuardModal(null)} aria-label="╨ù╨░╨║╤Ç╤ï╤é╤î" className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}><X size={14} /></button>
+                <button onClick={() => setGuardModal(null)} aria-label="Закрыть" className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}><X size={14} /></button>
               </div>
               <div className="rounded-2xl p-3" style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(239,68,68,0.15)" }}>
-                <p className="text-[12px] font-mono text-white break-all" style={{ lineHeight: 1.5 }}>{guardModal.detail || "ΓÇö"}</p>
+                <p className="text-[12px] font-mono text-white break-all" style={{ lineHeight: 1.5 }}>{guardModal.detail || "—"}</p>
               </div>
-              <button onClick={() => setGuardModal(null)} className="w-full h-11 rounded-xl text-[12px] font-bold text-white" style={{ background: "rgba(255,255,255,0.08)" }}>╨ƒ╨╛╨╜╤Å╤é╨╜╨╛</button>
+              <button onClick={() => setGuardModal(null)} className="w-full h-11 rounded-xl text-[12px] font-bold text-white" style={{ background: "rgba(255,255,255,0.08)" }}>Понятно</button>
             </motion.div>
           </motion.div>
         )}
