@@ -1,6 +1,6 @@
 export const API_URL = "https://games.sb-capital.group";
 
-export const WS_URL  = "wss://games.sb-capital.group";
+export const WS_URL  = "wss://games.sb-capital.group/ws";
 export const getToken = () => localStorage.getItem("sbgames_token");
 export const getUser  = () => { try { return JSON.parse(localStorage.getItem("sbgames_user") || "null"); } catch { return null; } };
 
