@@ -697,11 +697,132 @@ export default function PlayPage({ user, onOpenCommunity }) {
       <AnimatePresence mode="wait">
         <motion.div key={selected ? selected.id + "_bg" : showBuilder ? "builder_bg" : "empty_bg"} className="absolute inset-0"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
+          {/* ── Sidebar ── */}
+          {!showBuilder && (
+            <div className="absolute left-0 top-0 bottom-0 flex flex-col" style={{ width: 252, background: "rgba(10,10,14,0.95)", borderRight: "1px solid rgba(255,255,255,0.06)", zIndex: 20 }}>
+              <div className="flex gap-1 p-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <button onClick={() => setSidebarMenuTab("servers")} className="flex-1 h-8 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                  style={{ background: sidebarMenuTab === "servers" ? "rgba(255,255,255,0.08)" : "transparent", color: sidebarMenuTab === "servers" ? "#fff" : "rgba(255,255,255,0.35)" }}>
+                  Серверы
+                </button>
+                <button onClick={() => setSidebarMenuTab("modpacks")} className="flex-1 h-8 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                  style={{ background: sidebarMenuTab === "modpacks" ? "rgba(255,255,255,0.08)" : "transparent", color: sidebarMenuTab === "modpacks" ? "#fff" : "rgba(255,255,255,0.35)" }}>
+                  Сборки
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1" style={{ scrollbarWidth: "thin" }}>
+                {sidebarMenuTab === "servers" ? (
+                  SERVERS.map(server => {
+                    const isSel = selected?.id === server.id;
+                    return (
+                      <button key={server.id} onClick={() => { setSelected(server); setShowBuilder(false); }}
+                        className="w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all"
+                        style={{ background: isSel ? `${server.accent}15` : "rgba(255,255,255,0.03)", border: `1px solid ${isSel ? `${server.accent}30` : "rgba(255,255,255,0.04)"}` }}
+                        onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                        onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}>
+                        <img src={server.image} alt={server.name} className="w-9 h-9 rounded-lg flex-shrink-0 object-cover" style={{ border: `1px solid ${server.accent}30` }} onError={e => e.currentTarget.style.display = "none"} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-bold truncate" style={{ color: isSel ? server.accent : "#fff" }}>{server.name}</p>
+                          <p className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.4)" }}>{server.subtitle}</p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#22c55e" }} />
+                          <span className="text-[9px] tabular-nums" style={{ color: "rgba(255,255,255,0.4)" }}>{serverOnline[server.id] || 0}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <>
+                    {customModpacks.map(mp => {
+                      const isSel = selected?.id === `custom_${mp.id}`;
+                      return (
+                        <button key={mp.id} onClick={() => selectCustom(mp)}
+                          className="w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all"
+                          style={{ background: isSel ? "rgba(168,85,247,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${isSel ? "rgba(168,85,247,0.25)" : "rgba(255,255,255,0.04)"}` }}
+                          onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                          onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}>
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.25)" }}>
+                            <Package size={14} style={{ color: "#a855f7" }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-bold truncate" style={{ color: isSel ? "#a855f7" : "#fff" }}>{mp.name}</p>
+                            <p className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.4)" }}>{mp.loader?.toUpperCase()} {mp.mcVersion}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    <button onClick={() => openBuilder(null)}
+                      className="w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all"
+                      style={{ background: "rgba(37,99,235,0.08)", border: "1px dashed rgba(37,99,235,0.25)" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.15)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.08)"}>
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(37,99,235,0.15)", border: "1px solid rgba(37,99,235,0.25)" }}>
+                        <Plus size={14} style={{ color: "#60a5fa" }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold" style={{ color: "#60a5fa" }}>Новая сборка</p>
+                        <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>Создать модпак</p>
+                      </div>
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="p-2 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center gap-2 px-2.5 h-8 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <img src="/money.png" alt="SBT" className="w-4 h-4 flex-shrink-0" style={{ filter: "drop-shadow(0 0 4px rgba(250,204,21,0.6))" }} onError={e => e.currentTarget.style.display = "none"} />
+                  <span className="text-[12px] font-black text-white tabular-nums">{(user?.balance ?? 0).toLocaleString("en-US")}</span>
+                  <span className="text-[9px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>SBT</span>
+                </div>
+                {mcRunning ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl font-black text-[11px] tracking-widest uppercase" style={{ background: "rgba(22,163,74,0.15)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.2)" }}>
+                      <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> В ИГРЕ
+                    </div>
+                    <motion.button onClick={handleClose} whileTap={{ scale: 0.95 }} className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
+                      style={{ background: "rgba(239,68,68,0.12)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.25)"; e.currentTarget.style.color = "#fff"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.color = "#fca5a5"; }}><X size={14} /></motion.button>
+                  </div>
+                ) : (
+                  <motion.button onClick={handlePlay} data-launch-btn disabled={launching || launched || !selected} whileTap={{ scale: 0.96 }}
+                    className="w-full flex items-center justify-center gap-2 h-10 rounded-xl font-black text-[12px] tracking-widest uppercase disabled:opacity-50 transition-all"
+                    style={{ background: launched ? "#16a34a" : "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", color: "#fff", boxShadow: launched ? "0 0 16px rgba(22,163,74,0.4)" : "0 0 16px rgba(37,99,235,0.3)" }}
+                    onMouseEnter={e => { if (!launching && !launched && selected) e.currentTarget.style.background = "linear-gradient(135deg, rgba(29,78,216,0.95), rgba(37,99,235,0.9))"; }}
+                    onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = launched ? "#16a34a" : "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))"; }}>
+                    {launching ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> ЗАПУСК...</> : launched ? <>✓ ЗАПУЩЕНО</> : <>ИГРАТЬ <Play size={14} weight="fill" /></>}
+                  </motion.button>
+                )}
+                <motion.button onClick={() => setShowSettings(true)} whileTap={{ scale: 0.9 }}
+                  className="w-full flex items-center justify-center gap-2 h-8 rounded-lg text-[10px] font-semibold transition-all"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#fff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}>
+                  <Settings size={12} /> Настройки
+                </motion.button>
+              </div>
+            </div>
+          )}
+          {/* ── Content ── */}
           {selected ? (
             <>
               {selected.image && <img src={selected.image} alt={selected.name || "Сервер"} className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.25 }} onError={e => e.currentTarget.style.display = "none"} />}
               <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 30% 80%, ${selected.accent}20, transparent 60%)` }} />
               <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%)" }} />
+              <div className="absolute inset-0 flex flex-col" style={{ paddingLeft: 252 }}>
+                <div className="pt-8 pr-10 pl-10 flex flex-col gap-3">
+                  <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white" style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}>{selected.name}</h1>
+                  <p className="text-[13px] leading-[1.8] max-w-[500px]" style={{ color: "rgba(255,255,255,0.55)" }}>{selected.description}</p>
+                </div>
+                <div className="flex-1" />
+                <div className="flex items-center gap-2.5 pb-8 pr-8 pl-10">
+                  <button onClick={onOpenCommunity} className="flex items-center gap-2.5 h-[44px] px-5 rounded-2xl transition-all duration-150 flex-shrink-0" style={{ background: "rgba(255,255,255,0.08)" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.14)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}>
+                    <UsersThree size={17} weight="regular" style={{ color: "rgba(255,255,255,0.7)" }} />
+                    <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.6)" }}>Сообщество</span>
+                  </button>
+                </div>
+              </div>
             </>
           ) : showBuilder ? (
         /* ═══ BUILDER ═══ */
@@ -1189,8 +1310,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
             </button>
           </div>
         </div>
-      ) : !selected ? (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
+      ) : (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ paddingLeft: 252 }}>
           <img src="/hero.jpg" alt="SBGames" className="absolute inset-0 w-full h-full object-cover" style={{ opacity: 0.55, objectPosition: "center" }} onError={e => e.currentTarget.style.display = "none"} />
           <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.8) 100%)" }} />
           <div className="relative z-10 flex flex-col items-center">
@@ -1198,63 +1319,20 @@ export default function PlayPage({ user, onOpenCommunity }) {
             <div className="text-[56px] font-display font-black leading-none tracking-tight uppercase text-center" style={{ color: "rgba(255,255,255,0.22)" }}>КОМПЛЕКС<br />СЕРВЕРОВ</div>
           </div>
         </div>
-      ) : (
-        <div className="absolute inset-0 flex flex-col" style={{ paddingLeft: 252 }}>
-          <div className="pt-8 pr-10 pl-10 flex flex-col gap-3">
-            <h1 className="text-[62px] font-display font-black leading-none tracking-tight text-white" style={{ textShadow: "0 2px 40px rgba(0,0,0,0.9)" }}>{selected.name}</h1>
-            <p className="text-[13px] leading-[1.8] max-w-[500px]" style={{ color: "rgba(255,255,255,0.55)" }}>{selected.description}</p>
-          </div>
-          <div className="flex-1" />
-          <div className="flex items-center gap-2.5 pb-8 pr-8">
-            <button onClick={onOpenCommunity} className="flex items-center gap-2.5 h-[44px] px-5 rounded-2xl transition-all duration-150 flex-shrink-0" style={{ background: "rgba(255,255,255,0.08)" }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.14)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}>
-              <UsersThree size={17} weight="regular" style={{ color: "rgba(255,255,255,0.7)" }} />
-              <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.6)" }}>Сообщество</span>
-            </button>
-            <div className="flex-1" />
-            <div className="flex items-center gap-2 rounded-2xl px-3.5 h-[44px]" style={{ background: "rgba(255,255,255,0.08)" }}>
-              <img src="/money.png" alt="SBT" className="w-5 h-5 flex-shrink-0" style={{ filter: "drop-shadow(0 0 4px rgba(250,204,21,0.6))" }} onError={e => e.currentTarget.style.display = "none"} />
-              <span className="text-[14px] font-black text-white tabular-nums">{(user?.balance ?? 0).toLocaleString("en-US")}</span>
-              <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
-            </div>
-            {mcRunning ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2.5 h-[44px] px-6 rounded-2xl font-black text-[13px] tracking-widest uppercase" style={{ background: "rgba(22,163,74,0.15)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.2)" }}>
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> В ИГРЕ
-                </div>
-                <motion.button onClick={handleClose} aria-label="Закрыть" whileTap={{ scale: 0.95 }} className="h-[44px] px-4 rounded-2xl font-bold text-[11px] tracking-wider uppercase transition-all"
-                  style={{ background: "rgba(239,68,68,0.12)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.25)"; e.currentTarget.style.color = "#fff"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.color = "#fca5a5"; }}><X size={14} /></motion.button>
-              </div>
-            ) : (
-              <motion.button onClick={handlePlay} data-launch-btn disabled={launching || launched || !selected} whileTap={{ scale: 0.96 }}
-                className="flex items-center gap-3 h-[44px] rounded-2xl font-black text-[14px] tracking-widest uppercase disabled:opacity-60 transition-colors duration-150"
-                style={{ padding: "0 32px", background: launched ? "#16a34a" : "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", color: "#fff", boxShadow: launched ? "0 0 24px rgba(22,163,74,0.4)" : "0 0 24px rgba(37,99,235,0.4)" }}
-                onMouseEnter={e => { if (!launching && !launched && selected) e.currentTarget.style.background = "linear-gradient(135deg, rgba(29,78,216,0.95), rgba(37,99,235,0.9))"; }}
-                onMouseLeave={e => { if (!launching && !launched) e.currentTarget.style.background = launched ? "#16a34a" : "#2563EB"; }}>
-                {launching ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> ЗАПУСК...</> : launched ? <>✓ ЗАПУЩЕНО</> : <>ИГРАТЬ <Play size={16} weight="fill" /></>}
-              </motion.button>
-            )}
-            <motion.button onClick={() => setShowSettings(true)} whileTap={{ scale: 0.9 }} className="absolute top-4 right-4 w-9 h-9 rounded-xl flex items-center justify-center transition-all"
-              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}><Settings size={15} /></motion.button>
-            <AnimatePresence>
-              {launchError && (
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                  role="alert"
-                  className="absolute bottom-6 left-1/2 -translate-x-1/2 max-w-[480px] rounded-xl px-4 py-3 text-[12px]"
-                  style={{ background: "rgba(220,38,38,0.15)", color: "#fca5a5", border: "1px solid rgba(220,38,38,0.3)" }}>
-                  <p className="font-bold mb-1">Не удалось запустить</p>
-                  <p className="text-[11px] opacity-80">{launchError}</p>
-                  <button onClick={() => setLaunchError(null)} aria-label="Закрыть ошибку" className="absolute top-1 right-2 text-[14px] opacity-50 hover:opacity-100" style={{ color: "#fca5a5" }}>×</button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
       )}
+      {/* Launch error */}
+      <AnimatePresence>
+        {launchError && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+            role="alert"
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 max-w-[480px] rounded-xl px-4 py-3 text-[12px] z-30"
+            style={{ background: "rgba(220,38,38,0.15)", color: "#fca5a5", border: "1px solid rgba(220,38,38,0.3)" }}>
+            <p className="font-bold mb-1">Не удалось запустить</p>
+            <p className="text-[11px] opacity-80">{launchError}</p>
+            <button onClick={() => setLaunchError(null)} aria-label="Закрыть ошибку" className="absolute top-1 right-2 text-[14px] opacity-50 hover:opacity-100" style={{ color: "#fca5a5" }}>×</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </motion.div>
       </AnimatePresence>
       <AnimatePresence>
