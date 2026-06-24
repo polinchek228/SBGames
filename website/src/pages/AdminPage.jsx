@@ -605,8 +605,13 @@ function AffiliateAdminSection() {
 
   useEffect(() => {
     api.get("/admin/affiliate/levels").then(d => {
-      setLevels(d.levels || []);
-      setSubPercent(String(d.subPercent ?? 10));
+      const lvls = (d.levels || []).map(l => ({
+        ...l,
+        minReferrals: l.minReferrals ?? 0,
+        players: l.players || String(l.minReferrals ?? 0),
+      }));
+      setLevels(lvls);
+      setSubPercent(String(d.subAffiliatePercent ?? 10));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -618,8 +623,12 @@ function AffiliateAdminSection() {
   const save = async () => {
     setSaving(true); setSaved(false);
     await api.post("/admin/affiliate/levels", {
-      levels: levels.map(l => ({ level: l.level, percent: parseInt(l.percent, 10) || 0, players: l.players })),
-      subPercent: parseInt(subPercent, 10) || 0,
+      levels: levels.map(l => ({
+        level: l.level,
+        percent: parseInt(l.percent, 10) || 0,
+        minReferrals: parseInt(l.minReferrals, 10) || 0,
+      })),
+      subAffiliatePercent: parseInt(subPercent, 10) || 0,
     });
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -653,7 +662,20 @@ function AffiliateAdminSection() {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Уровень {l.level}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{l.players} активных рефералов</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>от</span>
+                  <input
+                    type="number" min="0"
+                    value={l.minReferrals ?? 0}
+                    onChange={e => updLevel(i, "minReferrals", e.target.value)}
+                    style={{
+                      width: 52, textAlign: "center", padding: "4px 2px", borderRadius: 6,
+                      background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)",
+                      color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 600, outline: "none",
+                    }}
+                  />
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>рефералов</span>
+                </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <input
