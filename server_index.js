@@ -2341,6 +2341,67 @@ app.post("/admin/affiliate/levels", async (req, res) => {
   res.json({ ok: true, levels: affiliateLevels, subAffiliatePercent });
 });
 
+// --- Per-user commission override ------------------------------------------------
+
+// GET /admin/affiliate/user?search=XXX — find user by nick/tgId, return their affiliate info
+app.get("/admin/affiliate/user", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const q = String(req.query.search || "").trim().toLowerCase();
+  if (q.length < 2) return res.status(400).json({ message: "Минимум 2 символа" });
+
+  // Search across all referral data
+  const results = [];
+  for (const [tgId, data] of referralData) {
+    const acc = await redisAccounts.get(tgId).catch(() => null);
+    const nick = acc?.username || "";
+    const matchId = tgId.toLowerCase().includes(q);
+    const matchNick = nick.toLowerCase().includes(q);
+    if (matchId || matchNick) {
+      results.push({
+        tgId,
+        username: nick,
+        referralCount: data.referralCount || 0,
+        level: getAffiliateLevel(data.referralCount || 0),
+        customPercent: data.customPercent ?? null,
+        totalEarned: data.totalEarned || 0,
+        pendingPayout: data.pendingPayout || 0,
+      });
+    }
+    if (results.length >= 50) break;
+  }
+  res.json({ users: results });
+});
+
+// POST /admin/affiliate/user — set custom commission percent for a user
+// Body: { tgId, customPercent }  — pass null to remove override
+app.post("/admin/affiliate/user", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { tgId, customPercent } = req.body;
+  if (!tgId) return res.status(400).json({ message: "tgId обязателен" });
+
+  const data = referralData.get(String(tgId));
+  if (!data) return res.status(404).json({ message: "Пользователь не найден" });
+
+  if (customPercent === null || customPercent === undefined) {
+    delete data.customPercent;
+  } else {
+    const pct = Number(customPercent);
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+      return res.status(400).json({ message: "Процент: 0–100 или null" });
+    }
+    data.customPercent = pct;
+  }
+  await saveReferral(tgId, data);
+  const level = getAffiliateLevel(data.referralCount || 0);
+  res.json({
+    ok: true,
+    tgId,
+    customPercent: data.customPercent ?? null,
+    effectivePercent: data.customPercent ?? level.percent,
+    level: level.level,
+  });
+});
+
 // GET /api/referral — compact referral info for current user
 app.get("/api/referral", requireAuth, async (req, res) => {
   const data = ensureReferralData(req.userId);
@@ -2659,7 +2720,8 @@ wss.on("connection", (ws, req) => {
               const referrerData = referralData.get(referrerId);
               if (referrerData) {
                 const level = getAffiliateLevel(referrerData.referralCount || 0);
-                const commission = Math.round(amount * level.percent) / 100;
+                const effectivePercent = referrerData.customPercent ?? level.percent;
+                const commission = Math.round(amount * effectivePercent) / 100;
                 if (commission > 0) {
                   referrerData.pendingPayout = (referrerData.pendingPayout || 0) + commission;
                   referrerData.totalEarned = (referrerData.totalEarned || 0) + commission;
@@ -2668,6 +2730,7 @@ wss.on("connection", (ws, req) => {
                     amount: commission,
                     date: new Date().toISOString(),
                     level: level.level,
+                    customPercent: referrerData.customPercent ?? null,
                   };
                   referrerData.commissions = referrerData.commissions || [];
                   referrerData.commissions.push(commRecord);
