@@ -2,6 +2,8 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { House, User, Coins, Headset, Scroll, Shield, Handshake } from "@phosphor-icons/react";
 
+// /forum существует и индексируется поисковиками (статьи-«двери» для трафика),
+// но НЕ выведен в навигацию сайта. Пользователи попадают туда из поиска.
 const NAV = [
   { to:"/",           label:"Главная",    icon:House      },
   { to:"/cabinet",    label:"Кабинет",    icon:User       },

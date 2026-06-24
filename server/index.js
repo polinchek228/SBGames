@@ -24,7 +24,7 @@ const PORT_SSL            = parseInt(process.env.PORT_SSL    || "3443", 10);
 const BOT_USERNAME        = process.env.BOT_USERNAME        || "sbgamescbot";
 const GOOGLE_CLIENT_ID    = process.env.GOOGLE_CLIENT_ID    || "";
 const GOOGLE_CLIENT_SECRET= process.env.GOOGLE_CLIENT_SECRET|| "";
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://api.hyperionsearch.xyz/auth/google/callback";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://games.sb-capital.group/auth/google/callback";
 
 const googleOAuth = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
 const googlePending = new Map(); // state -> { googleId, email, name, avatar, expiresAt }
@@ -199,11 +199,6 @@ app.use(helmet({
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = new Set([
-  "https://api.hyperionsearch.xyz",
-  "https://api.sbgames.hyperionsearch.xyz:8443",
-  "https://sbgames.hyperionsearch.xyz:8444",
-  "https://sbgames.hyperionsearch.xyz",
-  "http://sbgames.hyperionsearch.xyz",
   "https://games.sb-capital.group",
   "http://games.sb-capital.group",
   "http://localhost:1420",

@@ -15,6 +15,8 @@ const HowToPlayPage = lazy(() => import("./pages/HowToPlayPage.jsx"));
 const AdminPage = lazy(() => import("./pages/AdminPage.jsx"));
 const ReferralPage = lazy(() => import("./pages/ReferralPage.jsx"));
 const AffiliatePage = lazy(() => import("./pages/AffiliatePage.jsx"));
+const ForumIndex = lazy(() => import("./pages/forum/ForumIndex.jsx"));
+const ForumCategory = lazy(() => import("./pages/forum/ForumCategory.jsx"));
 
 function RequireAuth({ user, children }) {
   const location = useLocation();
@@ -99,6 +101,8 @@ export default function App() {
               <Route path="/admin"      element={<RequireAdmin user={user}><AdminPage user={user} /></RequireAdmin>} />
               <Route path="/affiliate"  element={<ReferralPage />} />
               <Route path="/affiliate/dashboard" element={<RequireAuth user={user}><AffiliatePage user={user} /></RequireAuth>} />
+              <Route path="/forum"                element={<ForumIndex />} />
+              <Route path="/forum/:category"      element={<ForumCategory />} />
               <Route path="*"           element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
