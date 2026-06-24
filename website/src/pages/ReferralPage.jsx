@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getUser } from "../lib/api.js";
+import { API_URL } from "../lib/api.js";
 import { motion } from "framer-motion";
 import AffiliatePage from "./AffiliatePage.jsx";
 import {
@@ -19,7 +20,7 @@ const sectionMeta = {
   textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginTop: 4,
 };
 
-const LEVELS = [
+const DEFAULT_LEVELS = [
   { level: 1, percent: 30, players: "0–14",   color: "#3b82f6", accentTop: "rgba(59,130,246,0.15)" },
   { level: 2, percent: 35, players: "15–49",  color: "#6366f1", accentTop: "rgba(99,102,241,0.12)" },
   { level: 3, percent: 40, players: "50–99",  color: "#eab308", accentTop: "rgba(234,179,8,0.15)" },
@@ -147,9 +148,16 @@ function FAQItem({ q, a }) {
 export default function ReferralPage() {
   const navigate = useNavigate();
   const currentUser = getUser();
+  const [levels, setLevels] = useState(DEFAULT_LEVELS);
+
+  useEffect(() => {
+    fetch(`${API_URL}/affiliate/levels`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.levels) setLevels(d.levels); })
+      .catch(() => {});
+  }, []);
 
   // Logged-in users see the partner dashboard directly on this page.
-  // No redirect, no separate route — "Start Earning" embeds it inline.
   if (currentUser) {
     return <AffiliatePage user={currentUser} />;
   }
@@ -183,11 +191,11 @@ export default function ReferralPage() {
               ПАРТНЁРСКАЯ ПРОГРАММА
             </div>
             <h1 style={{ fontSize: 42, fontWeight: 900, lineHeight: 1.1, letterSpacing: "-0.01em", marginBottom: 16, textTransform: "uppercase" }}>
-              Зарабатывайте до 60% от доната<br />каждого приведённого игрока — <span style={{ color: "#3b82f6" }}>пожизненно</span>
+              Зарабатывайте до {levels[levels.length - 1]?.percent || 60}% от доната<br />каждого приведённого игрока — <span style={{ color: "#3b82f6" }}>пожизненно</span>
             </h1>
             <p style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", maxWidth: 600, margin: "0 auto 30px", lineHeight: 1.6 }}>
               S&B Games — сеть игровых серверов Minecraft, которая объединяет тысячи игроков по всему миру.
-              Вы получаете до 60% от доната привлечённого игрока — пока он остаётся активным на наших серверах.
+              Вы получаете до {levels[levels.length - 1]?.percent || 60}% от доната привлечённого игрока — пока он остаётся активном на наших серверах.
             </p>
             <button onClick={handleCta} style={ctaBtnStyle}>
               Начать зарабатывать <ArrowRight size={16} weight="bold" />
@@ -269,10 +277,10 @@ export default function ReferralPage() {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-            {LEVELS.slice(0, 4).map(l => <LevelCard key={l.level} {...l} />)}
+            {levels.slice(0, 4).map(l => <LevelCard key={l.level} {...l} />)}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 14 }}>
-            {LEVELS.slice(4).map(l => <LevelCard key={l.level} {...l} />)}
+            {levels.slice(4).map(l => <LevelCard key={l.level} {...l} />)}
           </div>
         </motion.div>
 

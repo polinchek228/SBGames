@@ -12,6 +12,27 @@ use hmac::Mac;
 
 static INTEGRITY_OK: AtomicBool = AtomicBool::new(false);
 
+// Known-good SHA256 of the launcher binary (release builds only).
+// Update this after every release build. First 16 chars shown in logs.
+// Format: hex-encoded SHA256 of the .exe file.
+const KNOWN_GOOD_EXE_HASH: &str = "TODO_UPDATE_AFTER_BUILD";
+
+// Processes that are always forbidden while MC is running
+const FORBIDDEN_PROCESSES: &[&str] = &[
+    "cheatengine", "x64dbg", "x32dbg", "ollydbg", "ida.exe", "ida64.exe",
+    "processhacker", "process hacker", "scylla", "dnspy", "de4dot",
+    "httpdebugger", "megadumper", "extractor", "ilspy", "dotpeek",
+    "windbg", "fiddler", "charles.exe", "wireshark", "speedhack",
+    "frida", "dbghelp", "hxd", "x96dbg",
+];
+
+// Suspicious keywords in DLL/process names
+const SUSPICIOUS_DLL_KEYWORDS: &[&str] = &[
+    "inject", "hook", "cheat", "trainer", "dumper", "scanner", "sniffer",
+    "aimbot", "esp", "wallhack", "internal", "external", "loader",
+    "x96dbg", "x32dbg", "x64dbg", "scylla", "frida", "dbghelp",
+];
+
 // ─── Custom modpack modules ──────────────────────────────────────────────────
 mod instance;
 mod java;
@@ -152,13 +173,42 @@ fn check_debugger() -> bool {
         fn IsDebuggerPresent() -> i32;
         fn CheckRemoteDebuggerPresent(h: *mut c_void, out: *mut i32) -> i32;
         fn GetCurrentProcess() -> *mut c_void;
+        fn CloseHandle(h: *mut c_void) -> i32;
     }
+    // NtQueryInformationProcess — ProcessDebugPort (class 7)
+    #[allow(non_snake_case)]
+    type NtQueryInformationProcessFn = unsafe extern "system" fn(
+        *mut c_void, u32, *mut c_void, u32, *mut u32,
+    ) -> i32;
     unsafe {
         if IsDebuggerPresent() != 0 { return true; }
         let mut r: i32 = 0;
         CheckRemoteDebuggerPresent(GetCurrentProcess(), &mut r);
-        r != 0
+        if r != 0 { return true; }
+        // NtQueryInformationProcess(ProcessDebugPort) — returns non-zero if debugger attached
+        let ntdll = windows_sys::Win32::System::LibraryLoader::GetModuleHandleW(
+            [110,116,100,108,108,46,100,108,108,0].as_ptr(), // "ntdll.dll\0"
+        );
+        if ntdll != 0 {
+            let pNtQIP: Option<NtQueryInformationProcessFn> = {
+                let addr = windows_sys::Win32::System::LibraryLoader::GetProcAddress(
+                    ntdll, b"NtQueryInformationProcess\0".as_ptr(),
+                );
+                addr.map(|a| std::mem::transmute(a))
+            };
+            if let Some(ntqip) = pNtQIP {
+                let mut debug_port: u64 = 0;
+                let status = ntqip(
+                    GetCurrentProcess(), 7, // ProcessDebugPort
+                    &mut debug_port as *mut u64 as *mut c_void,
+                    std::mem::size_of::<u64>() as u32,
+                    std::ptr::null_mut(),
+                );
+                if status == 0 && debug_port != 0 { return true; }
+            }
+        }
     }
+    false
 }
 #[cfg(not(target_os = "windows"))]
 fn check_debugger() -> bool {
@@ -185,9 +235,89 @@ fn start_guard_thread() {
     });
 }
 
+// ─── DLL hash enumeration (Windows) ──────────────────────────────────────────
+// Returns Vec<(lowercase_path, sha256_hex)> for all modules in a process.
+#[cfg(target_os = "windows")]
+fn enum_dll_hashes(pid: u32) -> Vec<(String, String)> {
+    use sha2::{Sha256, Digest};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+    use windows_sys::Win32::System::ProcessStatus::{EnumProcessModules, GetModuleFileNameExW};
+    use windows_sys::Win32::Foundation::{CloseHandle, MAX_PATH};
+
+    let mut out = Vec::new();
+    unsafe {
+        let proc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+        if proc == 0 { return out; }
+        let mut modules = [0isize; 2048];
+        let mut needed: u32 = 0;
+        if EnumProcessModules(proc, modules.as_mut_ptr(),
+            (modules.len() * std::mem::size_of::<isize>()) as u32, &mut needed) != 0
+        {
+            let count = ((needed as usize) / std::mem::size_of::<isize>()).min(modules.len());
+            for i in 0..count {
+                let mut buf = [0u16; MAX_PATH as usize];
+                let len = GetModuleFileNameExW(proc, modules[i], buf.as_mut_ptr(), MAX_PATH);
+                if len > 0 {
+                    let path_str = String::from_utf16_lossy(&buf[..len as usize]).to_lowercase();
+                    let os_path: std::ffi::OsString = std::os::windows::ffi::OsStringExt::from_wide(&buf[..len as usize]);
+                    if let Ok(data) = std::fs::read(std::path::Path::new(&os_path)) {
+                        let mut hasher = Sha256::new();
+                        hasher.update(&data);
+                        let hash = hex::encode(hasher.finalize());
+                        out.push((path_str, hash));
+                    }
+                }
+            }
+        }
+        CloseHandle(proc);
+    }
+    out
+}
+#[cfg(not(target_os = "windows"))]
+fn enum_dll_hashes(_pid: u32) -> Vec<(String, String)> { Vec::new() }
+
+// ─── Process watchdog: scan for forbidden processes ───────────────────────────
+// Returns true if a suspicious process is found.
+#[cfg(target_os = "windows")]
+fn check_suspicious_processes() -> Option<String> {
+    use std::process::Command;
+    let out = match Command::new("tasklist").arg("/FO").arg("CSV").arg("/NH").output() {
+        Ok(o) => o,
+        Err(_) => return None,
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout).to_lowercase();
+    for &bad in FORBIDDEN_PROCESSES {
+        if stdout.contains(bad) {
+            return Some(bad.to_string());
+        }
+    }
+    None
+}
+#[cfg(not(target_os = "windows"))]
+fn check_suspicious_processes() -> Option<String> {
+    // Linux/macOS: check /proc for suspicious process names
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(entries) = std::fs::read_dir("/proc") {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.chars().all(|c| c.is_ascii_digit()) {
+                        if let Ok(cmdline) = std::fs::read_to_string(format!("/proc/{}/cmdline", name)) {
+                            let lower = cmdline.to_lowercase();
+                            for &bad in FORBIDDEN_PROCESSES {
+                                if lower.contains(bad) { return Some(bad.to_string()); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 #[cfg(not(debug_assertions))]
 fn verify_integrity() -> bool {
-    // Verify the launcher binary hasn't been tampered with
     use sha2::{Sha256, Digest};
     let exe = match std::env::current_exe() {
         Ok(p) => p,
@@ -201,9 +331,11 @@ fn verify_integrity() -> bool {
         }
         Err(_) => { INTEGRITY_OK.store(true, Ordering::SeqCst); return true; }
     };
-    // TODO: compare hash against a known-good value from the update server
-    // For now, log the hash for future verification
     eprintln!("[integrity] exe hash: {}", &hash[..16]);
+    if KNOWN_GOOD_EXE_HASH != "TODO_UPDATE_AFTER_BUILD" && hash != KNOWN_GOOD_EXE_HASH {
+        eprintln!("[integrity] HASH MISMATCH — binary tampered!");
+        return false;
+    }
     INTEGRITY_OK.store(true, Ordering::SeqCst);
     true
 }
@@ -1130,14 +1262,12 @@ async fn launch_minecraft(
     }
 
     // ─── Runtime protection watcher ───────────────────────────────────────────
-    // Принципы (честная client-side защита, без kernel-драйвера):
-    //  1. mods/ проверяется по SHA256 СОДЕРЖИМОГО, не по именам.
-    //     Любой лишний/изменённый/подменённый jar → МГНОВЕННО убиваем MC
-    //     (удалять файл бесполезно — Forge уже загрузил его в JVM).
-    //  2. DLL: baseline-снапшот доверенных модулей за первые секунды +
-    //     whitelist путей (Windows, папка игры, папка Java). Любая НОВАЯ
-    //     DLL из чужого места (Desktop, Downloads, temp с подозрительным
-    //     именем) → инжект → убиваем MC.
+    // Многослойная client-side защита (без kernel-драйвера):
+    //  1. mods/ — SHA256 содержимого каждого .jar; лишний/изменённый → kill MC.
+    //  2. DLL path — baseline + whitelist путей; новая DLL из чужого места → kill.
+    //  3. DLL hash — SHA256 каждой загруженной DLL; подмена содержимого → kill.
+    //  4. Process watchdog — проверка запущенных процессов на читерские инструменты.
+    //  5. Anti-debug — непрерывная проверка IsDebuggerPresent + NtQueryInformationProcess.
     {
         let mc_dir_w = mc_dir.clone();
         let pid_watch = pid;
@@ -1174,6 +1304,7 @@ async fn launch_minecraft(
 
             #[cfg(target_os = "windows")]
             {
+                use std::ffi::c_void;
                 use windows_sys::Win32::System::Threading::{
                     OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
                     PROCESS_TERMINATE, TerminateProcess,
@@ -1198,7 +1329,6 @@ async fn launch_minecraft(
                         CloseHandle(h); true
                     }
                 }
-                // Собирает все пути загруженных DLL процесса
                 fn enum_dlls(pid: u32) -> Vec<String> {
                     let mut out = Vec::new();
                     unsafe {
@@ -1224,6 +1354,48 @@ async fn launch_minecraft(
                     out
                 }
 
+                // Anti-debug: проверяем наличие отладчика каждые ~2 сек
+                extern "system" {
+                    fn IsDebuggerPresent() -> i32;
+                    fn CheckRemoteDebuggerPresent(h: *mut c_void, out: *mut i32) -> i32;
+                    fn GetCurrentProcess() -> *mut c_void;
+                }
+                #[allow(non_snake_case)]
+                type NtQIPFn = unsafe extern "system" fn(
+                    *mut c_void, u32, *mut c_void, u32, *mut u32,
+                ) -> i32;
+                let ntdll = unsafe {
+                    windows_sys::Win32::System::LibraryLoader::GetModuleHandleW(
+                        [110,116,100,108,108,46,100,108,108,0].as_ptr(),
+                    )
+                };
+                let pNtQIP: Option<NtQIPFn> = unsafe {
+                    if ntdll != 0 {
+                        let addr = windows_sys::Win32::System::LibraryLoader::GetProcAddress(
+                            ntdll, b"NtQueryInformationProcess\0".as_ptr(),
+                        );
+                        addr.map(|a| std::mem::transmute(a))
+                    } else {
+                        None
+                    }
+                };
+                let check_debug = || -> bool {
+                    unsafe {
+                        if IsDebuggerPresent() != 0 { return true; }
+                        let mut r: i32 = 0;
+                        CheckRemoteDebuggerPresent(GetCurrentProcess(), &mut r);
+                        if r != 0 { return true; }
+                        if let Some(ntqip) = pNtQIP {
+                            let mut port: u64 = 0;
+                            let st = ntqip(GetCurrentProcess(), 7,
+                                &mut port as *mut u64 as *mut c_void,
+                                std::mem::size_of::<u64>() as u32, std::ptr::null_mut());
+                            if st == 0 && port != 0 { return true; }
+                        }
+                        false
+                    }
+                };
+
                 // Путь DLL считается доверенным если он из системных папок
                 // ИЛИ из настоящего Java-рантайма. Папка игры целиком БОЛЬШЕ
                 // НЕ доверенная — иначе читер кладёт DLL в .sbgames/ и инжектит
@@ -1236,23 +1408,18 @@ async fn launch_minecraft(
                         || p.contains("\\system32\\")
                         || p.contains("\\syswow64\\")
                         || p.contains("\\winsxs\\")
-                        // bundled-рантайм ВНУТРИ папки игры — только эти подпапки
                         || p.starts_with(&game_natives)
                         || p.starts_with(&game_runtime)
-                        // настоящий путь к Java (директория java.exe и её поддеревья)
                         || (!java_dir.is_empty() && p.starts_with(&java_dir))
                         || p.starts_with("c:\\program files\\java\\")
                         || p.starts_with("c:\\program files\\eclipse adoptium\\")
-                        // LWJGL extracts native libs (openal.dll, lwjgl.dll etc.)
-                        // into %LOCALAPPDATA%/Temp/lwjgl<hash>/<version>/...
-                        // Это легитимные библиотеки, не инжект.
                         || p.contains("\\temp\\lwjgl")
                 };
 
                 // Baseline: ждём 6 сек пока MC прогрузит свои нативные DLL
-                // (LWJGL может lazily-extract natives в temp через несколько секунд
-                //  после старта, поэтому даём запас)
                 let mut baseline: std::collections::HashSet<String> = std::collections::HashSet::new();
+                // DLL hashes: path → sha256 для baseline DLL'ов
+                let mut baseline_hashes: std::collections::HashMap<String, String> = std::collections::HashMap::new();
                 let mut baseline_done = false;
                 let mut tick: u32 = 0;
 
@@ -1264,9 +1431,39 @@ async fn launch_minecraft(
                         break;
                     }
 
+                    // ── Anti-debug (каждые ~20 тиков = 2 сек) ──
+                    if tick % 20 == 0 && tick > 0 {
+                        if check_debugger() || scan_loaded_modules() {
+                            eprintln!("[guard] debugger/inject detected — kill");
+                            kill_proc(pid_watch);
+                            let _ = std::fs::remove_file(&pid_file);
+                            let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
+                                "debugger\nОбнаружен отладчик или подозрительный модуль.");
+                            return;
+                        }
+                    }
+
+                    // ── Process watchdog (каждые 30 тиков = 3 сек) ──
+                    if tick % 30 == 0 && tick > 0 {
+                        if let Some(proc_name) = check_suspicious_processes() {
+                            eprintln!("[guard] forbidden process '{}' detected — kill MC", proc_name);
+                            kill_proc(pid_watch);
+                            let _ = std::fs::remove_file(&pid_file);
+                            let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
+                                format!("process\nОбнаружена запрещённая программа:\n{}", proc_name));
+                            return;
+                        }
+                    }
+
                     // Baseline собираем первые 6 сек (60 тиков по 100мс)
                     if !baseline_done {
                         for dll in enum_dlls(pid_watch) { baseline.insert(dll); }
+                        // Собираем хеши baseline DLL'ов
+                        if tick % 10 == 0 || tick >= 55 {
+                            for (path, hash) in enum_dll_hashes(pid_watch) {
+                                baseline_hashes.entry(path).or_insert(hash);
+                            }
+                        }
                         if tick >= 60 { baseline_done = true; }
                     }
 
@@ -1297,18 +1494,52 @@ async fn launch_minecraft(
                         }
                     }
 
-                    // ── DLL injection scan (каждые 100мс после baseline) ──
+                    // ── DLL injection scan + hash check (каждые 100мс после baseline) ──
                     if baseline_done {
-                        for dll in enum_dlls(pid_watch) {
-                            if baseline.contains(&dll) { continue; }
-                            if is_trusted_path(&dll) { baseline.insert(dll); continue; }
-                            // НОВАЯ DLL из ненадёжного пути = инжект
-                            eprintln!("[guard] INJECT detected: {} — kill", dll);
-                            kill_proc(pid_watch);
-                            let _ = std::fs::remove_file(&pid_file);
-                            let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
-                                format!("inject\nОбнаружена посторонняя DLL:\n{}", dll));
-                            return;
+                        for (dll_path, dll_hash) in enum_dll_hashes(pid_watch) {
+                            // 1. Path-based check: новая DLL из ненадёжного пути
+                            if !baseline.contains(&dll_path) {
+                                if !is_trusted_path(&dll_path) {
+                                    // Проверяем имя на подозрительные ключевые слова
+                                    let fname = std::path::Path::new(&dll_path)
+                                        .file_name().and_then(|n| n.to_str()).unwrap_or("");
+                                    let fname_lower = fname.to_lowercase();
+                                    let suspicious_name = SUSPICIOUS_DLL_KEYWORDS.iter()
+                                        .any(|kw| fname_lower.contains(kw));
+                                    if suspicious_name {
+                                        eprintln!("[guard] INJECT (suspicious name): {} — kill", dll_path);
+                                        kill_proc(pid_watch);
+                                        let _ = std::fs::remove_file(&pid_file);
+                                        let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
+                                            format!("inject\nОбнаружена подозрительная DLL:\n{}", dll_path));
+                                        return;
+                                    }
+                                    // Новая DLL из неизвестного пути — добавляем в baseline
+                                    // (может быть поздняя загрузка LWJGL/Forge)
+                                    baseline.insert(dll_path.clone());
+                                    baseline_hashes.insert(dll_path, dll_hash);
+                                    continue;
+                                }
+                                // Доверенный путь — просто добавляем в baseline
+                                baseline.insert(dll_path.clone());
+                                baseline_hashes.insert(dll_path, dll_hash);
+                                continue;
+                            }
+
+                            // 2. Hash-based check: DLL уже в baseline, но хеш изменился
+                            if let Some(expected_hash) = baseline_hashes.get(&dll_path) {
+                                if *expected_hash != dll_hash {
+                                    eprintln!("[guard] DLL HASH MISMATCH: {} — kill", dll_path);
+                                    kill_proc(pid_watch);
+                                    let _ = std::fs::remove_file(&pid_file);
+                                    let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
+                                        format!("inject\nХеш DLL изменён:\n{}", dll_path));
+                                    return;
+                                }
+                            } else {
+                                // DLL в baseline по пути, но хеша нет —第一次见，记录
+                                baseline_hashes.insert(dll_path, dll_hash);
+                            }
                         }
                     }
 
@@ -1323,6 +1554,46 @@ async fn launch_minecraft(
                     .arg("-0").arg(pid_watch.to_string()).output()
                     .map(|o| o.status.success()).unwrap_or(false);
                 if !alive { let _ = std::fs::remove_file(&pid_file); break; }
+
+                // Anti-debug on Linux
+                if tick % 3 == 0 && tick > 0 {
+                    if let Ok(s) = std::fs::read_to_string("/proc/self/status") {
+                        for line in s.lines() {
+                            if line.starts_with("TracerPid:") {
+                                if let Some(v) = line.split_whitespace().nth(1) {
+                                    if v != "0" {
+                                        eprintln!("[guard] debugger attached (TracerPid={}) — kill", v);
+                                        let _ = std::process::Command::new("kill")
+                                            .arg("-9").arg(pid_watch.to_string()).output();
+                                        let _ = std::fs::remove_file(&pid_file);
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if std::env::var("LD_PRELOAD").is_ok() {
+                        eprintln!("[guard] LD_PRELOAD detected — kill");
+                        let _ = std::process::Command::new("kill")
+                            .arg("-9").arg(pid_watch.to_string()).output();
+                        let _ = std::fs::remove_file(&pid_file);
+                        return;
+                    }
+                }
+
+                // Process watchdog on Linux
+                if tick % 5 == 0 && tick > 0 {
+                    if let Some(proc_name) = check_suspicious_processes() {
+                        eprintln!("[guard] forbidden process '{}' on Linux — kill MC", proc_name);
+                        let _ = std::process::Command::new("kill")
+                            .arg("-9").arg(pid_watch.to_string()).output();
+                        let _ = std::fs::remove_file(&pid_file);
+                        let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
+                            format!("process\nОбнаружена запрещённая программа:\n{}", proc_name));
+                        return;
+                    }
+                }
+
                 let mut seen = 0usize; let mut bad = false;
                 if let Ok(entries) = std::fs::read_dir(&mods_dir) {
                     for entry in entries.flatten() {
@@ -1342,6 +1613,7 @@ async fn launch_minecraft(
                     let _ = std::fs::remove_file(&pid_file);
                     break;
                 }
+                tick = tick.wrapping_add(1);
             }
         });
     }

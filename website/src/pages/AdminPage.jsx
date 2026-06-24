@@ -3,7 +3,7 @@ import { API_URL, WS_URL, getToken } from "../lib/api.js";
 import {
   PaperPlaneRight, Plus, Trash, UploadSimple, Check, X,
   Headset, UsersThree, Storefront, MagnifyingGlass, CaretDown,
-  CurrencyDollar, ShieldCheck, Image as ImageIcon,
+  CurrencyDollar, ShieldCheck, Image as ImageIcon, Handshake,
 } from "@phosphor-icons/react";
 
 const card = { background: "rgba(255,255,255,0.03)", borderRadius: 16, border: "1px solid rgba(255,255,255,0.06)" };
@@ -16,9 +16,10 @@ const STATUSES = {
 };
 
 const NAV = [
-  { key: "tickets", label: "Тикеты",       icon: Headset },
-  { key: "users",   label: "Пользователи", icon: UsersThree },
-  { key: "shop",    label: "Магазин",      icon: Storefront },
+  { key: "tickets",    label: "Тикеты",       icon: Headset },
+  { key: "users",      label: "Пользователи", icon: UsersThree },
+  { key: "shop",       label: "Магазин",      icon: Storefront },
+  { key: "affiliate",  label: "Партнёрка",    icon: Handshake },
 ];
 
 const ModalCtx = React.createContext(null);
@@ -98,9 +99,10 @@ export default function AdminPage({ user }) {
         </aside>
 
         <div style={{ flex: 1, minWidth: 0, padding: "28px 32px 64px", overflowX: "hidden" }}>
-          {section === "tickets" && <TicketsSection user={user} />}
-          {section === "users"   && <UsersSection user={user} />}
-          {section === "shop"    && <ShopSection />}
+          {section === "tickets"   && <TicketsSection user={user} />}
+          {section === "users"     && <UsersSection user={user} />}
+          {section === "shop"      && <ShopSection />}
+          {section === "affiliate" && <AffiliateAdminSection />}
         </div>
 
         {modal && (
@@ -589,6 +591,124 @@ function SelectBox({ value, onChange, options }) {
         {options.map(o => <option key={o.v} value={o.v} style={{ background: "#111" }}>{o.l}</option>)}
       </select>
       <CaretDown size={12} style={{ position: "absolute", right: 11, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.4)", pointerEvents: "none" }} />
+    </div>
+  );
+}
+
+function AffiliateAdminSection() {
+  const api = useAdminFetch();
+  const [levels, setLevels] = useState([]);
+  const [subPercent, setSubPercent] = useState("10");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api.get("/admin/affiliate/levels").then(d => {
+      setLevels(d.levels || []);
+      setSubPercent(String(d.subPercent ?? 10));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const updLevel = (i, field, val) => {
+    setLevels(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: val } : l));
+  };
+
+  const save = async () => {
+    setSaving(true); setSaved(false);
+    await api.post("/admin/affiliate/levels", {
+      levels: levels.map(l => ({ level: l.level, percent: parseInt(l.percent, 10) || 0, players: l.players })),
+      subPercent: parseInt(subPercent, 10) || 0,
+    });
+    setSaving(false); setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  if (loading) return <div style={{ ...card, padding: 60, textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: 13 }}>Загрузка...</div>;
+
+  const colors = ["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#ec4899", "#ef4444", "#f59e0b"];
+
+  return (
+    <div>
+      <SectionHeader title="Партнёрка" sub="Проценты комиссий по уровням" />
+
+      <div style={{ ...card, padding: "20px 24px", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 12 }}>
+          Уровни партнёров
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {levels.map((l, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12,
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)",
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                background: `${colors[i % colors.length]}20`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 15, fontWeight: 900, color: colors[i % colors.length],
+              }}>
+                {l.level}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Уровень {l.level}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{l.players} активных рефералов</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="number"
+                  min="0" max="100"
+                  value={l.percent}
+                  onChange={e => updLevel(i, "percent", e.target.value)}
+                  style={{
+                    width: 64, textAlign: "center", padding: "8px 4px", borderRadius: 8,
+                    background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)",
+                    color: colors[i % colors.length], fontSize: 16, fontWeight: 800, outline: "none",
+                  }}
+                />
+                <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.35)" }}>%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ ...card, padding: "20px 24px", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 12 }}>
+          Суб-рефералы
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Процент суб-реферала</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>Партнёр получает этот % от комиссии своего реферала-партнёра</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="number" min="0" max="100"
+              value={subPercent}
+              onChange={e => setSubPercent(e.target.value)}
+              style={{
+                width: 64, textAlign: "center", padding: "8px 4px", borderRadius: 8,
+                background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)",
+                color: "#22c55e", fontSize: 16, fontWeight: 800, outline: "none",
+              }}
+            />
+            <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.35)" }}>%</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={save} disabled={saving} style={{
+          padding: "12px 28px", borderRadius: 10, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase",
+          background: saving ? "rgba(37,99,235,0.3)" : "#3b82f6", border: "none", color: "#fff",
+          cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit",
+        }}>
+          {saving ? "Сохранение..." : saved ? "Сохранено ✓" : "Сохранить"}
+        </button>
+        {saved && <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>Готово</span>}
+      </div>
     </div>
   );
 }

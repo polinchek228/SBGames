@@ -23,7 +23,7 @@ const card = {
   borderRadius: 20,
 };
 
-const LEVELS = [
+const DEFAULT_LEVELS = [
   { level: 1, percent: 30, players: "0–14",   color: "#3b82f6" },
   { level: 2, percent: 35, players: "15–49",  color: "#6366f1" },
   { level: 3, percent: 40, players: "50–99",  color: "#8b5cf6" },
@@ -82,11 +82,11 @@ function CopyButton({ text }) {
   );
 }
 
-function HomeTab({ user, stats, onCodeChanged }) {
+function HomeTab({ user, stats, levels, onCodeChanged }) {
   const referralLink = stats?.referralCode
     ? `https://games.sb-capital.group/invite/${stats.referralCode}`
     : "Загрузка...";
-  const currentLevel = LEVELS.find(l => l.percent === stats.levelPercent) || LEVELS[0];
+  const currentLevel = levels.find(l => l.percent === stats.levelPercent) || levels[0];
 
   // --- Custom code editor state ---
   const [editing, setEditing] = useState(false);
@@ -246,8 +246,8 @@ function HomeTab({ user, stats, onCodeChanged }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${LEVELS.length}, 1fr)`, gap: 6 }}>
-          {LEVELS.map(l => (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${levels.length}, 1fr)`, gap: 6 }}>
+          {levels.map(l => (
             <div key={l.level} style={{
               padding: "8px 0", borderRadius: 10, textAlign: "center", fontSize: 11, fontWeight: 700,
               background: l.level <= currentLevel.level ? `${l.color}25` : "rgba(255,255,255,0.03)",
@@ -696,6 +696,7 @@ function OnboardingCard({ user, onDone }) {
 
 export default function AffiliatePage({ user }) {
   const [tab, setTab] = useState("home");
+  const [levels, setLevels] = useState(DEFAULT_LEVELS);
   const [stats, setStats] = useState({
     totalEarned: 0, pendingPayout: 0, totalReferrals: 0,
     levelPercent: 30, referrals: [], subAffiliates: [],
@@ -707,8 +708,12 @@ export default function AffiliatePage({ user }) {
   const fetchStats = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api("/affiliate/stats");
+      const [res, lvlRes] = await Promise.all([
+        api("/affiliate/stats"),
+        fetch(`${API_URL}/affiliate/levels`).then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
       if (res) setStats(s => ({ ...s, ...res }));
+      if (lvlRes?.levels) setLevels(lvlRes.levels);
     } catch (e) {
       console.warn("affiliate stats load failed", e);
     } finally {
@@ -727,7 +732,7 @@ export default function AffiliatePage({ user }) {
       );
     }
     switch (tab) {
-      case "home":        return <HomeTab user={user} stats={stats} onCodeChanged={fetchStats} />;
+      case "home":        return <HomeTab user={user} stats={stats} levels={levels} onCodeChanged={fetchStats} />;
       case "referrals":   return <ReferralsTab stats={stats} />;
       case "sub":         return <SubAffiliatesTab stats={stats} />;
       case "commissions": return <CommissionsTab stats={stats} />;

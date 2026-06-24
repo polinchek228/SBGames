@@ -2168,7 +2168,7 @@ app.put("/api/groups/:id/closed", requireAuth, async (req, res) => {
 });
 
 // ─── Affiliate / Referral System ─────────────────────────────────────────────
-const LEVELS = [
+const DEFAULT_LEVELS = [
   { level: 1, percent: 30, minReferrals: 0 },
   { level: 2, percent: 35, minReferrals: 15 },
   { level: 3, percent: 40, minReferrals: 50 },
@@ -2177,6 +2177,27 @@ const LEVELS = [
   { level: 6, percent: 55, minReferrals: 400 },
   { level: 7, percent: 60, minReferrals: 700 },
 ];
+
+let affiliateLevels = JSON.parse(JSON.stringify(DEFAULT_LEVELS));
+let subAffiliatePercent = 10;
+
+async function loadAffiliateConfig() {
+  try {
+    const raw = await redis.get("sbgames:affiliate_levels");
+    if (raw) {
+      const cfg = JSON.parse(raw);
+      if (Array.isArray(cfg.levels) && cfg.levels.length > 0) affiliateLevels = cfg.levels;
+      if (typeof cfg.subAffiliatePercent === "number") subAffiliatePercent = cfg.subAffiliatePercent;
+      console.log("[affiliate] loaded config from redis");
+    }
+  } catch {}
+}
+
+async function saveAffiliateConfig() {
+  try {
+    await redis.set("sbgames:affiliate_levels", JSON.stringify({ levels: affiliateLevels, subAffiliatePercent }));
+  } catch {}
+}
 
 // referralData: { [tgId]: { code, referredBy, referralCount, totalEarned, pendingPayout,
 //   referrals: [{ tgId, nick, joinedAt, totalDonated }],
@@ -2212,8 +2233,8 @@ function generateReferralCode() {
 }
 
 function getAffiliateLevel(referralCount) {
-  let level = LEVELS[0];
-  for (const l of LEVELS) {
+  let level = affiliateLevels[0];
+  for (const l of affiliateLevels) {
     if (referralCount >= l.minReferrals) level = l;
   }
   return level;
@@ -2281,6 +2302,43 @@ app.put("/affiliate/code", requireAuth, async (req, res) => {
   data.code = code;
   await saveReferral(req.userId, data);
   res.json({ ok: true, code, link: `https://games.sb-capital.group/invite/${code}` });
+});
+
+// GET /affiliate/levels — public endpoint, no auth
+app.get("/affiliate/levels", (req, res) => {
+  res.json({ levels: affiliateLevels, subAffiliatePercent });
+});
+
+// GET /admin/affiliate/levels — admin reads current config
+app.get("/admin/affiliate/levels", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  res.json({ levels: affiliateLevels, subAffiliatePercent });
+});
+
+// POST /admin/affiliate/levels — admin saves affiliate config
+// Body: { levels: [...], subAffiliatePercent: Number }
+app.post("/admin/affiliate/levels", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { levels, subAffiliatePercent: subPct } = req.body;
+  if (!Array.isArray(levels) || levels.length < 1 || levels.length > 20) {
+    return res.status(400).json({ message: "Неверный формат уровней" });
+  }
+  for (const l of levels) {
+    if (typeof l.level !== "number" || typeof l.percent !== "number" || typeof l.minReferrals !== "number") {
+      return res.status(400).json({ message: "Каждый уровень: level, percent, minReferrals (числа)" });
+    }
+    if (l.percent < 0 || l.percent > 100) {
+      return res.status(400).json({ message: "Процент: 0–100" });
+    }
+  }
+  if (typeof subPct === "number" && (subPct < 0 || subPct > 100)) {
+    return res.status(400).json({ message: "Суб-процент: 0–100" });
+  }
+  affiliateLevels = levels;
+  if (typeof subPct === "number") subAffiliatePercent = subPct;
+  await saveAffiliateConfig();
+  console.log(`[affiliate] admin saved ${levels.length} levels, sub=${subAffiliatePercent}%`);
+  res.json({ ok: true, levels: affiliateLevels, subAffiliatePercent });
 });
 
 // GET /api/referral — compact referral info for current user
@@ -2622,7 +2680,7 @@ wss.on("connection", (ws, req) => {
                   if (referrerData.referredBy) {
                     const topReferrer = referralData.get(referrerData.referredBy);
                     if (topReferrer) {
-                      const subCommission = Math.round(commission * 0.10 * 100) / 100; // 10% of referrer's commission
+                      const subCommission = Math.round(commission * (subAffiliatePercent / 100) * 100) / 100;
                       topReferrer.pendingPayout = (topReferrer.pendingPayout || 0) + subCommission;
                       topReferrer.totalEarned = (topReferrer.totalEarned || 0) + subCommission;
                       topReferrer.subAffiliates = topReferrer.subAffiliates || [];
@@ -3813,6 +3871,7 @@ if (fs.existsSync(websiteDir)) {
 ;(async () => {
   await loadJwtSecret();
   await loadReferralData().catch(() => {});
+  await loadAffiliateConfig().catch(() => {});
   await loadShopItems().catch(() => {});
   await seedShopItems().catch(e => console.warn("[shop] seed failed:", e.message));
 
