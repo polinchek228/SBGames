@@ -7,22 +7,27 @@ import { createReadStream } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Агрессивный пресет обфускации. Цель — максимально усложнить реверс;
-// размер бандла и перф в приоритете НЕТ.
+// Сбалансированный пресет обфускации: крепкая защита + быстрая загрузка.
+//
+// Логика баланса: выкрученные на 1.0 пороги (flatten/deadCode) создают
+// предсказуемые шаблоны, которые авто-деобфускаторы (synchrony, webcrack)
+// узнают и снимают, — а ещё жёстко тормозят парс/стартап. Умеренные пороги
+// ~0.6 с Rc4-кодированным stringArray дают более «грязный» и устойчивый
+// результат при раз в 5 меньшем размере бандла.
 //
 // ВАЖНО про два флага ниже: они намеренно `false`.
 // `renameProperties` / `transformObjectKeys: true` переименовывают имена
 // свойств объектов (onClick, createElement, className, ...), что ломает
 // React/JSX и DOM-события — приложение падает в рантайме. Это известная
 // несовместимость javascript-obfuscator с фреймворками, поэтому оба флага
-// выключены, а защита компенсирована всеми остальными рычагами на максимум.
+// выключены.
 const SITE_OBF_OPTIONS = {
   compact:                               true,
-  // ── control flow ──
+  // ── control flow (умеренно — без кратного раздувания) ──
   controlFlowFlattening:                 true,
-  controlFlowFlatteningThreshold:        1,
+  controlFlowFlatteningThreshold:        0.6,
   deadCodeInjection:                     true,
-  deadCodeInjectionThreshold:            1,
+  deadCodeInjectionThreshold:            0.4,
   // ── anti-debug / anti-tamper ──
   debugProtection:                       true,
   debugProtectionInterval:               4000,
@@ -32,26 +37,27 @@ const SITE_OBF_OPTIONS = {
   identifierNamesGenerator:              "hexadecimal",
   renameGlobals:                         false,
   renameProperties:                      false,
-  // ── strings ──
-  splitStrings:                          true,
-  splitStringsChunkLength:               3,
+  // ── strings (основной слой защиты) ──
   stringArray:                           true,
   stringArrayCallsTransform:             true,
-  stringArrayCallsTransformThreshold:    1,
-  stringArrayEncoding:                   ["base64", "rc4"],
+  stringArrayCallsTransformThreshold:    0.6,
+  stringArrayEncoding:                   ["rc4"],
   stringArrayIndexes:                    true,
   stringArrayRotate:                     true,
   stringArrayShuffle:                    true,
-  stringArrayWrappersCount:              3,
+  stringArrayWrappersCount:              2,
   stringArrayWrappersChainedCalls:       true,
-  stringArrayWrappersParametersMaxCount: 4,
+  stringArrayWrappersParametersMaxCount: 3,
   stringArrayWrappersType:               "function",
-  stringArrayThreshold:                  1,
+  stringArrayThreshold:                  0.75,
+  // splitStrings ВЫКЛ — главная причина тормозов при старте (тысячи
+  // конкатенаций в рантайме). StringArray уже прячет строки под RC4.
+  splitStrings:                          false,
   // ── expressions ──
   numbersToExpressions:                  true,
   simplify:                              true,
   transformObjectKeys:                   false,
-  unicodeEscapeSequence:                 true,
+  unicodeEscapeSequence:                 false,
   // ── scope ──
   sourceMap:                             false,
   sourceMapMode:                         "separate",
