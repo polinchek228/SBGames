@@ -7,33 +7,55 @@ import { createReadStream } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Агрессивный пресет обфускации. Цель — максимально усложнить реверс;
+// размер бандла и перф в приоритете НЕТ.
+//
+// ВАЖНО про два флага ниже: они намеренно `false`.
+// `renameProperties` / `transformObjectKeys: true` переименовывают имена
+// свойств объектов (onClick, createElement, className, ...), что ломает
+// React/JSX и DOM-события — приложение падает в рантайме. Это известная
+// несовместимость javascript-obfuscator с фреймворками, поэтому оба флага
+// выключены, а защита компенсирована всеми остальными рычагами на максимум.
 const SITE_OBF_OPTIONS = {
-  compact:                        true,
-  controlFlowFlattening:          true,
-  controlFlowFlatteningThreshold: 0.25,
-  deadCodeInjection:              true,
-  deadCodeInjectionThreshold:     0.1,
-  debugProtection:                true,
-  debugProtectionInterval:        2000,
-  disableConsoleOutput:           true,
-  identifierNamesGenerator:       "hexadecimal",
-  renameGlobals:                  false,
-  renameProperties:               false,
-  selfDefending:                  true,
-  splitStrings:                   true,
-  splitStringsChunkLength:        8,
-  stringArray:                    true,
-  stringArrayCallsTransform:      true,
-  stringArrayCallsTransformThreshold: 0.5,
-  stringArrayEncoding:            ["rc4"],
-  stringArrayRotate:              true,
-  stringArrayShuffle:             true,
-  stringArrayThreshold:           0.7,
-  numbersToExpressions:           true,
-  simplify:                       true,
-  transformObjectKeys:            false,
-  unicodeEscapeSequence:          false,
-  target:                         "browser",
+  compact:                               true,
+  // ── control flow ──
+  controlFlowFlattening:                 true,
+  controlFlowFlatteningThreshold:        1,
+  deadCodeInjection:                     true,
+  deadCodeInjectionThreshold:            1,
+  // ── anti-debug / anti-tamper ──
+  debugProtection:                       true,
+  debugProtectionInterval:               4000,
+  disableConsoleOutput:                  true,
+  selfDefending:                         true,
+  // ── identifiers ──
+  identifierNamesGenerator:              "hexadecimal",
+  renameGlobals:                         false,
+  renameProperties:                      false,
+  // ── strings ──
+  splitStrings:                          true,
+  splitStringsChunkLength:               3,
+  stringArray:                           true,
+  stringArrayCallsTransform:             true,
+  stringArrayCallsTransformThreshold:    1,
+  stringArrayEncoding:                   ["base64", "rc4"],
+  stringArrayIndexes:                    true,
+  stringArrayRotate:                     true,
+  stringArrayShuffle:                    true,
+  stringArrayWrappersCount:              3,
+  stringArrayWrappersChainedCalls:       true,
+  stringArrayWrappersParametersMaxCount: 4,
+  stringArrayWrappersType:               "function",
+  stringArrayThreshold:                  1,
+  // ── expressions ──
+  numbersToExpressions:                  true,
+  simplify:                              true,
+  transformObjectKeys:                   false,
+  unicodeEscapeSequence:                 true,
+  // ── scope ──
+  sourceMap:                             false,
+  sourceMapMode:                         "separate",
+  target:                                "browser",
 };
 
 function obfuscateSitePlugin() {
