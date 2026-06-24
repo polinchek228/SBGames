@@ -15,4 +15,4 @@ Disallow: /admin
 Disallow: /api/
 Crawl-delay: 1
 
-Sitemap: https://sbgames.hyperionsearch.xyz/sitemap.xml
+Sitemap: https://games.sb-capital.group/sitemap.xml

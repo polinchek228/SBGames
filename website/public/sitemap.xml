@@ -3,60 +3,65 @@
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/</loc>
+    <loc>https://games.sb-capital.group/</loc>
     <lastmod>2026-06-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
     <image:image>
-      <image:loc>https://sbgames.hyperionsearch.xyz/og-cover.jpg</image:loc>
+      <image:loc>https://games.sb-capital.group/og-cover.jpg</image:loc>
       <image:title>SB Games — Minecraft лаунчер и сервер Звёздные Войны</image:title>
     </image:image>
   </url>
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/download</loc>
-    <lastmod>2026-06-12</lastmod>
+    <loc>https://games.sb-capital.group/download</loc>
+    <lastmod>2026-06-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://games.sb-capital.group/og-cover.jpg</image:loc>
+      <image:title>Скачать лаунчер SB Games — Minecraft серверы | Windows, macOS, Linux</image:title>
+      <image:caption>Бесплатный лаунчер SB Games: моды и модлоадеры устанавливаются автоматически.</image:caption>
+    </image:image>
   </url>
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/how-to-play</loc>
+    <loc>https://games.sb-capital.group/how-to-play</loc>
     <lastmod>2026-06-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/topup</loc>
+    <loc>https://games.sb-capital.group/topup</loc>
     <lastmod>2026-06-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/rules</loc>
+    <loc>https://games.sb-capital.group/rules</loc>
     <lastmod>2026-06-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/support</loc>
+    <loc>https://games.sb-capital.group/support</loc>
     <lastmod>2026-06-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/cabinet</loc>
+    <loc>https://games.sb-capital.group/cabinet</loc>
     <lastmod>2026-06-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
 
   <url>
-    <loc>https://sbgames.hyperionsearch.xyz/login</loc>
+    <loc>https://games.sb-capital.group/login</loc>
     <lastmod>2026-06-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>

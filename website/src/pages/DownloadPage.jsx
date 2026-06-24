@@ -93,7 +93,7 @@ const FAQ = [
 
 // ─── Компонент страницы ──────────────────────────────────────────
 
-const SITE_URL = "https://sbgames.hyperionsearch.xyz";
+const SITE_URL = "https://games.sb-capital.group";
 const DOWNLOAD_URL = `${SITE_URL}/download`;
 
 export default function DownloadPage() {
@@ -168,22 +168,19 @@ export default function DownloadPage() {
       ],
     });
 
-    injectLd("ld-software-download", {
+    // HowTo: «как установить лаунчер» — rich snippet
+    injectLd("ld-howto-download", {
       "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "SB Games Launcher",
-      "applicationCategory": "GameApplication",
-      "operatingSystem": "Windows 10/11, macOS 10.13+, Linux",
-      "description": description,
-      "url": DOWNLOAD_URL,
-      "downloadUrl": DOWNLOAD_URL,
-      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "RUB" },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "4.9",
-        "ratingCount": "1240",
-      },
-      "author": { "@id": SITE_URL + "/#org" },
+      "@type": "HowTo",
+      "name": "Как установить лаунчер SB Games",
+      "description": "Пошаговая установка лаунчера SB Games на компьютер.",
+      "totalTime": "PT5M",
+      "step": [
+        { "@type": "HowToStep", "position": 1, "name": "Скачайте установщик", "text": "Нажмите кнопку «Скачать» и выберите вашу платформу — Windows, macOS или Linux." },
+        { "@type": "HowToStep", "position": 2, "name": "Запустите файл", "text": "Откройте скачанный установщик (.exe, .dmg или .AppImage) и следуйте инструкциям мастера установки." },
+        { "@type": "HowToStep", "position": 3, "name": "Авторизуйтесь", "text": "Откройте лаунчер и войдите в свой аккаунт SB Games или зарегистрируйтесь." },
+        { "@type": "HowToStep", "position": 4, "name": "Выберите сервер", "text": "Выберите любой сервер SB Games и нажмите «Играть» — моды и версия установятся автоматически." },
+      ],
     });
 
     return () => updaters.forEach(fn => fn());
