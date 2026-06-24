@@ -445,6 +445,11 @@ function UserDetail({ user: u, selfId, api, onUpdate }) {
         </div>
       )}
       {u.id === selfId && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center" }}>Это вы — роль изменить нельзя</div>}
+
+      <div style={{ ...card, padding: "18px 20px" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>Партнёрка</div>
+        <UserCommissionEditor api={api} tgId={u.id} />
+      </div>
     </div>
   );
 }
@@ -732,145 +737,99 @@ function AffiliateAdminSection() {
         {saved && <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>Готово</span>}
       </div>
 
-      <div style={{ ...card, padding: "20px 24px", marginTop: 24 }}>
-        <UserCommissionEditor api={api} />
-      </div>
     </div>
   );
 }
 
-function UserCommissionEditor({ api }) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
+function UserCommissionEditor({ api, tgId, onSaved }) {
   const [customPct, setCustomPct] = useState("");
+  const [affiliateInfo, setAffiliateInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
 
-  const search = async () => {
-    if (query.length < 2) return;
-    setSearching(true); setSelectedUser(null); setResults([]);
-    try {
-      const d = await api.get(`/admin/affiliate/user?search=${encodeURIComponent(query)}`);
-      setResults(d.users || []);
-    } catch { setResults([]); }
-    setSearching(false);
-  };
-
-  const selectUser = (u) => {
-    setSelectedUser(u);
-    setCustomPct(u.customPercent !== null && u.customPercent !== undefined ? String(u.customPercent) : "");
-  };
+  useEffect(() => {
+    if (!tgId) return;
+    setLoading(true);
+    api.get(`/admin/affiliate/user?search=${encodeURIComponent(tgId)}`).then(d => {
+      const u = (d.users || []).find(x => x.tgId === String(tgId));
+      if (u) {
+        setAffiliateInfo(u);
+        setCustomPct(u.customPercent !== null && u.customPercent !== undefined ? String(u.customPercent) : "");
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [tgId]);
 
   const saveCustom = async () => {
-    if (!selectedUser) return;
+    if (!affiliateInfo) return;
     setSaving(true); setSavedMsg("");
     try {
       const pct = customPct === "" ? null : parseInt(customPct, 10);
-      const d = await api.post("/admin/affiliate/user", { tgId: selectedUser.tgId, customPercent: pct });
-      setSelectedUser({ ...selectedUser, customPercent: d.customPercent, effectivePercent: d.effectivePercent });
+      const d = await api.post("/admin/affiliate/user", { tgId: String(tgId), customPercent: pct });
+      setAffiliateInfo({ ...affiliateInfo, customPercent: d.customPercent, effectivePercent: d.effectivePercent });
       setSavedMsg("Сохранено");
+      onSaved?.();
       setTimeout(() => setSavedMsg(""), 2000);
     } catch (e) { setSavedMsg("Ошибка"); }
     setSaving(false);
   };
 
-  const inp = {
-    width: "100%", padding: "10px 14px", borderRadius: 8,
-    background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)",
-    color: "#fff", fontSize: 13, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
-  };
+  if (loading) return <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", padding: "8px 0" }}>Загрузка...</div>;
+  if (!affiliateInfo) return <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", padding: "8px 0" }}>Нет партнёрских данных</div>;
 
   return (
     <>
-      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 12 }}>
-        Кастомный % для игрока
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+          Рефералов: {affiliateInfo.referralCount}
+        </span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>·</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+          Уровень {affiliateInfo.level?.level} → {affiliateInfo.level?.percent}%
+        </span>
+        {affiliateInfo.customPercent !== null && affiliateInfo.customPercent !== undefined && (
+          <>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>·</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b" }}>
+              Кастомный: {affiliateInfo.customPercent}%
+            </span>
+          </>
+        )}
       </div>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 12 }}>
-        Задайте индивидуальный процент комиссии для конкретного партнёра. Перезаписывает уровень по умолчанию.
-      </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <input
-          value={query} onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && search()}
-          placeholder="Ник или Telegram ID..."
-          style={{ ...inp, flex: 1 }}
-        />
-        <button onClick={search} disabled={searching} style={{
-          padding: "10px 20px", borderRadius: 8, border: "none", background: "#6366f1",
-          color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>%</span>
+          <input
+            type="number" min="0" max="100"
+            value={customPct}
+            onChange={e => setCustomPct(e.target.value)}
+            placeholder="по умолчанию"
+            style={{
+              width: 80, textAlign: "center", padding: "8px 4px", borderRadius: 8,
+              background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)",
+              color: customPct ? "#f59e0b" : "rgba(255,255,255,0.4)", fontSize: 15, fontWeight: 800, outline: "none",
+            }}
+          />
+        </div>
+        <button onClick={saveCustom} disabled={saving} style={{
+          padding: "8px 16px", borderRadius: 8, border: "none",
+          background: saving ? "rgba(245,158,11,0.3)" : "#f59e0b",
+          color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
         }}>
-          {searching ? "Поиск..." : "Найти"}
+          {saving ? "..." : "Применить"}
         </button>
+        {customPct && (
+          <button onClick={() => { setCustomPct(""); }} style={{
+            padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)",
+            background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 12,
+            cursor: "pointer", fontFamily: "inherit",
+          }}>
+            Сбросить
+          </button>
+        )}
+        {savedMsg && <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>{savedMsg}</span>}
       </div>
-
-      {results.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-          {results.map(u => (
-            <div key={u.tgId} onClick={() => selectUser(u)} style={{
-              display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10,
-              background: selectedUser?.tgId === u.tgId ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
-              border: `1px solid ${selectedUser?.tgId === u.tgId ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.05)"}`,
-              cursor: "pointer",
-            }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{u.username || u.tgId}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-                  Рефералов: {u.referralCount} · Уровень {u.level?.level} · {u.level?.percent}%
-                  {u.customPercent !== null && u.customPercent !== undefined && (
-                    <span style={{ color: "#f59e0b", marginLeft: 8 }}>Кастомный: {u.customPercent}%</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {selectedUser && (
-        <div style={{ padding: "16px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
-            {selectedUser.username || selectedUser.tgId}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>По умолчанию: {selectedUser.level?.percent}%</span>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>·</span>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Эффективный: {selectedUser.customPercent ?? selectedUser.level?.percent}%</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="number" min="0" max="100"
-                value={customPct}
-                onChange={e => setCustomPct(e.target.value)}
-                placeholder="—"
-                style={{
-                  width: 72, textAlign: "center", padding: "8px 4px", borderRadius: 8,
-                  background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)",
-                  color: "#f59e0b", fontSize: 16, fontWeight: 800, outline: "none",
-                }}
-              />
-              <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.35)" }}>%</span>
-            </div>
-            <button onClick={saveCustom} disabled={saving} style={{
-              padding: "8px 16px", borderRadius: 8, border: "none",
-              background: saving ? "rgba(245,158,11,0.3)" : "#f59e0b",
-              color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-            }}>
-              {saving ? "..." : "Применить"}
-            </button>
-            <button onClick={() => { setCustomPct(""); }} style={{
-              padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)",
-              background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 12,
-              cursor: "pointer", fontFamily: "inherit",
-            }}>
-              Сбросить
-            </button>
-            {savedMsg && <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>{savedMsg}</span>}
-          </div>
-        </div>
-      )}
     </>
   );
 }
