@@ -149,8 +149,25 @@ function inline(text) {
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 }
 
+// ─── Блок «Похожие материалы» (внутренние ссылки для SEO) ───────────────
+function renderRelated(related) {
+  const cards = related.map(r => {
+    const cat = CATEGORIES[r.catKey] || { title: r.catKey };
+    return `      <a class="related-card" href="/forum/${r.catKey}/${r.slug}">
+        <div class="related-cat">${escapeHtml(cat.title)}</div>
+        <div class="related-title">${escapeHtml(r.title)}</div>
+      </a>`;
+  }).join("\n");
+  return `    <div class="related">
+      <h3>Похожие материалы</h3>
+      <div class="related-grid">
+${cards}
+      </div>
+    </div>`;
+}
+
 // ─── Шаблон prerendered страницы в нашем дизайне ────────────────────────
-function pageHtml(item, category) {
+function pageHtml(item, category, related = []) {
   const cat = CATEGORIES[category] || { title: category };
   const canonical = `${SITE_ORIGIN}/forum/${category}/${item.slug}`;
   const jsonLd = {
@@ -234,6 +251,13 @@ function pageHtml(item, category) {
     .cta p { margin:0 0 16px; color:rgba(255,255,255,0.5); font-size:14px; }
     .btn { display:inline-block; padding:12px 26px; background:#fff; color:#000; border-radius:10px; font-weight:700; font-size:13px; }
     .btn:hover { text-decoration:none; opacity:0.92; }
+    .related { margin:40px 0 0; }
+    .related h3 { font-size:16px; font-weight:800; margin:0 0 14px; letter-spacing:0.02em; }
+    .related-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+    .related-card { display:block; padding:14px 14px; border-radius:12px; text-decoration:none; color:#fff; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); transition:border-color 0.15s; }
+    .related-card:hover { text-decoration:none; border-color:rgba(96,165,250,0.3); }
+    .related-cat { font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#60a5fa; margin-bottom:6px; }
+    .related-title { font-size:13px; font-weight:600; line-height:1.4; color:rgba(255,255,255,0.85); }
     @media(max-width:600px){ .wrap{ padding:24px 16px 60px; } }
   </style>
 </head>
@@ -247,6 +271,7 @@ function pageHtml(item, category) {
     <article class="article">
 ${bodyHtml}
     </article>
+    ${(related && related.length) ? renderRelated(related) : ""}
     <div class="cta">
       <h3>Играй на серверах SB Games</h3>
       <p>Один лаунчер на все серверы. Моды ставятся автоматически.</p>
@@ -271,6 +296,8 @@ function build() {
 
   // убедимся, что dist существует (запуск может идти до vite build)
   fs.mkdirSync(FORUM_DIST, { recursive: true });
+
+  const itemsWithBody = []; // для второго прохода (рендер HTML с related)
 
   const index = { categories: {} };
 
@@ -302,19 +329,38 @@ function build() {
         __body: body,
       };
 
-      // prerendered HTML
-      const outDir = path.join(FORUM_DIST, catKey, item.slug);
-      fs.mkdirSync(outDir, { recursive: true });
-      fs.writeFileSync(path.join(outDir, "index.html"), pageHtml(item, catKey), "utf8");
-
       // в индекс для React — без тела
       const { __body, ...idxItem } = item;
       index.categories[catKey].items.push(idxItem);
+
+      // сохраняем полное тело для второго прохода (рендер HTML)
+      itemsWithBody.push({ item, catKey });
     }
 
     // сортировка по дате (свежие сверху)
     index.categories[catKey].items.sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""));
     console.log(`[forum] ${catKey}: ${index.categories[catKey].items.length} статей`);
+  }
+
+  // ── Второй проход: prerendered HTML с блоком «Похожие материалы» ──
+  // Считаем related по пересечению тегов (и версии MC как бонус), исключая саму статью.
+  for (const { item, catKey } of itemsWithBody) {
+    const all = Object.values(index.categories).flatMap(c => c.items.map(i => ({ ...i, catKey: c.slug })));
+    const related = all
+      .filter(i => i.slug !== item.slug)
+      .map(i => {
+        const commonTags = (i.tags || []).filter(t => (item.tags || []).includes(t)).length;
+        const sameVersion = item.version && i.version === item.version ? 1 : 0;
+        return { i, score: commonTags * 2 + sameVersion };
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map(x => x.i);
+
+    const outDir = path.join(FORUM_DIST, catKey, item.slug);
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(path.join(outDir, "index.html"), pageHtml(item, catKey, related), "utf8");
   }
 
   // сводный индекс
