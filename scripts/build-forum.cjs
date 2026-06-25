@@ -23,7 +23,6 @@ const SITE_ORIGIN = "https://games.sb-capital.group";
 const CATEGORIES = {
   mods:      { title: "Моды",            icon: "Cube",        desc: "Модификации для Minecraft — от оптимизации до контента." },
   articles:  { title: "Статьи",          icon: "BookOpen",    desc: "Официальные обновления, гайды и новости Minecraft." },
-  ai:        { title: "Гайды",           icon: "Sparkle",     desc: "Полезные гайды и разборы по Minecraft.", hidden: true },
   textures:  { title: "Текстуры",        icon: "PaintBrush",  desc: "Ресурс-паки и текстуры высокого разрешения." },
   maps:      { title: "Карты",           icon: "Map",         desc: "Приключения, выживание, паркур и мини-игры." },
   skins:     { title: "Скины",           icon: "Smiley",      desc: "Скины для персонажа." },
