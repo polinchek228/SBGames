@@ -17,6 +17,7 @@ const ReferralPage = lazy(() => import("./pages/ReferralPage.jsx"));
 const AffiliatePage = lazy(() => import("./pages/AffiliatePage.jsx"));
 const ForumIndex = lazy(() => import("./pages/forum/ForumIndex.jsx"));
 const ForumCategory = lazy(() => import("./pages/forum/ForumCategory.jsx"));
+const ForumArticle = lazy(() => import("./pages/forum/ForumArticle.jsx"));
 
 function RequireAuth({ user, children }) {
   const location = useLocation();
@@ -102,6 +103,7 @@ export default function App() {
               <Route path="/affiliate"  element={<ReferralPage />} />
               <Route path="/affiliate/dashboard" element={<RequireAuth user={user}><AffiliatePage user={user} /></RequireAuth>} />
               <Route path="/forum"                element={<ForumIndex />} />
+              <Route path="/forum/read/:slug"     element={<ForumArticle />} />
               <Route path="/forum/:category"      element={<ForumCategory />} />
               <Route path="*"           element={<Navigate to="/" replace />} />
             </Routes>

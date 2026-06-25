@@ -3824,7 +3824,186 @@ app.get("/api/mods/manifest", (_req, res) => {
   }
 });
 
-// --- Website static serving (SPA catch-all) ------------------------------------
+// --- Forum articles (Redis-backed, AI-generated + admin-managed) -------------
+// Хранение: forum:article:<slug> = {slug,title,category,version,tags[],excerpt,
+//   body(md),author,publishedAt,ai}. Сводный список forum:articles = [slug,...]
+// Доступ: публичное чтение, запись/генерация — только админ.
+const FORUM_AI_API = process.env.AI_API_BASE || "http://localhost:3264/api";
+const FORUM_AI_MODEL = process.env.AI_MODEL || "qwen-max";
+const FORUM_AI_TIMEOUT = parseInt(process.env.AI_TIMEOUT_MS || "360000", 10);
+
+const FORUM_SYSTEM_PROMPT = `Ты — опытный игрок и автор контента по Minecraft с 10-летним стажем.
+Пишешь для русскоязычного сообщества (геймеры, ищут конкретные ответы в Google/Yandex).
+Задача — СВЕЖИЕ, ПОЛЕЗНЫЕ, УНИКАЛЬНЫЕ статьи, которые реально помогают и ранжируются в поиске.
+
+КАК ПИСАТЬ (живой человек):
+- От первого лица, как игрок делится опытом: «по моему опыту», «обычно делаю так».
+- Разговорный, грамотный тон. Без канцелярита и воды.
+- Чередуй длину предложений. Сразу к делу — без «в современном мире», «важно отметить».
+- Личные наблюдения и подводные камни, которых нет в вики.
+
+ЧЕГО НЕ ДЕЛАТЬ (штампы = брак):
+- Клише: «в заключение», «стоит отметить», «играет важную роль», «открывает горизонты».
+- Водные абзацы ради объёма. Каждое предложение несёт информацию.
+- Выдуманные версии/моды/фичи. Не уверен — пиши общие принципы.
+- Эмодзи без нужды.
+
+АКТУАЛЬНОСТЬ: всегда указывай версию MC/модлоадер. Описывай РЕАЛЬНЫЕ фичи.
+
+SEO: один H1, подзаголовки H2/H3 с ключевыми словами, ключ в заголовке и первых абзацах.
+Длина 700–1400 слов.
+
+ФОРМАТ (СТРОГО): верни ТОЛЬКО Markdown с YAML frontmatter, без обёрток и пояснений:
+---
+slug: kebab-case-на-латинице
+title: "Заголовок на русском с ключевым словом"
+category: <укажу в задании>
+version: "1.20.1"
+tags: [ключевые, слова]
+excerpt: "1-2 предложения для meta description."
+author: "SB Games"
+---
+Дальше тело статьи.`;
+
+function slugify(s) {
+  const map = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'ts',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'};
+  return String(s||'').toLowerCase().replace(/[а-яё]/g, c => map[c]||c).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80) || "article";
+}
+
+// Публичный список статей (с фильтром по категории, без тела — для каталога)
+app.get("/forum/articles", async (req, res) => {
+  try {
+    const slugs = await redis.smembers("forum:articles");
+    const cat = req.query.category;
+    const out = [];
+    for (const slug of slugs) {
+      const raw = await redis.get(`forum:article:${slug}`);
+      if (!raw) continue;
+      const a = JSON.parse(raw);
+      if (cat && a.category !== cat) continue;
+      const { body, ...meta } = a;
+      out.push(meta);
+    }
+    out.sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""));
+    res.json(out);
+  } catch (e) { res.status(500).json({ message: "Forum error", error: e.message }); }
+});
+
+// Публичное чтение одной статьи (с телом)
+app.get("/forum/articles/:slug", async (req, res) => {
+  try {
+    const raw = await redis.get(`forum:article:${req.params.slug}`);
+    if (!raw) return res.status(404).json({ message: "Not found" });
+    res.json(JSON.parse(raw));
+  } catch (e) { res.status(500).json({ message: "Forum error" }); }
+});
+
+// AI-генерация статьи (админ). Тело: {topic, category, angle?, version?}
+app.post("/admin/forum/generate", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { topic, category, angle, version } = req.body || {};
+  if (!topic || !category) return res.status(400).json({ message: "Нужны topic и category" });
+  const VALID = ["mods","articles","textures","maps","skins","shaders","modpacks"];
+  if (!VALID.includes(category)) return res.status(400).json({ message: "Неверная категория" });
+
+  const catLabel = {mods:"мод",articles:"статья/гайд",textures:"текстуры",maps:"карта",skins:"скин",shaders:"шейдер",modpacks:"сборка модов"}[category] || "статья";
+  const userPrompt = `Напиши ${catLabel} по запросу: "${topic}".
+Категория (поле category): ${category}. Версия Minecraft: ${version || "1.20.1"}.
+Фокус: ${angle || "общий полезный гайд"}.
+Реальные факты о Minecraft ${version || "1.20.1"}. В поле category поставь: ${category}.
+Верни ТОЛЬКО Markdown с frontmatter.`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FORUM_AI_TIMEOUT);
+  let aiText;
+  try {
+    const r = await fetch(`${FORUM_AI_API}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: FORUM_AI_MODEL, temperature: 0.85, messages: [
+        { role: "system", content: FORUM_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ]}),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!r.ok) { const t = await r.text().catch(()=> ""); return res.status(502).json({ message: "AI error", detail: t.slice(0,300) }); }
+    const data = await r.json();
+    aiText = data?.choices?.[0]?.message?.content || data?.content || "";
+  } catch (e) {
+    clearTimeout(timer);
+    return res.status(502).json({ message: "AI недоступен", detail: e.message });
+  }
+  if (!aiText) return res.status(502).json({ message: "AI вернул пустой ответ" });
+
+  // Парс frontmatter
+  const m = aiText.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  if (!m) return res.status(502).json({ message: "AI вернул не Markdown с frontmatter", raw: aiText.slice(0,300) });
+  const fm = m[1], body = m[2];
+  const get = k => { const r = fm.match(new RegExp(`^${k}:\\s*(.+)$`,"m")); return r ? r[1].trim().replace(/^["']|["']$/g,"") : null; };
+  const getArr = k => { const r = fm.match(new RegExp(`^${k}:\\s*\\[(.*?)\\]`,"m")); return r ? r[1].split(",").map(s=>s.trim().replace(/^["']|["']$/g,"")).filter(Boolean) : []; };
+
+  let slug = slugify(get("title") || topic);
+  // уникальность slug
+  let base = slug, n = 2;
+  while (await redis.exists(`forum:article:${slug}`)) { slug = `${base}-${n++}`; }
+
+  const article = {
+    slug,
+    title: get("title") || topic,
+    category,                              // категория из запроса — истина
+    version: get("version") || version || "1.20.1",
+    tags: getArr("tags"),
+    excerpt: get("excerpt") || "",
+    body,
+    author: "SB Games",
+    ai: true,
+    publishedAt: new Date().toISOString().slice(0,10),
+  };
+  await redis.set(`forum:article:${slug}`, JSON.stringify(article));
+  await redis.sadd("forum:articles", slug);
+  res.json(article);
+});
+
+// Ручное создание/редактирование статьи (админ). Тело: поля статьи.
+app.put("/admin/forum/articles/:slug", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const oldSlug = req.params.slug;
+  const b = req.body || {};
+  const existing = await redis.get(`forum:article:${oldSlug}`);
+  const cur = existing ? JSON.parse(existing) : {};
+  const newSlug = b.slug ? slugify(b.slug) : (cur.slug || slugify(b.title));
+  const article = {
+    slug: newSlug,
+    title: b.title ?? cur.title ?? "Без названия",
+    category: b.category ?? cur.category ?? "articles",
+    version: b.version ?? cur.version ?? null,
+    tags: Array.isArray(b.tags) ? b.tags : (typeof b.tags === "string" ? b.tags.split(",").map(s=>s.trim()).filter(Boolean) : cur.tags || []),
+    excerpt: b.excerpt ?? cur.excerpt ?? "",
+    body: b.body ?? cur.body ?? "",
+    image: b.image ?? cur.image ?? null,
+    author: b.author ?? cur.author ?? "SB Games",
+    ai: b.ai ?? cur.ai ?? false,
+    publishedAt: b.publishedAt ?? cur.publishedAt ?? new Date().toISOString().slice(0,10),
+  };
+  if (newSlug !== oldSlug && await redis.exists(`forum:article:${newSlug}`))
+    return res.status(409).json({ message: "slug занят" });
+  // если slug сменился — убрать старый
+  if (newSlug !== oldSlug) { await redis.del(`forum:article:${oldSlug}`); await redis.srem("forum:articles", oldSlug); }
+  await redis.set(`forum:article:${newSlug}`, JSON.stringify(article));
+  await redis.sadd("forum:articles", newSlug);
+  res.json(article);
+});
+
+// Удаление статьи (админ)
+app.delete("/admin/forum/articles/:slug", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  await redis.del(`forum:article:${req.params.slug}`);
+  await redis.srem("forum:articles", req.params.slug);
+  res.json({ ok: true });
+});
+
+
 const websiteDir = require("path").join(__dirname, "website", "dist");
 if (fs.existsSync(websiteDir)) {
   app.use(express.static(websiteDir, { maxAge: "1d", etag: true, index: "index.html" }));

@@ -5,18 +5,20 @@ import {
   Cube, BookOpen, Sparkle, PaintBrush, MapTrifold,
   Smiley, Sun, Stack, CaretLeft, MagnifyingGlass, X,
 } from "@phosphor-icons/react";
+import { API_URL } from "../../lib/api.js";
 
 const ICONS = { Cube, BookOpen, Sparkle, PaintBrush, Map: MapTrifold, Smiley, Sun, Stack };
 
 const INDEX_URL = "/forum/_index.json";
 
-// Детальная страница — это prerendered HTML на /forum/<cat>/<slug>.
-// Открываем прямой ссылкой (полный перезагруз страницы = готовый SEO HTML).
-const itemHref = (cat, slug) => `/forum/${cat}/${slug}`;
+// Live-статьи (Redis) открываются SPA-роутом /forum/read/<slug>.
+// Статичные (Markdown/prerendered) — прямым переходом на /forum/<cat>/<slug> (готовый SEO HTML).
+const itemHref = (it) => it._live ? `/forum/read/${it.slug}` : `/forum/${it.category}/${it.slug}`;
 
 export default function ForumCategory() {
   const { category } = useParams();
   const [index, setIndex] = useState(null);
+  const [liveItems, setLiveItems] = useState([]);
   const [error, setError] = useState(false);
 
   const [q, setQ] = useState("");
@@ -24,6 +26,7 @@ export default function ForumCategory() {
   const [loader, setLoader] = useState("");
   const [activeTag, setActiveTag] = useState("");
 
+  // Статичный индекс (Markdown-контент)
   useEffect(() => {
     fetch(INDEX_URL)
       .then(r => r.ok ? r.json() : null)
@@ -31,33 +34,41 @@ export default function ForumCategory() {
       .catch(() => setError(true));
   }, []);
 
-  const cat = index?.categories?.[category];
+  // Живые статьи из API для текущей категории
+  useEffect(() => {
+    setLiveItems([]);
+    fetch(`${API_URL}/forum/articles?category=${encodeURIComponent(category)}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(items => setLiveItems((items || []).map(it => ({ ...it, _live: true }))))
+      .catch(() => setLiveItems([]));
+  }, [category]);
 
-  // Производные списки фильтров из данных
+  const catMeta = index?.categories?.[category];
+  // Склейка: живые сверху (свежее), потом статичные
+  const staticItems = catMeta?.items || [];
+  const allItems = [...liveItems, ...staticItems];
+
+  // Производные списки фильтров из данных (склеенный список)
   const versions = useMemo(() => {
-    if (!cat) return [];
-    const s = new Set(cat.items.map(i => i.version).filter(Boolean));
+    const s = new Set(allItems.map(i => i.version).filter(Boolean));
     return [...s].sort();
-  }, [cat]);
+  }, [allItems]);
 
   const loaders = useMemo(() => {
-    if (!cat) return [];
     const s = new Set();
-    cat.items.forEach(i => (i.loader || []).forEach(l => s.add(l)));
+    allItems.forEach(i => (i.loader || []).forEach(l => s.add(l)));
     return [...s];
-  }, [cat]);
+  }, [allItems]);
 
   const tags = useMemo(() => {
-    if (!cat) return [];
     const s = new Set();
-    cat.items.forEach(i => (i.tags || []).forEach(t => s.add(t)));
+    allItems.forEach(i => (i.tags || []).forEach(t => s.add(t)));
     return [...s].sort();
-  }, [cat]);
+  }, [allItems]);
 
   const filtered = useMemo(() => {
-    if (!cat) return [];
     const ql = q.trim().toLowerCase();
-    return cat.items.filter(it => {
+    return allItems.filter(it => {
       if (version && it.version !== version) return false;
       if (loader && !(it.loader || []).includes(loader)) return false;
       if (activeTag && !(it.tags || []).includes(activeTag)) return false;
@@ -67,7 +78,7 @@ export default function ForumCategory() {
       }
       return true;
     });
-  }, [cat, q, version, loader, activeTag]);
+  }, [allItems, q, version, loader, activeTag]);
 
   const clearAll = () => { setQ(""); setVersion(""); setLoader(""); setActiveTag(""); };
 
@@ -87,10 +98,10 @@ export default function ForumCategory() {
           <Link to="/forum" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 16, textDecoration: "none" }}>
             <CaretLeft size={13} weight="bold" /> Форум
           </Link>
-          {cat ? (
+          {catMeta ? (
             <>
-              <h1 style={{ fontSize: "clamp(28px, 5vw, 40px)", fontWeight: 900, margin: "0 0 8px", letterSpacing: "0.01em" }}>{cat.title}</h1>
-              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 15, lineHeight: 1.55, margin: 0, maxWidth: 560 }}>{cat.desc}</p>
+              <h1 style={{ fontSize: "clamp(28px, 5vw, 40px)", fontWeight: 900, margin: "0 0 8px", letterSpacing: "0.01em" }}>{catMeta.title}</h1>
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 15, lineHeight: 1.55, margin: 0, maxWidth: 560 }}>{catMeta.desc}</p>
             </>
           ) : error ? (
             <h1 style={{ fontSize: 28, fontWeight: 800 }}>Категория не найдена</h1>
@@ -99,7 +110,7 @@ export default function ForumCategory() {
           )}
         </motion.div>
 
-        {!cat ? null : (
+        {!catMeta && liveItems.length === 0 ? null : (
           <>
             {/* Панель фильтров */}
             <div style={{
@@ -160,7 +171,7 @@ export default function ForumCategory() {
                 {filtered.map((it, i) => (
                   <motion.a
                     key={it.slug}
-                    href={itemHref(category, it.slug)}
+                    href={itemHref(it)}
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: 0.03 * i }}

@@ -4,6 +4,7 @@ import {
   PaperPlaneRight, Plus, Trash, UploadSimple, Check, X,
   Headset, UsersThree, Storefront, MagnifyingGlass, CaretDown,
   CurrencyDollar, ShieldCheck, Image as ImageIcon, Handshake,
+  ChatsTeardrop, Sparkle, PencilSimple, ArrowClockwise,
 } from "@phosphor-icons/react";
 
 const card = { background: "rgba(255,255,255,0.03)", borderRadius: 16, border: "1px solid rgba(255,255,255,0.06)" };
@@ -15,10 +16,21 @@ const STATUSES = {
   closed:      { label: "Закрыт",    color: "rgba(255,255,255,0.25)" },
 };
 
+const FORUM_CATEGORIES = [
+  { value: "articles", label: "Статьи" },
+  { value: "mods",     label: "Моды" },
+  { value: "textures", label: "Текстуры" },
+  { value: "maps",     label: "Карты" },
+  { value: "skins",    label: "Скины" },
+  { value: "shaders",  label: "Шейдеры" },
+  { value: "modpacks", label: "Сборки" },
+];
+
 const NAV = [
   { key: "tickets",    label: "Тикеты",       icon: Headset },
   { key: "users",      label: "Пользователи", icon: UsersThree },
   { key: "shop",       label: "Магазин",      icon: Storefront },
+  { key: "forum",      label: "Форум",        icon: ChatsTeardrop },
   { key: "affiliate",  label: "Партнёрка",    icon: Handshake },
 ];
 
@@ -28,7 +40,7 @@ const useModal = () => React.useContext(ModalCtx);
 export default function AdminPage({ user }) {
   const [section, setSection] = useState("shop");
   const [modal, setModal] = useState(null);
-  const [counts, setCounts] = useState({ tickets: null, users: null, shop: null });
+  const [counts, setCounts] = useState({ tickets: null, users: null, shop: null, forum: null });
   const api = useAdminFetch();
 
   // Загружаем счётчики для сайдбара (один раз при монтировании).
@@ -37,11 +49,13 @@ export default function AdminPage({ user }) {
       api.get("/admin/tickets").catch(() => ({})),
       api.get("/admin/users").catch(() => ({})),
       api.get("/admin/shop/items").catch(() => ({})),
-    ]).then(([t, u, s]) => {
+      fetch(`${API_URL}/forum/articles`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([t, u, s, f]) => {
       setCounts({
         tickets: (t.tickets || []).length,
         users: (u.users || []).length,
         shop: (s.items || []).length,
+        forum: (f || []).length,
       });
     });
   }, []);
@@ -102,27 +116,31 @@ export default function AdminPage({ user }) {
           {section === "tickets"   && <TicketsSection user={user} />}
           {section === "users"     && <UsersSection user={user} />}
           {section === "shop"      && <ShopSection />}
+          {section === "forum"     && <ForumAdminSection />}
           {section === "affiliate" && <AffiliateAdminSection />}
         </div>
 
         {modal && (
           <div onClick={() => setModal(null)} style={{
-            position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)",
+            position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.75)",
             display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
-            backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+            backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
           }}>
             <div onClick={e => e.stopPropagation()} style={{
-              width: "100%", maxWidth: modal.width || 560, maxHeight: "90vh", overflowY: "auto",
-              background: "#0f0f14", borderRadius: 16, border: "1px solid rgba(255,255,255,0.1)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+              width: "100%", maxWidth: modal.width || 460, maxHeight: "85vh", overflowY: "auto",
+              background: "#141418", borderRadius: 20,
+              boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
             }}>
               {modal.title && (
-                <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{modal.title}</div>
-                  <button onClick={() => setModal(null)} aria-label="Закрыть" style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+                <div style={{ padding: "22px 24px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 17, fontWeight: 800 }}>{modal.title}</div>
+                  <button onClick={() => setModal(null)} aria-label="Закрыть" style={{
+                    background: "rgba(255,255,255,0.06)", border: "none", color: "rgba(255,255,255,0.4)",
+                    cursor: "pointer", padding: 6, borderRadius: 8, display: "flex",
+                  }}><X size={16} /></button>
                 </div>
               )}
-              <div style={{ padding: modal.title ? 24 : 0 }}>{modal.body}</div>
+              <div style={{ padding: modal.title ? "0 24px 24px" : "24px" }}>{modal.body}</div>
             </div>
           </div>
         )}
@@ -386,40 +404,71 @@ function UserDetail({ user: u, selfId, api, onUpdate }) {
     onUpdate({ role });
     setBusy(false);
   };
+
+  const sectionLabel = {
+    fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
+    color: "rgba(255,255,255,0.25)", marginBottom: 10,
+  };
+
+  const sectionWrap = {
+    background: "rgba(255,255,255,0.02)", borderRadius: 14, padding: "16px 18px", marginBottom: 10,
+  };
+
+  const inputClean = {
+    flex: 1, background: "rgba(255,255,255,0.05)", border: "none", borderRadius: 10,
+    padding: "11px 14px", color: "#fff", fontSize: 14, outline: "none", fontFamily: "inherit",
+  };
+
+  const btnSolid = {
+    padding: "0 18px", borderRadius: 10, fontWeight: 700, fontSize: 12, fontFamily: "inherit",
+    border: "none", color: "#fff", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
+  };
+
   const quickAmounts = [100, 500, 1000, 5000];
 
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-        <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(59,130,246,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#93c5fd" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 6 }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: 14, background: "rgba(59,130,246,0.12)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 20, fontWeight: 800, color: "#93c5fd",
+        }}>
           {(u.username || "?")[0]?.toUpperCase()}
         </div>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{u.username || "Игрок"}</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{u.telegram ? `@${u.telegram}` : "без Telegram"} · ID {u.id}</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+            {u.telegram ? `@${u.telegram}` : "без Telegram"} · ID {u.id}
+          </div>
         </div>
       </div>
 
-      <div style={{ ...card, padding: "18px 20px", marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>Баланс</div>
-        <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 14 }}>{(u.balance ?? 0).toLocaleString("ru-RU")} <span style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>SBT</span></div>
-        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={sectionWrap}>
+        <div style={sectionLabel}>Баланс</div>
+        <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 14, lineHeight: 1 }}>
+          {(u.balance ?? 0).toLocaleString("ru-RU")}
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", fontWeight: 600, marginLeft: 5 }}>SBT</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
           {quickAmounts.map(a => (
             <button key={a} onClick={() => grant(a)} disabled={busy} style={{
-              padding: "7px 13px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-              background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", color: "#86efac",
+              padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+              background: "rgba(34,197,94,0.08)", border: "none", color: "#86efac",
             }}>+{a.toLocaleString("ru-RU")}</button>
           ))}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Своя сумма (может быть −)" disabled={busy}
+          <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="Своя сумма" disabled={busy}
             onKeyDown={e => { if (e.key === "Enter") grant(); }}
-            style={{ flex: 1, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none" }}
+            style={inputClean}
           />
           <button onClick={() => grant()} disabled={busy || !amount} style={{
-            padding: "0 18px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: busy || !amount ? "not-allowed" : "pointer",
-            background: busy || !amount ? "rgba(37,99,235,0.3)" : "#3b82f6", border: "none", color: "#fff",
-            display: "inline-flex", alignItems: "center", gap: 6,
+            ...btnSolid,
+            padding: "0 20px",
+            background: busy || !amount ? "rgba(59,130,246,0.25)" : "#3b82f6",
+            opacity: busy || !amount ? 0.5 : 1, cursor: busy || !amount ? "not-allowed" : "pointer",
           }}>
             <CurrencyDollar size={14} weight="bold" /> Выдать
           </button>
@@ -427,27 +476,33 @@ function UserDetail({ user: u, selfId, api, onUpdate }) {
       </div>
 
       {u.id !== selfId && (
-        <div style={{ ...card, padding: "16px 20px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>Роль</div>
+        <div style={sectionWrap}>
+          <div style={sectionLabel}>Роль</div>
           {u.role === "admin" ? (
             <button onClick={() => setRole("user")} disabled={busy} style={{
-              width: "100%", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-              background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#fca5a5",
-              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+              width: "100%", padding: "11px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit", border: "none",
+              background: "rgba(239,68,68,0.08)", color: "#fca5a5",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             }}><ShieldCheck size={14} /> Снять права админа</button>
           ) : (
             <button onClick={() => setRole("admin")} disabled={busy} style={{
-              width: "100%", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-              background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)", color: "#93c5fd",
-              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+              width: "100%", padding: "11px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit", border: "none",
+              background: "rgba(59,130,246,0.1)", color: "#93c5fd",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             }}><ShieldCheck size={14} /> Сделать админом</button>
           )}
         </div>
       )}
-      {u.id === selfId && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center" }}>Это вы — роль изменить нельзя</div>}
+      {u.id === selfId && (
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center", padding: "6px 0" }}>
+          Это вы — роль изменить нельзя
+        </div>
+      )}
 
-      <div style={{ ...card, padding: "18px 20px" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>Партнёрка</div>
+      <div style={sectionWrap}>
+        <div style={sectionLabel}>Партнёрка</div>
         <UserCommissionEditor api={api} tgId={u.id} />
       </div>
     </div>
@@ -597,6 +652,178 @@ function SelectBox({ value, onChange, options }) {
       </select>
       <CaretDown size={12} style={{ position: "absolute", right: 11, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.4)", pointerEvents: "none" }} />
     </div>
+  );
+}
+
+function ForumAdminSection() {
+  const api = useAdminFetch();
+  const modal = useModal();
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    fetch(`${API_URL}/forum/articles`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setArticles)
+      .catch(() => setArticles([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const catLabel = (c) => (FORUM_CATEGORIES.find(x => x.value === c) || {}).label || c;
+
+  const generate = () => {
+    const ref = { topic: "", category: "articles", angle: "", version: "1.20.1" };
+    modal.open({
+      title: "Сгенерировать статью через ИИ",
+      body: (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <ForumField label="Тема / запрос">
+            <input onChange={e => ref.topic = e.target.value} placeholder="например: как установить forge на 1.20.1" style={forumInput} />
+          </ForumField>
+          <ForumField label="Категория">
+            <select onChange={e => ref.category = e.target.value} style={forumInput}>
+              {FORUM_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </ForumField>
+          <ForumField label="Версия Minecraft">
+            <input onChange={e => ref.version = e.target.value} defaultValue={ref.version} style={forumInput} />
+          </ForumField>
+          <ForumField label="Фокус/угол (необязательно)">
+            <input onChange={e => ref.angle = e.target.value} placeholder="например: пошаговый гайд для новичков" style={forumInput} />
+          </ForumField>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", lineHeight: 1.5, margin: "4px 0 0" }}>
+            ИИ напишет статью через FreeQwenApi. Может занять 1-3 минуты. Не закрывайте окно.
+          </p>
+          <button onClick={async () => {
+            if (!ref.topic.trim()) return;
+            setBusy(true);
+            try {
+              const a = await api.post("/admin/forum/generate", { topic: ref.topic.trim(), category: ref.category, angle: ref.angle.trim() || undefined, version: ref.version });
+              if (a && a.slug) { modal.close(); load(); }
+              else alert("Не удалось сгенерировать: " + (a?.message || a?.detail || "неизвестная ошибка"));
+            } catch (e) { alert("Ошибка: " + e.message); }
+            finally { setBusy(false); }
+          }} disabled={busy} style={forumBtn(busy)}>
+            {busy ? <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><ArrowClockwise size={15} className="animate-spin" /> Генерация…</span> : <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkle size={15} weight="fill" /> Сгенерировать</span>}
+          </button>
+        </div>
+      ),
+    });
+  };
+
+  const edit = (article) => {
+    const ref = { ...article };
+    const update = (patch) => Object.assign(ref, patch);
+    modal.open({
+      title: article?.slug ? "Редактировать статью" : "Новая статья",
+      width: 620,
+      body: (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <ForumField label="Заголовок"><input defaultValue={ref.title} onChange={e => update({ title: e.target.value })} style={forumInput} /></ForumField>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <ForumField label="Категория">
+              <select defaultValue={ref.category} onChange={e => update({ category: e.target.value })} style={forumInput}>
+                {FORUM_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </ForumField>
+            <ForumField label="Версия MC"><input defaultValue={ref.version || ""} onChange={e => update({ version: e.target.value })} style={forumInput} /></ForumField>
+          </div>
+          <ForumField label="Теги (через запятую)"><input defaultValue={(ref.tags || []).join(", ")} onChange={e => update({ tags: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} style={forumInput} /></ForumField>
+          <ForumField label="Краткое описание (excerpt)"><input defaultValue={ref.excerpt || ""} onChange={e => update({ excerpt: e.target.value })} style={forumInput} /></ForumField>
+          <ForumField label="Тело статьи (Markdown)">
+            <textarea defaultValue={ref.body || ""} onChange={e => update({ body: e.target.value })} style={{...forumInput, minHeight: 260, fontFamily: "monospace", resize: "vertical" }} />
+          </ForumField>
+          <button onClick={async () => {
+            setBusy(true);
+            try {
+              const saved = await api.put(`/admin/forum/articles/${article.slug || "new"}`, ref);
+              if (saved && saved.slug) { modal.close(); load(); }
+              else alert("Ошибка: " + (saved?.message || "неизвестно"));
+            } catch (e) { alert("Ошибка: " + e.message); }
+            finally { setBusy(false); }
+          }} disabled={busy} style={forumBtn(busy)}>{busy ? "Сохранение…" : "Сохранить"}</button>
+        </div>
+      ),
+    });
+  };
+
+  const remove = (article) => {
+    if (!confirm(`Удалить «${article.title}»?`)) return;
+    api.del(`/admin/forum/articles/${article.slug}`).then(() => load());
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+        <div>
+          <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>Форум</h1>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", margin: "4px 0 0" }}>
+            Живые статьи (Redis). Генерируются ИИ или пишутся вручную.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={generate} style={{ ...forumBtn(false), background: "#3b82f6", color: "#fff" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Sparkle size={15} weight="fill" /> ИИ-генерация</span>
+          </button>
+          <button onClick={() => edit({ category: "articles", tags: [], version: "1.20.1" })} style={forumBtn(false)}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Plus size={15} weight="bold" /> Новая</span>
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.3)", padding: 40 }}>Загрузка…</div>
+      ) : articles.length === 0 ? (
+        <div style={{ ...card, padding: 40, textAlign: "center", color: "rgba(255,255,255,0.35)" }}>
+          Пока нет статей. Сгенерируйте через ИИ или создайте вручную.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {articles.map(a => (
+            <div key={a.slug} style={{ ...card, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: "rgba(59,130,246,0.18)", color: "#93c5fd" }}>{catLabel(a.category)}</span>
+                  {a.ai && <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: "rgba(168,85,247,0.18)", color: "#c4b5fd" }}>ИИ</span>}
+                  {a.version && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>MC {a.version}</span>}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{a.publishedAt} · /{a.slug}</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <a href={`/forum/read/${a.slug}`} target="_blank" rel="noreferrer" title="Открыть" style={{...forumIconBtn, textDecoration: "none" }}><MagnifyingGlass size={15} /></a>
+                <button onClick={() => edit(a)} title="Редактировать" style={forumIconBtn}><PencilSimple size={15} /></button>
+                <button onClick={() => remove(a)} title="Удалить" style={{...forumIconBtn, color: "#f87171" }}><Trash size={15} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const forumInput = {
+  width: "100%", padding: "11px 13px", borderRadius: 10, fontFamily: "inherit", fontSize: 13,
+  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", outline: "none",
+};
+const forumBtn = (busy) => ({
+  padding: "11px 18px", borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: busy ? "default" : "pointer",
+  background: "#fff", color: "#000", border: "none", fontFamily: "inherit", opacity: busy ? 0.6 : 1,
+});
+const forumIconBtn = {
+  width: 34, height: 34, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center",
+  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", cursor: "pointer",
+};
+function ForumField({ label, children }) {
+  return (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)", marginBottom: 6, letterSpacing: "0.02em" }}>{label}</div>
+      {children}
+    </label>
   );
 }
 
@@ -775,62 +1002,59 @@ function UserCommissionEditor({ api, tgId, onSaved }) {
     setSaving(false);
   };
 
-  if (loading) return <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", padding: "8px 0" }}>Загрузка...</div>;
-  if (!affiliateInfo) return <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", padding: "8px 0" }}>Нет партнёрских данных</div>;
+  if (loading) return <div style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", padding: "4px 0" }}>Загрузка...</div>;
+  if (!affiliateInfo) return <div style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", padding: "4px 0" }}>Нет партнёрских данных</div>;
 
   return (
-    <>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-          Рефералов: {affiliateInfo.referralCount}
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
+          {affiliateInfo.referralCount} рефералов
         </span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>·</span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-          Уровень {affiliateInfo.level?.level} → {affiliateInfo.level?.percent}%
+        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>·</span>
+        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
+          Ур. {affiliateInfo.level?.level} — {affiliateInfo.level?.percent}%
         </span>
         {affiliateInfo.customPercent !== null && affiliateInfo.customPercent !== undefined && (
           <>
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>·</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b" }}>
-              Кастомный: {affiliateInfo.customPercent}%
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>·</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>
+              Кастом: {affiliateInfo.customPercent}%
             </span>
           </>
         )}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>%</span>
-          <input
-            type="number" min="0" max="100"
-            value={customPct}
-            onChange={e => setCustomPct(e.target.value)}
-            placeholder="по умолчанию"
-            style={{
-              width: 80, textAlign: "center", padding: "8px 4px", borderRadius: 8,
-              background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)",
-              color: customPct ? "#f59e0b" : "rgba(255,255,255,0.4)", fontSize: 15, fontWeight: 800, outline: "none",
-            }}
-          />
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <input
+          type="number" min="0" max="100"
+          value={customPct}
+          onChange={e => setCustomPct(e.target.value)}
+          placeholder="% по умолчанию"
+          style={{
+            width: 100, textAlign: "center", padding: "10px 6px", borderRadius: 10,
+            background: "rgba(255,255,255,0.05)", border: "none",
+            color: customPct ? "#f59e0b" : "rgba(255,255,255,0.3)", fontSize: 15, fontWeight: 800, outline: "none",
+          }}
+        />
         <button onClick={saveCustom} disabled={saving} style={{
-          padding: "8px 16px", borderRadius: 8, border: "none",
-          background: saving ? "rgba(245,158,11,0.3)" : "#f59e0b",
+          padding: "10px 18px", borderRadius: 10, border: "none",
+          background: saving ? "rgba(245,158,11,0.25)" : "#f59e0b",
           color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
         }}>
           {saving ? "..." : "Применить"}
         </button>
         {customPct && (
-          <button onClick={() => { setCustomPct(""); }} style={{
-            padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)",
-            background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 12,
-            cursor: "pointer", fontFamily: "inherit",
+          <button onClick={() => setCustomPct("")} style={{
+            padding: "10px 14px", borderRadius: 10, border: "none",
+            background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)",
+            fontSize: 12, cursor: "pointer", fontFamily: "inherit",
           }}>
             Сбросить
           </button>
         )}
         {savedMsg && <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>{savedMsg}</span>}
       </div>
-    </>
+    </div>
   );
 }
 
