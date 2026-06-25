@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - 'website/**'
+      - 'content/forum/**'
+      - 'scripts/build-forum.cjs'
+      - 'scripts/ai-generate.cjs'
+      - 'scripts/ai-cron.sh'
+      - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
 
 jobs:
