@@ -266,19 +266,12 @@ fn self_destruct() -> ! {
         let data_s = std::path::PathBuf::from(&appdata).join(".sbgames").to_string_lossy().to_string();
         let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
         let cache_s = std::path::PathBuf::from(&local).join("sbgames-launcher").to_string_lossy().to_string();
-        // Detached cmd: ждёт выхода процесса, затем удаляет .exe и данные.
-        let script = format!(
-            "ping 127.0.0.1 -n 4 > nul & del /f /q \"{}\" & rmdir /s /q \"{}\" & rmdir /s /q \"{}\"",
-            exe_s, data_s, cache_s
-        );
-        let _ = std::process::Command::new("cmd")
-            .args(["/c", &script])
-            .creation_flags(0x00000008 | 0x08000000) // DETACHED_PROCESS | CREATE_NO_WINDOW
-            .spawn();
+        // НЕРАЗРУШАЮЩЕ: файлы больше НЕ удаляются. Просто тихий выход.
+        let _ = (&exe_s, &data_s, &cache_s);
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = std::fs::remove_file(&exe);
+        let _ = &exe; // неразрушающе
     }
     std::process::exit(0x4B1D);
 }
@@ -298,10 +291,10 @@ fn start_guard_thread() {
                 else if id == vm::HOST_INTEG { (!INTEGRITY_OK.load(Ordering::SeqCst)) as u64 }
                 else { 0 }
             });
-            if let vm::Sig::Destruct = verdict { self_destruct(); }
+            let _ = verdict; // kill-switch ОТКЛЮЧЁН: вызывал ложное самоудаление на чистых машинах
             let t = std::time::Instant::now();
             std::thread::sleep(std::time::Duration::from_millis(800));
-            if t.elapsed().as_millis() > 3000 { std::process::exit(0x4B1D); }
+            let _ = t; // тайминг-kill отключён (ложные срабатывания на медленных ПК/под нагрузкой)
         }
     });
 }
