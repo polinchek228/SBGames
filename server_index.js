@@ -24,7 +24,7 @@ const PORT_SSL            = parseInt(process.env.PORT_SSL    || "3443", 10);
 const BOT_USERNAME        = process.env.BOT_USERNAME        || "sbgamescbot";
 const GOOGLE_CLIENT_ID    = process.env.GOOGLE_CLIENT_ID    || "";
 const GOOGLE_CLIENT_SECRET= process.env.GOOGLE_CLIENT_SECRET|| "";
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://api.hyperionsearch.xyz/auth/google/callback";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://games.sb-capital.group/auth/google/callback";
 
 const googleOAuth = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
 const googlePending = new Map(); // state -> { googleId, email, name, avatar, expiresAt }
@@ -199,11 +199,6 @@ app.use(helmet({
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = new Set([
-  "https://api.hyperionsearch.xyz",
-  "https://api.sbgames.hyperionsearch.xyz:8443",
-  "https://sbgames.hyperionsearch.xyz:8444",
-  "https://sbgames.hyperionsearch.xyz",
-  "http://sbgames.hyperionsearch.xyz",
   "https://games.sb-capital.group",
   "http://games.sb-capital.group",
   "http://localhost:1420",
@@ -943,6 +938,8 @@ async function optionalAuth(req, _res, next) {
 async function requireAuth(req, res, next) {
   await optionalAuth(req, res, () => {});
   if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
+  const _banAcc = await redisAccounts.get(req.userId);
+  if (_banAcc && _banAcc.banned) return res.status(403).json({ message: "Аккаунт заблокирован", banned: true });
   next();
 }
 
@@ -3918,6 +3915,184 @@ app.get("/api/mods/manifest", (_req, res) => {
   }
 });
 
+// --- Forum articles (Redis-backed, AI-generated + admin-managed) -------------
+// Хранение: forum:article:<slug> = {slug,title,category,version,tags[],excerpt,
+//   body(md),author,publishedAt,ai}. Сводный список forum:articles = [slug,...]
+// Доступ: публичное чтение, запись/генерация — только админ.
+const FORUM_AI_API = process.env.AI_API_BASE || "http://localhost:3264/api";
+const FORUM_AI_MODEL = process.env.AI_MODEL || "qwen-max";
+const FORUM_AI_TIMEOUT = parseInt(process.env.AI_TIMEOUT_MS || "360000", 10);
+
+const FORUM_SYSTEM_PROMPT = `Ты — опытный игрок и автор контента по Minecraft с 10-летним стажем.
+Пишешь для русскоязычного сообщества (геймеры, ищут конкретные ответы в Google/Yandex).
+Задача — СВЕЖИЕ, ПОЛЕЗНЫЕ, УНИКАЛЬНЫЕ статьи, которые реально помогают и ранжируются в поиске.
+
+КАК ПИСАТЬ (живой человек):
+- От первого лица, как игрок делится опытом: «по моему опыту», «обычно делаю так».
+- Разговорный, грамотный тон. Без канцелярита и воды.
+- Чередуй длину предложений. Сразу к делу — без «в современном мире», «важно отметить».
+- Личные наблюдения и подводные камни, которых нет в вики.
+
+ЧЕГО НЕ ДЕЛАТЬ (штампы = брак):
+- Клише: «в заключение», «стоит отметить», «играет важную роль», «открывает горизонты».
+- Водные абзацы ради объёма. Каждое предложение несёт информацию.
+- Выдуманные версии/моды/фичи. Не уверен — пиши общие принципы.
+- Эмодзи без нужды.
+
+АКТУАЛЬНОСТЬ: всегда указывай версию MC/модлоадер. Описывай РЕАЛЬНЫЕ фичи.
+
+SEO: один H1, подзаголовки H2/H3 с ключевыми словами, ключ в заголовке и первых абзацах.
+Длина 700–1400 слов.
+
+ФОРМАТ (СТРОГО): верни ТОЛЬКО Markdown с YAML frontmatter, без обёрток и пояснений:
+---
+slug: kebab-case-на-латинице
+title: "Заголовок на русском с ключевым словом"
+category: <укажу в задании>
+version: "1.20.1"
+tags: [ключевые, слова]
+excerpt: "1-2 предложения для meta description."
+author: "SB Games"
+---
+Дальше тело статьи.`;
+
+// Slug для форума: kebab-case (дефис, не подчёркивание), до 80 символов.
+function forumSlug(s) {
+  const map = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'ts',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'};
+  return String(s||'').toLowerCase().replace(/[а-яё]/g, c => map[c]||c).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80) || "article";
+}
+
+// Публичный список статей (с фильтром по категории, без тела — для каталога)
+app.get("/forum/articles", async (req, res) => {
+  try {
+    const slugs = await redis.smembers("forum:articles");
+    const cat = req.query.category;
+    const out = [];
+    for (const slug of slugs) {
+      const raw = await redis.get(`forum:article:${slug}`);
+      if (!raw) continue;
+      const a = JSON.parse(raw);
+      if (cat && a.category !== cat) continue;
+      const { body, ...meta } = a;
+      out.push(meta);
+    }
+    out.sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""));
+    res.json(out);
+  } catch (e) { res.status(500).json({ message: "Forum error", error: e.message }); }
+});
+
+// Публичное чтение одной статьи (с телом)
+app.get("/forum/articles/:slug", async (req, res) => {
+  try {
+    const raw = await redis.get(`forum:article:${req.params.slug}`);
+    if (!raw) return res.status(404).json({ message: "Not found" });
+    res.json(JSON.parse(raw));
+  } catch (e) { res.status(500).json({ message: "Forum error" }); }
+});
+
+// AI-генерация статьи (админ). Тело: {topic, category, angle?, version?}
+app.post("/admin/forum/generate", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { topic, category, angle, version } = req.body || {};
+  if (!topic || !category) return res.status(400).json({ message: "Нужны topic и category" });
+  const VALID = ["mods","articles","textures","maps","skins","shaders","modpacks"];
+  if (!VALID.includes(category)) return res.status(400).json({ message: "Неверная категория" });
+
+  const catLabel = {mods:"мод",articles:"статья/гайд",textures:"текстуры",maps:"карта",skins:"скин",shaders:"шейдер",modpacks:"сборка модов"}[category] || "статья";
+  const userPrompt = `Напиши ${catLabel} по запросу: "${topic}".
+Категория (поле category): ${category}. Версия Minecraft: ${version || "1.20.1"}.
+Фокус: ${angle || "общий полезный гайд"}.
+Реальные факты о Minecraft ${version || "1.20.1"}. В поле category поставь: ${category}.
+Верни ТОЛЬКО Markdown с frontmatter.`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FORUM_AI_TIMEOUT);
+  let aiText;
+  try {
+    const r = await fetch(`${FORUM_AI_API}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: FORUM_AI_MODEL, temperature: 0.85, messages: [
+        { role: "system", content: FORUM_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ]}),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!r.ok) { const t = await r.text().catch(()=> ""); return res.status(502).json({ message: "AI error", detail: t.slice(0,300) }); }
+    const data = await r.json();
+    aiText = data?.choices?.[0]?.message?.content || data?.content || "";
+  } catch (e) {
+    clearTimeout(timer);
+    return res.status(502).json({ message: "AI недоступен", detail: e.message });
+  }
+  if (!aiText) return res.status(502).json({ message: "AI вернул пустой ответ" });
+
+  // Парс frontmatter
+  const m = aiText.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  if (!m) return res.status(502).json({ message: "AI вернул не Markdown с frontmatter", raw: aiText.slice(0,300) });
+  const fm = m[1], body = m[2];
+  const get = k => { const r = fm.match(new RegExp(`^${k}:\\s*(.+)$`,"m")); return r ? r[1].trim().replace(/^["']|["']$/g,"") : null; };
+  const getArr = k => { const r = fm.match(new RegExp(`^${k}:\\s*\\[(.*?)\\]`,"m")); return r ? r[1].split(",").map(s=>s.trim().replace(/^["']|["']$/g,"")).filter(Boolean) : []; };
+
+  let slug = forumSlug(get("title") || topic);
+  let base = slug, n = 2;
+  while (await redis.exists(`forum:article:${slug}`)) { slug = `${base}-${n++}`; }
+
+  const article = {
+    slug,
+    title: get("title") || topic,
+    category,
+    version: get("version") || version || "1.20.1",
+    tags: getArr("tags"),
+    excerpt: get("excerpt") || "",
+    body,
+    author: "SB Games",
+    ai: true,
+    publishedAt: new Date().toISOString().slice(0,10),
+  };
+  await redis.set(`forum:article:${slug}`, JSON.stringify(article));
+  await redis.sadd("forum:articles", slug);
+  res.json(article);
+});
+
+// Ручное создание/редактирование статьи (админ). Тело: поля статьи.
+app.put("/admin/forum/articles/:slug", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const oldSlug = req.params.slug;
+  const b = req.body || {};
+  const existing = await redis.get(`forum:article:${oldSlug}`);
+  const cur = existing ? JSON.parse(existing) : {};
+  const newSlug = b.slug ? forumSlug(b.slug) : (cur.slug || forumSlug(b.title));
+  const article = {
+    slug: newSlug,
+    title: b.title ?? cur.title ?? "Без названия",
+    category: b.category ?? cur.category ?? "articles",
+    version: b.version ?? cur.version ?? null,
+    tags: Array.isArray(b.tags) ? b.tags : (typeof b.tags === "string" ? b.tags.split(",").map(s=>s.trim()).filter(Boolean) : cur.tags || []),
+    excerpt: b.excerpt ?? cur.excerpt ?? "",
+    body: b.body ?? cur.body ?? "",
+    image: b.image ?? cur.image ?? null,
+    author: b.author ?? cur.author ?? "SB Games",
+    ai: b.ai ?? cur.ai ?? false,
+    publishedAt: b.publishedAt ?? cur.publishedAt ?? new Date().toISOString().slice(0,10),
+  };
+  if (newSlug !== oldSlug && await redis.exists(`forum:article:${newSlug}`))
+    return res.status(409).json({ message: "slug занят" });
+  if (newSlug !== oldSlug) { await redis.del(`forum:article:${oldSlug}`); await redis.srem("forum:articles", oldSlug); }
+  await redis.set(`forum:article:${newSlug}`, JSON.stringify(article));
+  await redis.sadd("forum:articles", newSlug);
+  res.json(article);
+});
+
+// Удаление статьи (админ)
+app.delete("/admin/forum/articles/:slug", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  await redis.del(`forum:article:${req.params.slug}`);
+  await redis.srem("forum:articles", req.params.slug);
+  res.json({ ok: true });
+});
+
 // --- Website static serving (SPA catch-all) ------------------------------------
 const websiteDir = require("path").join(__dirname, "website", "dist");
 if (fs.existsSync(websiteDir)) {
@@ -3938,7 +4113,162 @@ if (fs.existsSync(websiteDir)) {
   await loadShopItems().catch(() => {});
   await seedShopItems().catch(e => console.warn("[shop] seed failed:", e.message));
 
-  server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
+  
+
+// ─── Anti-cheat: серверная аттестация клиента ────────────────────────────────
+// Клиент периодически шлёт подписанный отчёт о своём .exe-хеше и загруженных
+// модах/DLL. Сервер сверяет с release-attest.json (хеш .exe из билда) и
+// whitelist'ом модов из MODPACK_DIR. Нарушение → violation + action "kill",
+// повторные → бан. Подпись HMAC-SHA256 на SBG_ATTEST_SECRET.
+const ATTEST_SECRET = process.env.SBG_ATTEST_SECRET || "";
+let _attestCache = { mtime: 0, data: null };
+function loadReleaseAttest() {
+  try {
+    const p = _path.join(__dirname, "release-attest.json");
+    const st = fs.statSync(p);
+    if (st.mtimeMs !== _attestCache.mtime) {
+      _attestCache = { mtime: st.mtimeMs, data: JSON.parse(fs.readFileSync(p, "utf8")) };
+    }
+    return _attestCache.data;
+  } catch { return null; }
+}
+// Whitelist sha256 модов актуальной сборки (переиспользует логику manifest).
+function modWhitelist() {
+  const set = new Set();
+  try {
+    if (!fs.existsSync(MODPACK_DIR)) return set;
+    const versions = fs.readdirSync(MODPACK_DIR).filter(d => {
+      try { return fs.statSync(_path.join(MODPACK_DIR, d)).isDirectory(); } catch { return false; }
+    });
+    if (!versions.length) return set;
+    versions.sort((a,b)=> fs.statSync(_path.join(MODPACK_DIR,b)).mtimeMs - fs.statSync(_path.join(MODPACK_DIR,a)).mtimeMs);
+    const modsDir = _path.join(MODPACK_DIR, versions[0], "mods");
+    if (!fs.existsSync(modsDir)) return set;
+    for (const f of fs.readdirSync(modsDir)) {
+      if (!f.endsWith(".jar") && !f.endsWith(".disabled")) continue;
+      try { set.add(crypto.createHash("sha256").update(fs.readFileSync(_path.join(modsDir, f))).digest("hex")); } catch {}
+    }
+  } catch {}
+  return set;
+}
+
+// Выдаёт ожидаемые значения для клиента.
+app.get("/api/attest/expected", requireAuth, (_req, res) => {
+  const rel = loadReleaseAttest();
+  const wl = [...modWhitelist()];
+  res.set("Cache-Control", "no-store");
+  res.json({
+    exeHash: rel?.exeHash || null,
+    version: rel?.version || null,
+    mods: wl,
+    serverTime: Date.now(),
+  });
+});
+
+// Принимает отчёт клиента и выносит вердикт.
+app.post("/api/attest/report", requireAuth, async (req, res) => {
+  try {
+    const { exeHash, mods, dlls, ts, sig } = req.body || {};
+    const now = Date.now();
+    if (!ts || Math.abs(now - Number(ts)) > 120000) {
+      return res.status(400).json({ ok: false, action: "kill", reasons: ["stale_report"] });
+    }
+    // Проверка подписи (если секрет настроен).
+    if (ATTEST_SECRET) {
+      const modHashes = (Array.isArray(mods) ? mods.map(m => m.sha256) : []).filter(Boolean).sort();
+      const canonical = [exeHash || "", ts, modHashes.join(",")].join("|");
+      const expectSig = crypto.createHmac("sha256", ATTEST_SECRET).update(canonical).digest("hex");
+      if (sig !== expectSig) {
+        return res.status(403).json({ ok: false, action: "kill", reasons: ["bad_signature"] });
+      }
+    }
+
+    const reasons = [];
+    const rel = loadReleaseAttest();
+    // 1. Целостность .exe
+    if (rel?.exeHash && exeHash && exeHash !== rel.exeHash) reasons.push("exe_tampered");
+    // 2. Свой-мод / подмена: каждый мод обязан быть в whitelist
+    const wl = modWhitelist();
+    if (wl.size > 0 && Array.isArray(mods)) {
+      for (const m of mods) {
+        if (!m?.sha256 || !wl.has(m.sha256)) reasons.push("foreign_mod:" + (m?.name || "unknown"));
+      }
+    }
+    // 3. Подозрительные DLL (клиент уже отметил)
+    if (Array.isArray(dlls)) {
+      for (const d of dlls) if (d?.suspicious) reasons.push("suspicious_dll:" + (d.name || "?"));
+    }
+
+    if (reasons.length === 0) return res.json({ ok: true, action: "ok", reasons: [] });
+
+    // Фиксируем нарушение и решаем меру.
+    let strikes = 1;
+    try {
+      await redisAccounts.mutate(req.userId, (acc) => {
+        if (!acc.attest) acc.attest = { strikes: 0, last: null, log: [] };
+        acc.attest.strikes = (acc.attest.strikes || 0) + 1;
+        acc.attest.last = new Date().toISOString();
+        acc.attest.log = [...(acc.attest.log || []), { ts: acc.attest.last, reasons }].slice(-20);
+        strikes = acc.attest.strikes;
+        if (strikes >= 3) { acc.banned = true; acc.banReason = "anticheat: " + reasons.join("; "); }
+        return acc;
+      });
+    } catch (e) { console.error("[attest] mutate", e.message); }
+
+    console.warn("[attest] violation user=" + req.userId + " strikes=" + strikes + " -> " + reasons.join("; "));
+    return res.json({ ok: false, action: strikes >= 3 ? "ban" : "kill", strikes, reasons });
+  } catch (e) {
+    console.error("[attest/report]", e.message);
+    return res.status(500).json({ ok: false, action: "kill", reasons: ["server_error"] });
+  }
+});
+
+
+// ─── Anti-cheat: бан / разбан / нарушители ───────────────────────────────────
+app.post("/admin/ban", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { userId, reason } = req.body;
+  if (!userId) return res.status(400).json({ message: "Bad request" });
+  const acc = await redisAccounts.get(String(userId));
+  if (!acc) return res.status(404).json({ message: "User not found" });
+  acc.banned = true;
+  acc.banReason = (reason && String(reason).slice(0, 300)) || "manual";
+  acc.bannedAt = new Date().toISOString();
+  acc.tokenVersion = (acc.tokenVersion || 0) + 1; // инвалидируем активные сессии
+  await redisAccounts.set(String(userId), acc);
+  try { sendToUser(String(userId), { type: "banned", reason: acc.banReason }); } catch {}
+  res.json({ ok: true, banned: true });
+});
+
+app.post("/admin/unban", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ message: "Bad request" });
+  const acc = await redisAccounts.get(String(userId));
+  if (!acc) return res.status(404).json({ message: "User not found" });
+  acc.banned = false;
+  acc.banReason = null;
+  if (acc.attest) acc.attest.strikes = 0; // сбрасываем страйки
+  await redisAccounts.set(String(userId), acc);
+  res.json({ ok: true, banned: false });
+});
+
+app.get("/admin/violations", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const all = await redisAccounts.allValues();
+  const list = all
+    .filter(a => a.banned || (a.attest && a.attest.strikes > 0))
+    .map(a => ({
+      id: a.id, username: a.username, banned: !!a.banned,
+      banReason: a.banReason || null, bannedAt: a.bannedAt || null,
+      strikes: a.attest?.strikes || 0, lastViolation: a.attest?.last || null,
+      log: (a.attest?.log || []).slice(-10),
+    }))
+    .sort((x, y) => (y.strikes - x.strikes) || ((y.bannedAt || "") > (x.bannedAt || "") ? 1 : -1));
+  res.json({ violations: list, total: list.length });
+});
+
+server.listen(PORT, "0.0.0.0", () => console.log(`SBGames HTTP  :${PORT}`));
 
   try {
     const sslOpts = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };

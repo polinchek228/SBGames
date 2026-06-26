@@ -15,3 +15,11 @@ scratch/
 # Background videos — served from server, not bundled
 public/fon*.mp4
 dist-tray/
+
+# Added by Sai — секреты и временные файлы
+*.bak
+_ssh_runner.cjs
+_cmd.txt
+_deploy_web.cjs
+_probe.cjs
+website/dist.tar.gz

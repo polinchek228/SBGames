@@ -1,5 +1,9 @@
 #![allow(dead_code, unused_imports, unused_variables, unused_mut)]
 
+#[cfg(windows)]
+#[allow(unused_imports)]
+use std::os::windows::process::CommandExt as _CmdExtGlobal; // __global_cmdext__
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -40,6 +44,8 @@ mod launcher;
 mod loaders;
 mod mods;
 mod mrpack;
+mod attest;
+mod vm;
 
 // ─── Discord RPC state ────────────────────────────────────────────────────────
 struct DiscordState(Mutex<Option<discord_rich_presence::DiscordIpcClient>>);
@@ -223,11 +229,76 @@ fn check_debugger() -> bool {
     std::env::var("LD_PRELOAD").is_ok()
 }
 
+// ─── Reverse-engineering инструменты (высоконадёжный сигнал) ──────────────────
+const REVERSE_TOOLS: &[&str] = &[
+    "ida.exe","ida64.exe","idaq.exe","idaq64.exe","idaw.exe","idag.exe",
+    "ghidrarun","ghidra","jeb","dnspy","dnspy-x86","x64dbg","x32dbg","x96dbg",
+    "ollydbg","immunitydebugger","windbg","radare2","r2.exe","cutter",
+    "binaryninja","binja","hopper","relyze","rizin","pe-bear","cffexplorer",
+    "cff explorer","pestudio","die.exe","detect it easy","scylla","megadumper",
+    "de4dot","dotpeek","ilspy","reclass","reclass.net","cheatengine","x64netdumper",
+];
+
+#[cfg(target_os = "windows")]
+fn check_reverse_tools() -> Option<String> {
+    use std::process::Command;
+    use std::os::windows::process::CommandExt;
+    let out = Command::new("tasklist").args(["/FO","CSV","/NH"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output().ok()?;
+    let s = String::from_utf8_lossy(&out.stdout).to_lowercase();
+    for &t in REVERSE_TOOLS { if s.contains(t) { return Some(t.to_string()); } }
+    None
+}
+#[cfg(not(target_os = "windows"))]
+fn check_reverse_tools() -> Option<String> { None }
+
+// ─── Самоуничтожение: удаляет .exe и данные лаунчера, затем выходит ───────────
+// Срабатывает ТОЛЬКО в release при высоконадёжном сигнале реверса.
+#[cfg(not(debug_assertions))]
+fn self_destruct() -> ! {
+    let exe = std::env::current_exe().unwrap_or_default();
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let exe_s = exe.to_string_lossy().to_string();
+        let appdata = std::env::var("APPDATA").unwrap_or_default();
+        let data_s = std::path::PathBuf::from(&appdata).join(".sbgames").to_string_lossy().to_string();
+        let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let cache_s = std::path::PathBuf::from(&local).join("sbgames-launcher").to_string_lossy().to_string();
+        // Detached cmd: ждёт выхода процесса, затем удаляет .exe и данные.
+        let script = format!(
+            "ping 127.0.0.1 -n 4 > nul & del /f /q \"{}\" & rmdir /s /q \"{}\" & rmdir /s /q \"{}\"",
+            exe_s, data_s, cache_s
+        );
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", &script])
+            .creation_flags(0x00000008 | 0x08000000) // DETACHED_PROCESS | CREATE_NO_WINDOW
+            .spawn();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::fs::remove_file(&exe);
+    }
+    std::process::exit(0x4B1D);
+}
+#[cfg(debug_assertions)]
+fn self_destruct() -> ! { std::process::exit(0x4B1D); }
+
 fn start_guard_thread() {
     std::thread::spawn(|| {
         std::thread::sleep(std::time::Duration::from_secs(3));
         loop {
-            if check_debugger() || scan_loaded_modules() { std::process::exit(0x4B1D); }
+            // Вердикт выносит виртуальная машина: closure отдаёт сырые
+            // значения проверок по рандомным host-id, а решение «чисто/
+            // уничтожить» исполняется как зашифрованный байткод (vm_gen.rs).
+            let verdict = vm::run(|id| {
+                if id == vm::HOST_DBG { check_debugger() as u64 }
+                else if id == vm::HOST_TOOLS { (check_reverse_tools().is_some() || scan_loaded_modules()) as u64 }
+                else if id == vm::HOST_INTEG { (!INTEGRITY_OK.load(Ordering::SeqCst)) as u64 }
+                else { 0 }
+            });
+            if let vm::Sig::Destruct = verdict { self_destruct(); }
             let t = std::time::Instant::now();
             std::thread::sleep(std::time::Duration::from_millis(800));
             if t.elapsed().as_millis() > 3000 { std::process::exit(0x4B1D); }
@@ -281,7 +352,7 @@ fn enum_dll_hashes(_pid: u32) -> Vec<(String, String)> { Vec::new() }
 #[cfg(target_os = "windows")]
 fn check_suspicious_processes() -> Option<String> {
     use std::process::Command;
-    let out = match Command::new("tasklist").arg("/FO").arg("CSV").arg("/NH").output() {
+    let out = match Command::new("tasklist").creation_flags(0x08000000).arg("/FO").arg("CSV").arg("/NH").output() {
         Ok(o) => o,
         Err(_) => return None,
     };
@@ -334,13 +405,13 @@ fn verify_integrity() -> bool {
     eprintln!("[integrity] exe hash: {}", &hash[..16]);
     if KNOWN_GOOD_EXE_HASH != "TODO_UPDATE_AFTER_BUILD" && hash != KNOWN_GOOD_EXE_HASH {
         eprintln!("[integrity] HASH MISMATCH — binary tampered!");
-        return false;
+        self_destruct();
     }
     INTEGRITY_OK.store(true, Ordering::SeqCst);
     true
 }
 #[cfg(debug_assertions)]
-fn verify_integrity() -> bool { true }
+fn verify_integrity() -> bool { INTEGRITY_OK.store(true, Ordering::SeqCst); true }
 
 // ─── Tauri commands ──────────────────────────────────────────────────────────
 
@@ -428,7 +499,7 @@ fn get_system_ram_gb() -> u64 {
                 }
             }
         }
-        if let Ok(o) = std::process::Command::new("sysctl").args(["-n","hw.memsize"]).output() {
+        if let Ok(o) = std::process::Command::new("sysctl").creation_flags(0x08000000).args(["-n","hw.memsize"]).output() {
             if let Ok(s) = std::str::from_utf8(&o.stdout) {
                 if let Ok(b) = s.trim().parse::<u64>() { return b / (1024*1024*1024); }
             }
@@ -601,6 +672,7 @@ async fn launch_minecraft(
     server_id: String,
     username: String,
     token: String,
+    jwt:       Option<String>,
     ram_gb:    Option<u32>,
     java_path: Option<String>,
 ) -> Result<String, String> {
@@ -680,7 +752,7 @@ async fn launch_minecraft(
         });
         // Получаем version_manifest_v2.json через curl
         let manifest_text = {
-            let out = std::process::Command::new("curl")
+            let out = std::process::Command::new("curl").creation_flags(0x08000000)
                 .arg("-fsSL").arg("--max-time").arg("30")
                 .arg("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json")
                 .output().map_err(|e| format!("curl manifest: {}", e))?;
@@ -816,7 +888,7 @@ async fn launch_minecraft(
             if let Ok(ver_text) = std::fs::read_to_string(mc_dir.join("versions/1.20.1/1.20.1.json")) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&ver_text) {
                     if let Some(idx_url) = v["assetIndex"]["url"].as_str() {
-                        let _ = std::process::Command::new("curl")
+                        let _ = std::process::Command::new("curl").creation_flags(0x08000000)
                             .arg("-fsSL").arg("--max-time").arg("30")
                             .arg(idx_url).arg("-o").arg(&assets_idx)
                             .output();
@@ -844,7 +916,7 @@ async fn launch_minecraft(
         });
         use std::io::Write;
         use std::process::Stdio;
-        let mut child = Command::new(&java)
+        let mut child = Command::new(&java).creation_flags(0x08000000)
             .arg("-jar").arg(&installer_jar)
             .arg("--installClient").arg(&mc_dir)
             .stdin(Stdio::piped())
@@ -1214,7 +1286,7 @@ async fn launch_minecraft(
     #[cfg(target_os = "windows")]
     {
         let mods_dir = mc_dir.join("mods");
-        let _ = std::process::Command::new("attrib")
+        let _ = std::process::Command::new("attrib").creation_flags(0x08000000)
             .args(["+R", "/S", "/D", &mods_dir.to_string_lossy()])
             .output();
     }
@@ -1274,6 +1346,7 @@ async fn launch_minecraft(
         let java_dir = std::path::Path::new(&java).parent()
             .map(|p| p.to_string_lossy().to_lowercase())
             .unwrap_or_default();
+        let attest_jwt = jwt.clone();
         std::thread::spawn(move || {
             use sha2::{Sha256, Digest};
             use std::io::Read as _;
@@ -1319,7 +1392,7 @@ async fn launch_minecraft(
                         let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
                         if h != 0 { TerminateProcess(h, 1); CloseHandle(h); }
                     }
-                    let _ = std::process::Command::new("taskkill")
+                    let _ = std::process::Command::new("taskkill").creation_flags(0x08000000)
                         .args(["/PID", &pid.to_string(), "/F", "/T"]).output();
                 }
                 fn proc_alive(pid: u32) -> bool {
@@ -1543,6 +1616,20 @@ async fn launch_minecraft(
                         }
                     }
 
+                    // ─── Серверная аттестация (deep-scan модов + хеш .exe) каждые ~30с ───
+                    // Анти-дамп: периодически переключаем маску секрета в RAM
+                    if tick % 50 == 0 { attest::rotate_secret_mask(); }
+                    if tick % 300 == 0 && tick > 60 {
+                        if let Some(ref j) = attest_jwt {
+                            if let Some(v) = attest::run_cycle(&mods_dir, j, Vec::new()) {
+                                if v.action == "kill" || v.action == "ban" {
+                                    let _ = std::fs::write(mc_dir_w.join(".guard-trigger"), format!("anticheat: {}", v.reasons.join("; ")));
+                                    kill_proc(pid_watch);
+                                    return;
+                                }
+                            }
+                        }
+                    }
                     tick = tick.wrapping_add(1);
                 }
             }
@@ -1550,7 +1637,7 @@ async fn launch_minecraft(
             #[cfg(not(target_os = "windows"))]
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
-                let alive = std::process::Command::new("kill")
+                let alive = std::process::Command::new("kill").creation_flags(0x08000000)
                     .arg("-0").arg(pid_watch.to_string()).output()
                     .map(|o| o.status.success()).unwrap_or(false);
                 if !alive { let _ = std::fs::remove_file(&pid_file); break; }
@@ -1563,7 +1650,7 @@ async fn launch_minecraft(
                                 if let Some(v) = line.split_whitespace().nth(1) {
                                     if v != "0" {
                                         eprintln!("[guard] debugger attached (TracerPid={}) — kill", v);
-                                        let _ = std::process::Command::new("kill")
+                                        let _ = std::process::Command::new("kill").creation_flags(0x08000000)
                                             .arg("-9").arg(pid_watch.to_string()).output();
                                         let _ = std::fs::remove_file(&pid_file);
                                         return;
@@ -1574,7 +1661,7 @@ async fn launch_minecraft(
                     }
                     if std::env::var("LD_PRELOAD").is_ok() {
                         eprintln!("[guard] LD_PRELOAD detected — kill");
-                        let _ = std::process::Command::new("kill")
+                        let _ = std::process::Command::new("kill").creation_flags(0x08000000)
                             .arg("-9").arg(pid_watch.to_string()).output();
                         let _ = std::fs::remove_file(&pid_file);
                         return;
@@ -1585,7 +1672,7 @@ async fn launch_minecraft(
                 if tick % 5 == 0 && tick > 0 {
                     if let Some(proc_name) = check_suspicious_processes() {
                         eprintln!("[guard] forbidden process '{}' on Linux — kill MC", proc_name);
-                        let _ = std::process::Command::new("kill")
+                        let _ = std::process::Command::new("kill").creation_flags(0x08000000)
                             .arg("-9").arg(pid_watch.to_string()).output();
                         let _ = std::fs::remove_file(&pid_file);
                         let _ = std::fs::write(mc_dir_w.join(".guard-trigger"),
@@ -1609,7 +1696,7 @@ async fn launch_minecraft(
                     }
                 }
                 if bad || (expected_mod_count > 0 && seen != expected_mod_count) {
-                    let _ = std::process::Command::new("kill").arg("-9").arg(pid_watch.to_string()).output();
+                    let _ = std::process::Command::new("kill").creation_flags(0x08000000).arg("-9").arg(pid_watch.to_string()).output();
                     let _ = std::fs::remove_file(&pid_file);
                     break;
                 }
@@ -1679,7 +1766,7 @@ async fn launch_minecraft(
         let body_str = body.to_string();
         let body_path = std::env::temp_dir().join("sbgames_verify.json");
         let _ = std::fs::write(&body_path, &body_str);
-        let out = std::process::Command::new("curl")
+        let out = std::process::Command::new("curl").creation_flags(0x08000000)
             .arg("--proto").arg("=https").arg("--tlsv1.2")
             .arg("--pinnedpubkey").arg(SBG_API_PINNED_PUBKEY)
             .arg("-fsSL").arg("--max-time").arg("15")
@@ -1722,7 +1809,7 @@ async fn launch_minecraft(
                     let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
                     if h != 0 { TerminateProcess(h, 1); CloseHandle(h); }
                 }
-                let _ = std::process::Command::new("taskkill")
+                let _ = std::process::Command::new("taskkill").creation_flags(0x08000000)
                     .args(["/PID", &pid.to_string(), "/F", "/T"]).output();
             }
             let mut last_emit: u32 = 0;
@@ -1732,7 +1819,7 @@ async fn launch_minecraft(
                 last_emit = i;
                 let url = format!(
                     "https://api.sbgames.hyperionsearch.xyz:8443/api/verify/banlist");
-                let out = std::process::Command::new("curl")
+                let out = std::process::Command::new("curl").creation_flags(0x08000000)
                     .arg("--proto").arg("=https").arg("--tlsv1.2")
                     .arg("--pinnedpubkey").arg(SBG_API_PINNED_PUBKEY)
                     .arg("-fsSL").arg("--max-time").arg("10")
@@ -1751,7 +1838,7 @@ async fn launch_minecraft(
                                             let h = OpenProcess(PROCESS_TERMINATE, 0, pid_b);
                                             if h != 0 { TerminateProcess(h, 1); CloseHandle(h); }
                                         }
-                                        let _ = std::process::Command::new("taskkill")
+                                        let _ = std::process::Command::new("taskkill").creation_flags(0x08000000)
                                             .args(["/PID", &pid_b.to_string(), "/F", "/T"]).output();
                                     }
                                     #[cfg(unix)]
@@ -1760,7 +1847,7 @@ async fn launch_minecraft(
                                         // но unix cfg покрывает обе. Дерево убивается т.к. Java в своей
                                         // process group (setsid в launcher) — killpg надёжнее, но
                                         // kill -9 pid тоже сработает.
-                                        let _ = std::process::Command::new("kill").arg("-9").arg(pid_b.to_string()).output();
+                                        let _ = std::process::Command::new("kill").creation_flags(0x08000000).arg("-9").arg(pid_b.to_string()).output();
                                     }
                                     let _ = std::fs::remove_file(mc_dir_b.join(".minecraft.pid"));
                                     let _ = std::fs::write(mc_dir_b.join(".guard-trigger"),
@@ -1820,7 +1907,7 @@ pub(crate) fn read_running_minecraft_pid() -> Option<u32> {
     // Проверяем что процесс с этим PID жив (Windows: OpenProcess через tasklist)
     #[cfg(target_os = "windows")]
     {
-        let out = std::process::Command::new("tasklist")
+        let out = std::process::Command::new("tasklist").creation_flags(0x08000000)
             .arg("/FI").arg(format!("PID eq {}", pid))
             .output().ok()?;
         let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1835,7 +1922,7 @@ pub(crate) fn read_running_minecraft_pid() -> Option<u32> {
     #[cfg(not(target_os = "windows"))]
     {
         // Unix: kill -0
-        let out = std::process::Command::new("kill")
+        let out = std::process::Command::new("kill").creation_flags(0x08000000)
             .arg("-0").arg(pid.to_string())
             .output().ok()?;
         if out.status.success() { Some(pid) } else { let _ = std::fs::remove_file(&pid_file); None }
@@ -1870,7 +1957,7 @@ async fn kill_minecraft(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(pid) = read_running_minecraft_pid() {
         #[cfg(target_os = "windows")]
         {
-            let _ = std::process::Command::new("taskkill")
+            let _ = std::process::Command::new("taskkill").creation_flags(0x08000000)
                 .arg("/PID").arg(pid.to_string())
                 .arg("/F").arg("/T")
                 .output();
@@ -1964,7 +2051,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
 
     // 1. Получаем manifest с API
     let manifest_url = "https://api.sbgames.hyperionsearch.xyz:8443/api/mods/manifest";
-    let out = std::process::Command::new("curl")
+    let out = std::process::Command::new("curl").creation_flags(0x08000000)
         .arg("--proto").arg("=https")
         .arg("--tlsv1.2")
         .arg("--tls-max").arg("1.3")
@@ -2029,7 +2116,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
     let zip_path = tmp_dir.join("mods.zip");
     // 600 сек таймаут (176MB при медленном интернете)
     // --retry 3 — повторит при обрыве
-    let dl = std::process::Command::new("curl")
+    let dl = std::process::Command::new("curl").creation_flags(0x08000000)
         .arg("--proto").arg("=https")
         .arg("--tlsv1.2")
         .arg("-fL").arg("--max-time").arg("600")
@@ -2178,7 +2265,7 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
         let mod_url = format!("{}/api/mods/file/{}", base_url, encoded_name);
         let tmp_file = tmp_dir.join(&fname);
 
-        let dl = std::process::Command::new("curl")
+        let dl = std::process::Command::new("curl").creation_flags(0x08000000)
             .arg("--proto").arg("=https").arg("--tlsv1.2")
             .arg("-fL").arg("--max-time").arg("120")
             .arg("--connect-timeout").arg("15")
@@ -2245,7 +2332,7 @@ pub(crate) fn security_precheck() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        let out = Command::new("tasklist")
+        let out = Command::new("tasklist").creation_flags(0x08000000)
             .arg("/FO").arg("CSV").arg("/NH")
             .output()
             .map_err(|e| format!("tasklist: {}", e))?;
@@ -2376,7 +2463,7 @@ fn check_java_dll_integrity(pid: u32) -> Result<Vec<String>, String> {
     {
         use std::process::Command;
         // Список модулей Java-процесса
-        let out = Command::new("tasklist")
+        let out = Command::new("tasklist").creation_flags(0x08000000)
             .arg("/M").arg("/FO").arg("CSV").arg("/NH")
             .arg("/FI").arg(format!("PID eq {}", pid))
             .output()
@@ -2457,7 +2544,7 @@ pub(crate) fn find_java() -> Option<PathBuf> {
     // 2. PATH через системный which/where (where = Windows, which = unix).
     let exe = if cfg!(target_os = "windows") { "java.exe" } else { "java" };
     let lookup = if cfg!(target_os = "windows") { "where" } else { "which" };
-    if let Ok(out) = std::process::Command::new(lookup).arg(exe).output() {
+    if let Ok(out) = std::process::Command::new(lookup).creation_flags(0x08000000).arg(exe).output() {
         if out.status.success() {
             let s = String::from_utf8_lossy(&out.stdout);
             if let Some(line) = s.lines().next() {
@@ -2477,7 +2564,7 @@ pub(crate) fn find_java() -> Option<PathBuf> {
     } else if cfg!(target_os = "macos") {
         // macOS: JDK лежат в /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home.
         // /usr/libexec/java_home возвращает текущий активный JDK.
-        if let Ok(out) = std::process::Command::new("/usr/libexec/java_home").output() {
+        if let Ok(out) = std::process::Command::new("/usr/libexec/java_home").creation_flags(0x08000000).output() {
             if out.status.success() {
                 let home = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !home.is_empty() {
@@ -3137,6 +3224,29 @@ fn generate_secure_random_key() -> String {
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
+// Windows: WebView2 по умолчанию не выдаёт getUserMedia разрешение на микрофон/камеру.
+// Перехватываем PermissionRequested и автоматически разрешаем (для голосовых звонков).
+#[cfg(target_os = "windows")]
+fn grant_webview2_media(window: &tauri::WebviewWindow) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_STATE_ALLOW;
+    use webview2_com::PermissionRequestedEventHandler;
+
+    let _ = window.with_webview(|webview| unsafe {
+        if let Ok(core) = webview.controller().CoreWebView2() {
+            let mut token = Default::default();
+            let _ = core.add_PermissionRequested(
+                &PermissionRequestedEventHandler::create(Box::new(|_sender, args| {
+                    if let Some(args) = args {
+                        args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            );
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(not(debug_assertions))]
@@ -3204,6 +3314,12 @@ pub fn run() {
                         let _ = win.hide();
                     }
                 });
+            }
+
+            // Windows: авто-разрешение микрофона/камеры в WebView2 для звонков.
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                grant_webview2_media(&window);
             }
 
             #[cfg(debug_assertions)]

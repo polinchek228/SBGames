@@ -9,7 +9,10 @@
     "build:main": "vite build",
     "build:tray": "cross-env TRAY_BUILD=1 vite build --outDir dist-tray --emptyOutDir",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "attest": "node scripts/gen-attest.mjs",
+    "tauri:build": "tauri build && node scripts/gen-attest.mjs && node scripts/protect.mjs",
+    "protect": "node scripts/protect.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",

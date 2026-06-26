@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Микрофон нужен для голосовых звонков между игроками в чате SBGames.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Камера может использоваться для видеозвонков между игроками.</string>
   <!-- Разрешаем HTTP к нашему серверу (ATS exception) -->
   <key>NSAppTransportSecurity</key>
   <dict>

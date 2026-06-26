@@ -160,7 +160,7 @@ pub async fn launch_instance(
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x00000010); // CREATE_NEW_CONSOLE
+        cmd.creation_flags(0x08000000); // CREATE_NEW_CONSOLE // was CREATE_NEW_CONSOLE → CREATE_NO_WINDOW
     }
 
     // На unix (mac/linux) запускаем Java в ОТДЕЛЬНОЙ process group (setsid),

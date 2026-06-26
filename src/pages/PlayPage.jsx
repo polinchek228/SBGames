@@ -22,12 +22,56 @@ const FALLBACK_VERSIONS = [
 ];
 
 const TABS = [
-  { id: "mods", label: "Моды", icon: Package, accent: "#a855f7", type: "mod" },
-  { id: "resourcepacks", label: "Ресурспаки", icon: FileImage, accent: "#06b6d4", type: "resourcepack" },
-  { id: "shaders", label: "Шейдеры", icon: Sparkles, accent: "#f59e0b", type: "shader" },
+  { id: "mods", label: "Моды", icon: Package, accent: "#60a5fa", type: "mod" },
+  { id: "resourcepacks", label: "Ресурспаки", icon: FileImage, accent: "#60a5fa", type: "resourcepack" },
+  { id: "shaders", label: "Шейдеры", icon: Sparkles, accent: "#60a5fa", type: "shader" },
 ];
 
 const FABRIC_API_PROJECT = "P7dR8mSH";
+
+// Кастомный дропдаун в стиле лаунчера (единый синий акцент, без нативного <select>).
+function CustomDropdown({ value, onChange, options, ariaLabel }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const selected = options.find(o => o.value === value);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" aria-label={ariaLabel} onClick={() => setOpen(o => !o)}
+        className="w-full rounded-xl text-[12px] px-3 py-2.5 flex items-center justify-between gap-2 outline-none cursor-pointer transition-all"
+        style={{ background: "rgba(255,255,255,0.05)", color: "#e5e7eb", border: `1px solid ${open ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.08)"}` }}>
+        <span className="truncate">{selected ? selected.label : "—"}</span>
+        <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.35)", flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.12 }}
+            className="absolute left-0 right-0 mt-1 rounded-xl overflow-hidden z-50 max-h-52 overflow-y-auto"
+            style={{ background: "rgba(20,20,28,0.98)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", backdropFilter: "blur(12px)" }}>
+            {options.map(o => {
+              const active = o.value === value;
+              return (
+                <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
+                  className="w-full text-left text-[12px] px-3 py-2 flex items-center justify-between gap-2 transition-colors"
+                  style={{ background: active ? "rgba(96,165,250,0.12)" : "transparent", color: active ? "#93c5fd" : "rgba(255,255,255,0.75)" }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}>
+                  <span className="truncate">{o.label}</span>
+                  {active && <Check size={12} style={{ flexShrink: 0 }} />}
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function PlayPage({ user, onOpenCommunity }) {
   const [selected, setSelected] = useState(null);
@@ -499,7 +543,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
   const selectCustom = (mp) => {
     setSelected({ id: `custom_${mp.id}`, name: mp.name, subtitle: `${mp.loader.toUpperCase()} ${mp.mcVersion}`,
       description: `Моды: ${mp.mods.length} | Ресурспаки: ${mp.resourcePacks.length} | Шейдеры: ${mp.shaders.length}${mp.launchCount ? ` | Запусков: ${mp.launchCount}` : ""}${mp.lastLaunchedAt ? ` | Последний: ${new Date(mp.lastLaunchedAt).toLocaleDateString("ru-RU")}` : ""}`,
-      bg: "linear-gradient(160deg, #1a0a2e 0%, #0d0520 60%, #000 100%)", accent: "#a855f7", customPack: mp });
+      bg: "linear-gradient(160deg, #0a1426 0%, #050b18 60%, #000 100%)", accent: "#60a5fa", customPack: mp });
     setShowBuilder(false);
     setShowSidebarMenu(false);
   };
@@ -645,6 +689,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       const result = await invoke("launch_minecraft", {
         serverId: selected.id, username: user?.username || "Player",
         token: localStorage.getItem("sbgames_token") || "0", ramGb, javaPath,
+        jwt: localStorage.getItem("sbgames_token") || null,
       });
       saveSession(selected.id, user?.username);
       sessionStorage.setItem("sbg_last_session", JSON.stringify({ serverId: selected.id, startedAt }));
@@ -975,8 +1020,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Настрой свою сборку модов</p>
                 </div>
                 <button onClick={() => openBuilder(null)} className="h-7 px-2.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all"
-                  style={{ background: "rgba(168,85,247,0.12)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.25)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.2)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.12)"}>
+                  style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.2)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.12)"}>
                   <Plus size={10} /> Новая
                 </button>
               </div>
@@ -1000,7 +1045,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                         {profiles.map(p => (
                           <div key={p.name} className="flex items-center px-2 py-1.5 group/pro" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                             <button onClick={() => loadProfile(p.name)} className="flex-1 text-left px-2 py-1 rounded-lg text-[11px] transition-colors"
-                              style={{ color: activeProfile === p.name ? "#a855f7" : "rgba(255,255,255,0.6)" }}
+                              style={{ color: activeProfile === p.name ? "#60a5fa" : "rgba(255,255,255,0.6)" }}
                               onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                               {p.name}
                             </button>
@@ -1026,31 +1071,15 @@ export default function PlayPage({ user, onOpenCommunity }) {
               <div className="flex gap-2">
                 <div className="flex flex-col gap-1.5 flex-1">
                   <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Версия</span>
-                  <div className="relative">
-                    <select value={draft.mcVersion} onChange={e => setDraft(p => ({ ...p, mcVersion: e.target.value }))}
-                      aria-label="Версия Minecraft"
-                      className="w-full rounded-xl text-[12px] px-3 py-2.5 outline-none appearance-none cursor-pointer" style={{ background: "rgba(255,255,255,0.05)", color: "#e5e7eb" }}>
-                      {mcVersions.map(v => (
-                        <option key={v.id} value={v.id} style={{ background: "#1a1a24", color: "#e5e7eb" }}>
-                          {v.id}{v.type === "snapshot" ? " (snapshot)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(255,255,255,0.3)" }} />
-                  </div>
+                  <CustomDropdown ariaLabel="Версия Minecraft" value={draft.mcVersion}
+                    onChange={v => setDraft(p => ({ ...p, mcVersion: v }))}
+                    options={mcVersions.map(v => ({ value: v.id, label: v.id + (v.type === "snapshot" ? " (snapshot)" : "") }))} />
                 </div>
                 <div className="flex flex-col gap-1.5 flex-1">
                   <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузчик</span>
-                  <div className="relative">
-                    <select value={draft.loader} onChange={e => setDraft(p => ({ ...p, loader: e.target.value }))}
-                      aria-label="Загрузчик"
-                      className="w-full rounded-xl text-[12px] px-3 py-2.5 outline-none appearance-none cursor-pointer" style={{ background: "rgba(255,255,255,0.05)", color: "#e5e7eb" }}>
-                      {loaders.map(l => (
-                        <option key={l.id} value={l.id} style={{ background: "#1a1a24", color: "#e5e7eb" }}>{l.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(255,255,255,0.3)" }} />
-                  </div>
+                  <CustomDropdown ariaLabel="Загрузчик" value={draft.loader}
+                    onChange={v => setDraft(p => ({ ...p, loader: v }))}
+                    options={loaders.map(l => ({ value: l.id, label: l.label }))} />
                 </div>
               </div>
 
@@ -1108,9 +1137,9 @@ export default function PlayPage({ user, onOpenCommunity }) {
                             <button key={cat} onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
                               className="text-[8px] px-1.5 py-0.5 rounded-full font-semibold transition-all"
                               style={{
-                                background: categoryFilter === cat ? "rgba(168,85,247,0.3)" : "rgba(255,255,255,0.05)",
-                                color: categoryFilter === cat ? "#c084fc" : "rgba(255,255,255,0.35)",
-                                border: `1px solid ${categoryFilter === cat ? "rgba(168,85,247,0.4)" : "rgba(255,255,255,0.06)"}`,
+                                background: categoryFilter === cat ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.05)",
+                                color: categoryFilter === cat ? "#93c5fd" : "rgba(255,255,255,0.35)",
+                                border: `1px solid ${categoryFilter === cat ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.06)"}`,
                               }}>
                               {cat}
                             </button>
@@ -1123,8 +1152,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
               })}
 
               {/* Info */}
-              <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.12)" }}>
-                <Info size={13} style={{ color: "#a855f7", flexShrink: 0, marginTop: 1 }} />
+              <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <Info size={13} style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0, marginTop: 1 }} />
                 <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
                   Античит не распространяется на пользовательские сборки. Fabric API добавляется автоматически.
                 </p>
@@ -1145,7 +1174,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Импорт</span>
                 <label className="flex items-center justify-center gap-2 h-10 rounded-xl cursor-pointer transition-all"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.45)" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.4)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.45)"; }}>
                   <input type="file" accept=".zip,.jar" multiple className="hidden" onChange={e => {
                     const files = Array.from(e.target.files || []);
@@ -1188,62 +1217,32 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 <div className="grid grid-cols-2 gap-1.5">
                   <button onClick={updateAllMods} disabled={updatingAll || (!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length)}
                     className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(34,197,94,0.1)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)" }}
-                    onMouseEnter={e => { if (!updatingAll) e.currentTarget.style.background = "rgba(34,197,94,0.18)"; }} onMouseLeave={e => e.currentTarget.style.background = "rgba(34,197,94,0.1)"}>
+                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    onMouseEnter={e => { if (!updatingAll) e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
                     {updatingAll ? <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" /> : <RefreshCw size={10} />}
                     Обновить всё
                   </button>
                   <button onClick={backupCurrentMods} disabled={!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length}
                     className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(245,158,11,0.18)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(245,158,11,0.1)"}>
+                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
                     <Save size={10} /> Бэкап
                   </button>
                   <button onClick={exportModpack}
                     className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all"
-                    style={{ background: "rgba(96,165,250,0.1)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.2)" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.18)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.1)"}>
+                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
                     <Download size={10} /> Экспорт
                   </button>
                   <button onClick={saveProfile} disabled={!draft.name.trim()}
                     className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(168,85,247,0.1)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.2)" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.18)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.1)"}>
+                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
                     <Folder size={10} /> Профиль
                   </button>
                 </div>
               </div>
 
-              {/* Screenshots */}
-              {/* TODO: Rust backend — добавить поддержку screenshots в instance config.
-                  Сейчас пути хранятся только в localStorage (customModpacks).
-                  Нужно: 1) передавать screenshots в instanceCreate(),
-                         2) сохранять в instance directory,
-                         3) добавить API для загрузки скриншотов на сервер. */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  <Camera size={10} /> Скриншоты ({(draft.screenshots || []).length})
-                </span>
-                <div className="flex gap-1.5">
-                  <input value={screenshotInput} onChange={e => setScreenshotInput(e.target.value)} placeholder="Путь к скриншоту"
-                    className="flex-1 rounded-lg text-[11px] px-2.5 py-1.5 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }}
-                    onKeyDown={e => { if (e.key === "Enter" && screenshotInput.trim()) { setDraft(p => ({ ...p, screenshots: [...(p.screenshots || []), screenshotInput.trim()] })); setScreenshotInput(""); } }} />
-                  <button onClick={() => { if (screenshotInput.trim()) { setDraft(p => ({ ...p, screenshots: [...(p.screenshots || []), screenshotInput.trim()] })); setScreenshotInput(""); } }}
-                    className="h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.25)" }}>
-                    <Plus size={11} style={{ color: "#c084fc" }} />
-                  </button>
-                </div>
-                {(draft.screenshots || []).map((path, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 group/item" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                    <Camera size={10} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                    <span className="text-[10px] text-white truncate flex-1" style={{ fontFamily: "monospace" }}>{path}</span>
-                    <button onClick={() => setDraft(p => ({ ...p, screenshots: p.screenshots.filter((_, j) => j !== i) }))}
-                      className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 hover:bg-white/10 transition-all">
-                      <Trash2 size={9} style={{ color: "rgba(239,68,68,0.7)" }} />
-                    </button>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="p-4 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1252,7 +1251,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>Отмена</button>
               <button onClick={saveModpack} disabled={!draft.name.trim()}
                 className="flex-1 h-10 rounded-xl text-[12px] font-bold text-white transition-all disabled:opacity-30"
-                style={{ background: draft.name.trim() ? "linear-gradient(135deg, #9333ea, #a855f7)" : "rgba(168,85,247,0.2)", boxShadow: draft.name.trim() ? "0 0 20px rgba(168,85,247,0.3)" : "none" }}>
+                style={{ background: draft.name.trim() ? "linear-gradient(135deg, #2563eb, #3b82f6)" : "rgba(96,165,250,0.15)", boxShadow: draft.name.trim() ? "0 0 20px rgba(37,99,235,0.35)" : "none" }}>
                 Сохранить
               </button>
             </div>
@@ -1359,7 +1358,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                             </div>
                             <button onClick={() => addModFromVersion(selectedModDetail, ver)} disabled={added && !isInstalled}
                               className="h-8 px-4 rounded-lg text-[11px] font-bold transition-all disabled:opacity-40"
-                              style={{ background: isInstalled ? "rgba(34,197,94,0.15)" : added ? "rgba(34,197,94,0.15)" : "linear-gradient(135deg, #9333ea, #a855f7)", color: isInstalled || added ? "#4ade80" : "#fff" }}>
+                              style={{ background: isInstalled ? "rgba(34,197,94,0.15)" : added ? "rgba(34,197,94,0.15)" : "linear-gradient(135deg, #2563eb, #3b82f6)", color: isInstalled || added ? "#4ade80" : "#fff" }}>
                               {isInstalled ? <><Check size={12} className="inline mr-1" />Установлена</> : added ? <><Check size={12} className="inline mr-1" />Добавлен</> : <><Download size={12} className="inline mr-1" />Добавить</>}
                             </button>
                           </div>
@@ -1444,7 +1443,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
           </div>
           <div className="relative z-10 flex items-center gap-3 pb-8 pr-8 px-10">
             <div className="flex items-center gap-2 rounded-2xl px-4 h-[44px]" style={{ background: "rgba(255,255,255,0.08)" }}>
-              <img src="/money.png" alt="SBT" className="w-5 h-5 flex-shrink-0" style={{ filter: "drop-shadow(0 0 4px rgba(250,204,21,0.6))" }} onError={e => e.currentTarget.style.display = "none"} />
+              <img src="/money.png" alt="SBT" className="w-5 h-5 flex-shrink-0" style={{ filter: "none" }} onError={e => e.currentTarget.style.display = "none"} />
               <span className="text-[14px] font-black text-white tabular-nums">{(user?.balance ?? 0).toLocaleString("en-US")}</span>
               <span className="text-[10px] font-bold" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
             </div>
@@ -1475,7 +1474,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
             </button>
             <div className="flex-1" />
             <div className="flex items-center gap-2 rounded-2xl px-3.5 h-[44px]" style={{ background: "rgba(255,255,255,0.08)" }}>
-              <img src="/money.png" alt="SBT" className="w-5 h-5 flex-shrink-0" style={{ filter: "drop-shadow(0 0 4px rgba(250,204,21,0.6))" }} onError={e => e.currentTarget.style.display = "none"} />
+              <img src="/money.png" alt="SBT" className="w-5 h-5 flex-shrink-0" style={{ filter: "none" }} onError={e => e.currentTarget.style.display = "none"} />
               <span className="text-[14px] font-black text-white tabular-nums">{(user?.balance ?? 0).toLocaleString("en-US")}</span>
               <span className="text-[11px] font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>SBT</span>
             </div>
@@ -1602,11 +1601,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
             style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) setDepModal(null); }}>
             <motion.div initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 12 }} transition={{ duration: 0.18 }}
               className="w-[400px] rounded-2xl p-5 flex flex-col gap-4"
-              style={{ background: "rgba(10,10,14,0.98)", border: "1px solid rgba(168,85,247,0.3)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
+              style={{ background: "rgba(10,10,14,0.98)", border: "1px solid rgba(96,165,250,0.25)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}>
-                  <Download size={15} style={{ color: "#a855f7" }} />
+                  style={{ background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.25)" }}>
+                  <Download size={15} style={{ color: "#60a5fa" }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-black text-white leading-tight">Зависимости</p>
@@ -1625,7 +1624,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 <button onClick={() => setDepModal(null)} className="flex-1 h-9 rounded-xl text-[12px] font-semibold"
                   style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>Пропустить</button>
                 <button onClick={addAllDeps} className="flex-1 h-9 rounded-xl text-[12px] font-bold text-white"
-                  style={{ background: "linear-gradient(135deg, #9333ea, #a855f7)" }}>Добавить всё</button>
+                  style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)" }}>Добавить всё</button>
               </div>
             </motion.div>
           </motion.div>

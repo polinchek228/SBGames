@@ -1,0 +1,9 @@
+# Усиление защиты от реверса/эксплойтов (Windows MSVC).
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+  "-C", "control-flow-guard=yes",   # CFG — мешает перехвату потока управления
+  "-C", "force-frame-pointers=no",  # меньше структурных подсказок реверсеру
+]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "control-flow-guard=yes"]

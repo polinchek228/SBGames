@@ -32,8 +32,6 @@ jobs:
             name: Windows
           - os: macos-latest
             name: macOS
-          - os: ubuntu-22.04
-            name: Linux
 
     runs-on: ${{ matrix.os }}
     name: Build · ${{ matrix.name }}
@@ -58,14 +56,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-
-      - name: Install Linux deps
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-            patchelf libglib2.0-dev libgtk-3-dev libjavascriptcoregtk-4.1-dev
 
       - name: Install frontend deps
         run: npm install
@@ -132,7 +122,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SBG_ATTEST_SECRET: ${{ secrets.SBG_ATTEST_SECRET }}
         run: npx tauri build
+
+      - name: Generate attestation (release-attest.json)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          SBG_ATTEST_SECRET: ${{ secrets.SBG_ATTEST_SECRET }}
+        run: node scripts/gen-attest.mjs
+
+      - name: Upload attestation artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-attest
+          path: server/release-attest.json
+          if-no-files-found: error
 
       - name: Upload Windows updater
         if: matrix.os == 'windows-latest'
@@ -155,17 +161,6 @@ jobs:
             src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: warn
 
-      - name: Upload Linux updater
-        if: matrix.os == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
-        with:
-          name: updater-linux
-          path: |
-            src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
-            src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
-            src-tauri/target/release/bundle/appimage/*.AppImage.sig
-          if-no-files-found: warn
-
       - name: Upload Windows installer
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
@@ -182,16 +177,6 @@ jobs:
         with:
           name: installer-macos
           path: src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: warn
-
-      - name: Upload Linux installer
-        if: matrix.os == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-linux
-          path: |
-            src-tauri/target/release/bundle/appimage/*.AppImage
-            src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: warn
 
   deploy:
@@ -244,6 +229,18 @@ jobs:
             scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             server_index.js \
             ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }}:/opt/sbgames-auth/
+
+      - name: Deploy attestation file
+        run: |
+          if [ -f artifacts/release-attest/release-attest.json ]; then
+            sshpass -p "${{ secrets.SERVER_PASS }}" \
+              scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              artifacts/release-attest/release-attest.json \
+              ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }}:/opt/sbgames-auth/release-attest.json
+            echo "✅ release-attest.json deployed"
+          else
+            echo "⚠️ release-attest.json not found — skipping"
+          fi
 
       - name: Install deps and restart server
         run: |

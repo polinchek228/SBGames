@@ -218,13 +218,17 @@ async fn download_mrpack_file(
     app: &AppHandle,
     cfg: &mut InstanceConfig,
 ) -> Result<(), String> {
-    let dest = inst_dir.join(&mf.path);
-    // Path traversal guard: dest must stay inside inst_dir
-    let canonical_inst = inst_dir.canonicalize().map_err(|e| format!("canonicalize inst_dir: {}", e))?;
-    let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.clone());
-    if !canonical_dest.starts_with(&canonical_inst) {
+        // Path traversal guard: запрещаем абсолютные пути и компоненты "..".
+    // ВАЖНО: canonicalize() здесь использовать нельзя — файл ещё не существует,
+    // а на macOS/Windows резолв симлинков делает префикс inst_dir отличным от dest,
+    // из-за чего РАНЬШЕ блокировался КАЖДЫЙ файл и кастомная сборка не скачивалась.
+    let rel = Path::new(&mf.path);
+    if rel.is_absolute()
+        || rel.components().any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return Err(format!("path traversal blocked: {}", mf.path));
     }
+    let dest = inst_dir.join(rel);
     if dest.exists() {
         return Ok(());
     }

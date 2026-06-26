@@ -4,6 +4,10 @@
 //! (mods/, config/, libraries/, versions/, assets/...). Изолирована от серверной
 //! части лаунчера (.sbgames/.minecraft). Состояние хранится в instance.json.
 
+#[cfg(windows)]
+#[allow(unused_imports)]
+use std::os::windows::process::CommandExt as _CmdExtG_instance;
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::Emitter;
@@ -287,7 +291,7 @@ pub fn instance_open_folder(id: String) -> Result<(), String> {
 fn open_in_file_manager(path: &PathBuf) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
+        std::process::Command::new("explorer").creation_flags(0x08000000)
             .arg(path)
             .spawn()
             .map_err(|e| format!("explorer: {}", e))?;
@@ -295,7 +299,7 @@ fn open_in_file_manager(path: &PathBuf) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
+        std::process::Command::new("open").creation_flags(0x08000000)
             .arg(path)
             .spawn()
             .map_err(|e| format!("open: {}", e))?;
@@ -303,7 +307,7 @@ fn open_in_file_manager(path: &PathBuf) -> Result<(), String> {
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        std::process::Command::new("xdg-open")
+        std::process::Command::new("xdg-open").creation_flags(0x08000000)
             .arg(path)
             .spawn()
             .map_err(|e| format!("xdg-open: {}", e))?;

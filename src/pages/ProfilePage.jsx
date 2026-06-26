@@ -369,7 +369,7 @@ function ProfileTab({ user, equip }) {
               <div className="w-[104px] h-[104px] rounded-[20px] flex flex-col items-center justify-center gap-1 flex-shrink-0"
                 style={{ background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
                 <img src="/money.png" alt="SBT" className="w-7 h-7 object-contain"
-                  style={{ filter: "drop-shadow(0 0 6px rgba(250,204,21,0.6))" }}
+                  style={{ filter: "none" }}
                   onError={(e) => { e.currentTarget.style.display = "none"; }} />
                 <span className="text-[22px] font-black text-white tabular-nums leading-none">
                   {(user?.balance ?? 0).toLocaleString("ru-RU")}
