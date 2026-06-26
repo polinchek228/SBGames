@@ -6,6 +6,10 @@
 //
 // Запуск: node scripts/gen-attest.mjs
 // Секрет берётся из env SBG_ATTEST_SECRET (тот же, что на сервере).
+
+
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 
