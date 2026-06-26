@@ -23,3 +23,12 @@ _cmd.txt
 _deploy_web.cjs
 _probe.cjs
 website/dist.tar.gz
+
+
+# local secrets / scratch (never commit)
+_attest_secret.txt
+_tauri_key_pw.txt
+_tauri_signing.key
+_tauri_signing.key.pub
+_remote_cmds.sh
+_prod_server_index.js

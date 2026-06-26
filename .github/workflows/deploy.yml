@@ -85,23 +85,19 @@ jobs:
       - name: Apply version to build files
         shell: bash
         run: |
-          python3 - << 'EOF'
-          import json, re, os
-          ver = os.environ['VER']
-
-          with open('src-tauri/tauri.conf.json', 'r') as f: d = json.load(f)
-          d['version'] = ver
-          with open('src-tauri/tauri.conf.json', 'w') as f: json.dump(d, f, indent=2)
-
-          with open('src-tauri/Cargo.toml', 'r') as f: c = f.read()
-          c = re.sub(r'^version = "[^"]*"', f'version = "{ver}"', c, count=1, flags=re.MULTILINE)
-          with open('src-tauri/Cargo.toml', 'w') as f: f.write(c)
-
-          with open('package.json', 'r') as f: p = json.load(f)
-          p['version'] = ver
-          with open('package.json', 'w') as f: json.dump(p, f, indent=2)
-
-          print(f'Version set to: {ver}')
+          node - << 'EOF'
+          const fs = require('fs');
+          const ver = process.env.VER;
+          const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          conf.version = ver;
+          fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
+          let c = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
+          c = c.replace(/^version = "[^"]*"/m, 'version = "' + ver + '"');
+          fs.writeFileSync('src-tauri/Cargo.toml', c);
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.version = ver;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          console.log('Version set to: ' + ver);
           EOF
 
       - name: Verify signing key is set
