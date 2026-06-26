@@ -9,6 +9,7 @@ on:
       - 'server/**'
       - 'server_index.js'
       - 'package.json'
+      - 'scripts/**'
       - 'vite.config.*'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
