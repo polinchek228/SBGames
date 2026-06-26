@@ -7,9 +7,10 @@
 // Запуск: node scripts/gen-attest.mjs
 // Секрет берётся из env SBG_ATTEST_SECRET (тот же, что на сервере).
 
-
-
-
+import { dirname, resolve, join } from "path";
+import { fileURLToPath } from "url";
+import { createHash, createHmac } from "crypto";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "fs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 
