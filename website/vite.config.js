@@ -25,11 +25,11 @@ const SITE_OBF_OPTIONS = {
   compact:                               true,
   // ── control flow (умеренно — без кратного раздувания) ──
   controlFlowFlattening:                 true,
-  controlFlowFlatteningThreshold:        0.6,
-  deadCodeInjection:                     true,
+  controlFlowFlatteningThreshold:        0.4,
+  deadCodeInjection:                     false,
   deadCodeInjectionThreshold:            0.4,
   // ── anti-debug / anti-tamper ──
-  debugProtection:                       true,
+  debugProtection:                       false,
   debugProtectionInterval:               4000,
   disableConsoleOutput:                  true,
   selfDefending:                         true,
@@ -74,6 +74,11 @@ function obfuscateSitePlugin() {
       try { Obf = (await import("javascript-obfuscator")).default; } catch { return; }
       for (const [fileName, chunk] of Object.entries(bundle)) {
         if (chunk.type !== "chunk" || !fileName.endsWith(".js")) continue;
+        // Не обфусцируем сторонние библиотеки (three.js, react, framer-motion и т.п.)
+        // — это только раздувает бандл и тормозит, защищать чужой код смысла нет.
+        const ids = chunk.moduleIds || Object.keys(chunk.modules || {});
+        const isVendor = ids.length > 0 && ids.every((id) => id.includes("node_modules"));
+        if (isVendor) continue;
         try {
           chunk.code = Obf.obfuscate(chunk.code, SITE_OBF_OPTIONS).getObfuscatedCode();
         } catch (e) {
@@ -116,6 +121,23 @@ export default defineConfig({
     terserOptions: {
       compress: { drop_console: true, drop_debugger: true, passes: 3 },
       mangle: { toplevel: true },
+    },
+    rollupOptions: {
+      output: {
+        // Бьём тяжёлые библиотеки на отдельные кэшируемые чанки,
+        // чтобы они не раздували чанк страницы и кэшировались между релизами.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("skinview3d") || id.includes("three")) return "v3d";
+          if (id.includes("framer-motion")) return "vfm";
+          if (id.includes("react-dom") || id.includes("/react/") || id.includes("react-router")) return "vreact";
+          return "vendor";
+        },
+        // Имена из чистого хэша — никаких AdminPage/CabinetPage и т.п. в Sources
+        entryFileNames: "assets/[hash].js",
+        chunkFileNames: "assets/[hash].js",
+        assetFileNames: "assets/[hash][extname]",
+      },
     },
   },
 });

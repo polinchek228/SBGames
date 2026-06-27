@@ -1,3 +1,0 @@
-- Input sanitization using `sanitize-html` and length limits is applied to all user-provided strings (usernames, messages, bios) before processing or storage.
-- Redis access is wrapped in helper objects (e.g., `redisAccounts`) that automatically fall back to in-memory Maps if the Redis connection fails.
-- JWT verification is handled via custom middleware (`requireAuth`, `optionalAuth`) that extracts tokens from the Authorization header and attaches the user ID to the request object.

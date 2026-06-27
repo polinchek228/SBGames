@@ -1,4 +1,0 @@
-- Entry Point: `src/main.rs` delegates to `src/lib.rs::run()`, which initializes the Tauri application builder, registers plugins (shell, notification), and mounts a comprehensive set of custom commands.
-- Core Logic: `src/lib.rs` serves as the monolithic controller, handling game lifecycle management (`launch_minecraft`), asset synchronization (`sync_modpack`), and system-level interactions (Discord RPC, tray icon management).
-- Security Layer: Implements a multi-stage defense including pre-launch process scanning (`security_precheck`), runtime DLL injection detection via Windows API baselining, and SHA-256 integrity verification of game mods against a remote manifest.
-- Interface: Exposes functionality to the frontend via `#[tauri::command]` macros, utilizing Tauri's event system (`app.emit`) for real-time download progress and state synchronization with a secondary "tray" window.

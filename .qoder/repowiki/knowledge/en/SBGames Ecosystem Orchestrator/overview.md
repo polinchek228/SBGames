@@ -1,1 +1,0 @@
-Unifies a Tauri-based desktop launcher, a public web portal, and a centralized backend into a cohesive gaming platform through shared authentication, asset pipelines, and cross-platform deployment workflows.

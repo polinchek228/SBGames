@@ -1,4 +1,0 @@
-- **Real-time Communication**: Implements a custom `useCommunityWS` hook in `CommunityPage.jsx` to handle WebSocket connections for live updates (friends, chat, notifications) with automatic reconnection logic.
-- **Component Structure**: Separates concerns into page-level containers (`CommunityPage`, `LeaderboardPage`) and reusable UI components (`AchievementSystem`, `AchievementShowcase`).
-- **State Management**: Relies on local React state (`useState`) for UI interactions and `localStorage` for persistent client-side data like achievement progress, synchronized via `storage` events.
-- **API Integration**: Uses a shared `authFetch` utility from `src/lib/api.js` for RESTful operations (searching users, managing groups) while delegating real-time data to the WebSocket layer.

@@ -1,4 +1,0 @@
-- Tauri v2 with Rust 2021 edition.
-- JNI (Java Native Interface) via `jni` crate for embedded JVM launching.
-- Windows Sys APIs (`windows-sys`) for low-level process protection, DLL enumeration, and debugger detection.
-- Cryptographic libraries (`sha2`, `hmac`, `sha1`) for asset integrity verification and offline UUID generation.

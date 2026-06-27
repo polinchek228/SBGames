@@ -1,2 +1,0 @@
-- Production builds trigger aggressive code obfuscation and minification via custom Vite plugins defined in `vite.config.js`.
-- The dev server includes a custom middleware to serve `hero.jpg` from the project root, and the build process copies it to `dist/`.

@@ -60,29 +60,29 @@ export const PALETTE = {
 // Узкая рукоять отличает меч от «двери/дома».
 // tip — остриё клинка по центру (колонка 12): (12, 0)
 export const SPRITE_STARWARS = [
-  "............U...........",  // остриё-блик (U@12)        ← TIP
-  "............u...........",
-  "...........uFu..........",  // ядро F@12
-  "...........uFu..........",
-  "...........uFu..........",
-  "...........uFu..........",
-  "...........uFu..........",
-  "...........uFu..........",
-  "..........uuFuu.........",  // клинок чуть расширяется к низу
-  ".........uuuFuuu........",
-  "........GuuuFuuuG.......",  // основание клинка (горячий узел)
-  "......GGGuuuFuuuGGG.....",  // переход к эмиттеру
-  ".....KKKSSSSSSSSSKKK....",  // ГАРДА/эмиттер (широкая)
-  ".....KSSSSSSSSSSSSSK....",
-  "........KSSWWSSSK.......",  // УЗКАЯ рукоять + переключатель (W)
-  "........KSSSSSSSK.......",
-  "........KSSSSSSSK.......",
-  "........KSDDDDDDDSK.....",  // тёмное кольцо-утолщение (D) — деталь хилта
-  "........KSSSSSSSK.......",
-  "........KSSSSSSSK.......",
-  "........KKKKKKKKK.......",  // навершие (pommel cap)
   "........................",
-  "........................",
+  ".uuu....................",
+  ".uUUu...................",
+  ".uUFuu..................",
+  "..uuFuu.................",
+  "...uuFuu................",
+  "....uuFuu...............",
+  ".....uuFuu..............",
+  "......uuFuu.............",
+  ".......uuFuu............",
+  "........uuFuu...........",
+  ".........uuFuu..........",
+  "..........uuKKKK........",
+  "...........uKKKKK.......",
+  "............KKSSKK......",
+  "............KKSWSKK.....",
+  ".............KKSSSKK....",
+  "..............KKSDSKK...",
+  "...............KKSDSKK..",
+  "................KKSSSKK.",
+  ".................KKSKSK.",
+  "..................KKSSK.",
+  "...................KKKK.",
   "........................",
 ];
 
@@ -90,30 +90,30 @@ export const SPRITE_STARWARS = [
 // Каркас дерево, матрас кремовый, одеяло зелёное, подушка слева.
 // tip — верхний-левый угол подушки (активная точка): (3, 1)
 export const SPRITE_MINIGAMES = [
-  "...KKKKKKKKKKKKKKKKKK....",
-  "..KMMMMMMMMMMEEEEEEEEK...",
-  "..KMmMMMMMMMMeeeeeeeeK...",
-  ".KKKKKKKKKKKKKKKKKKKKKK..",
-  ".KBbbbbbbBeeeeeeeeeeeK...",
-  ".KBbbbbbBeeeeeeeeeeEeK...",
-  ".KBbbbbbBeeeeeeeeEEeeK...",
-  ".KBbbbbbbBeeeeeeeeeEeK...",
-  ".KBbbbbbbbbBeeeeeeEEEK...",
-  ".KBbbbbbbbbbbbBeeeeeeK...",
-  ".KBbbbbbbbbbbbbbBeeeeK...",
-  ".KBbbbbbbbbbbbbbbbbB K...",
-  "KBbbbbbbbbbbbbbbbbbbBK...",
-  "KBbbbbbbbbbbbbbbbbbbBK...",
-  "KBbbbbbbbbbbbbbbbbbbBK...",
-  ".K....................K..",
-  ".KBK................B K..",
-  "..KKBK..............KBK..",
-  "...KKBK............KBK...",
-  "....KKK............KKK...",
-  ".........................",
-  ".........................",
-  ".........................",
-  ".........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "...KKKKKKKKKKKKKKKKKK...",
+  "...KBBBBBBBBBBBBBBBBK...",
+  "...KBSWWWSEEEEEEEEEBK...",
+  "...KBWSSSWEEEEEEEEEBK...",
+  "...KBWSSSWEEEEEEEEEBK...",
+  "...KBWWWWWEEEEEEEEEBK...",
+  "...KBeeeeeeedeeeeeeBK...",
+  "...KBeeeeeeeeeedeeeBK...",
+  "...KBeeeeeedeeeeeeeBK...",
+  "...KBeeeeeeeeeeeeeeBK...",
+  "...KbBBBBBBBBBBBBBBbK...",
+  "...bbKKKKKKKKKKKKKKbb...",
+  "...Kb..............bK...",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
 ];
 
 // ── GTA — долларовая купюра (dollar bill), вид спереди ──
@@ -123,26 +123,26 @@ export const SPRITE_MINIGAMES = [
 export const SPRITE_GTA = [
   "........................",
   "........................",
-  "....KKKKKKKKKKKKKKKK....",  // внешняя рамка
-  "....KddddddddddddddK....",  // зелёная кайма
-  "....KdKKKKKKKKKKKKdK....",  // внутр. рамка портрета
-  "....KdKSSSSSSSSSSKdK....",
-  "....KdKSSGGGGGGSSKdK....",  // овал-портрет
-  "....KdKSSGGGGGGSSKdK....",
-  "....KdKSSGGGGGGSSKdK....",
-  "....KdKSSSSSSSSSSKdK....",
-  "....KdKKKKKKKKKKKKdK....",
-  "....KXXXXXXXXXXXXXXK....",  // красная лента ← акцент
-  "....KXXXXXXXXXXXXXXK....",  // ← TIP (12,12) на X
-  "....KdKKKKKKKKKKKKdK....",
-  "....KdKSSSSSSSSSSKdK....",
-  "....KdKSSGGGGGGSSKdK....",  // нижний портрет
-  "....KdKSSGGGGGGSSKdK....",
-  "....KdKSSGGGGGGSSKdK....",
-  "....KdKSSSSSSSSSSKdK....",
-  "....KdKKKKKKKKKKKKdK....",
-  "....KddddddddddddddK....",
-  "....KKKKKKKKKKKKKKKK....",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "...KKKKKKKKKKKKKKKK.....",
+  "...KEEEEEEEEEEEEEEK.....",
+  "...KEEEEEEMEEEEEEEKKK...",
+  "...KeeEEEMMMEEEEeeKdK...",
+  "...KeeEXxxMxxxxEeeKdK...",
+  "...KeeExxxMxxxXEeeKdK...",
+  "...KeeEEEMMMEEEEeeKdK...",
+  "...KeeeeeeMeeeeeeeKdK...",
+  "...KeeeeeeeeeeeeeeKdK...",
+  "...KKKKKKKKKKKKKKKKdK...",
+  ".....KddddddddddddddK...",
+  ".....KKKKKKKKKKKKKKKK...",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
   "........................",
   "........................",
 ];
@@ -151,70 +151,70 @@ export const SPRITE_GTA = [
 // Гол.руда сверху-справа (cyan), деревянная рукоять снизу-слева.
 // tip — остриё кирки вверху-справа: (19, 1)
 export const SPRITE_VANILLA = [
-  "...................KjAAK.",
-  "..................KjAcAK.",
-  ".................KjAccAK.",
-  "................KjAcccAK.",
-  "...............KjAcccAK..",
-  "..............KjAcCcAK...",
-  ".............KjACCCAK....",
-  "............KjACCCAK.....",
-  "...........KjACCCAK......",
-  "..........KjACCCAK.......",
-  ".........KjACCCAK........",
-  "........KjACCCAK.........",
-  ".......KjACCCAK..........",
-  "......KjACCAK............",
-  ".....KjACCAK.............",
-  "....KjACAKK..............",
-  "...KBbbBK................",
-  "..KBbbbBK................",
-  ".KBbbbbBK...............",
-  "KBbbbbbbK...............",
-  "KKKKKKKKK................",
-  ".........................",
-  ".........................",
-  ".........................",
+  "........................",
+  "........................",
+  "........................",
+  "............KKK.........",
+  "..........KKKKKKK.......",
+  "........KKKKcjCKKK......",
+  "......KKKKjcCCccjKK.....",
+  "....KKKKccCCCCCCcCKKK...",
+  "...KKKccCCCCKKKKCccKKK..",
+  "...KAACCCC.KKKKK.CCcCKK.",
+  "...KKCCC...KKBBK..CCAAK.",
+  "..........KKbBBK....CCK.",
+  "..........KbBBK.........",
+  ".........KKbBBK.........",
+  "........KKbBBK..........",
+  "........KKbBBK..........",
+  ".......KKbBBK...........",
+  ".......KKbBK............",
+  "......KKbBBK............",
+  "......KKbBK.............",
+  ".....KKBBBK.............",
+  ".....KKBBK..............",
+  ".....KKKKK..............",
+  ".....KKKK...............",
 ];
 
 // ── ANARCHY — сердечко (MC heart, красное с бликом) ──
 // Две дуги сверху, сужение к острому низу. Блик в левом "куполе".
 // tip — центр-верх сердца (углубление между дугами): (11, 4)
 export const SPRITE_ANARCHY = [
-  ".........................",
-  ".........................",
-  ".........................",
-  ".....KKK....KKK..........",
-  "....KHHQK..KHhQK.........",
-  "...KHQQQKKKHQQQK.........",
-  "..KHQQQQQQQQQQQK.........",
-  "..KQQQQQQQQQQQQK.........",
-  "..KQQQQQQQQQQQQK.........",
-  "..KQQQQQQQQQQQQK.........",
-  "..KQQQQQQQQQQQQK.........",
-  "..KQQQQQQQQQQQQK.........",
-  "...KQQQQQQQQQQK..........",
-  "...KQQQQQQQQQQK..........",
-  "....KQQQQQQQQK...........",
-  "....KQQQQQQQQK...........",
-  ".....KQQQQQQK............",
-  "......KQQQQK.............",
-  ".......KQQK..............",
-  "........KK...............",
-  ".........................",
-  ".........................",
-  ".........................",
-  ".........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "......KKKKKKKKKKKK......",
+  "......KWWWWWWWWWWK......",
+  "......KWWWWWWWWWWK......",
+  "......KWWWWWWWWWWK......",
+  "......KWKKKWWKKKWK......",
+  "......KWKDKWWKDKWK......",
+  "......KWKKKWWKKKWK......",
+  "......KSKKKDDKKKSK......",
+  "......KSSSSDDSSSSK......",
+  "......KSSSSDDSSSSK......",
+  "......KSSSSSSSSSSK......",
+  "......KKKSSSSSSKKK......",
+  "........KSKSKSKK........",
+  "........KKKKKKKK........",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
 ];
 
 // ── Таблица курсоров: id сервера → { sprite, tipX, tipY, name } ──
 // tipX/tipY — точка клика в координатах спрайта (куда наводится острие/активная точка).
 export const CURSORS = {
-  starwars:     { sprite: SPRITE_STARWARS,  tipX: 12, tipY: 0,  name: "lightsaber", glow: "rgba(59,130,246,0.55)" },
-  minigames:    { sprite: SPRITE_MINIGAMES, tipX: 3,  tipY: 1,  name: "bed",        glow: "rgba(74,222,128,0.55)" },
-  gta:          { sprite: SPRITE_GTA,       tipX: 12, tipY: 12, name: "bills",      glow: "rgba(239,68,68,0.55)" },
-  vanilla_plus: { sprite: SPRITE_VANILLA,   tipX: 19, tipY: 1,  name: "pickaxe",    glow: "rgba(34,211,238,0.55)" },
-  anarchy:      { sprite: SPRITE_ANARCHY,   tipX: 11, tipY: 4,  name: "heart",      glow: "rgba(248,113,113,0.6)" },
+  starwars:     { sprite: SPRITE_STARWARS,  tipX: 2,  tipY: 2,  name: "lightsaber", glow: "rgba(96,165,250,0.55)" },
+  minigames:    { sprite: SPRITE_MINIGAMES, tipX: 3,  tipY: 7,  name: "bed",        glow: "rgba(74,222,128,0.55)" },
+  gta:          { sprite: SPRITE_GTA,       tipX: 3,  tipY: 6,  name: "money",      glow: "rgba(74,222,128,0.55)" },
+  vanilla_plus: { sprite: SPRITE_VANILLA,   tipX: 13, tipY: 4,  name: "pickaxe",    glow: "rgba(34,211,238,0.55)" },
+  anarchy:      { sprite: SPRITE_ANARCHY,   tipX: 11, tipY: 5,  name: "skull",      glow: "rgba(200,200,200,0.5)" },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -226,7 +226,7 @@ const spriteCache = new Map();
 
 export function renderSprite(sprite, scale = 1) {
   // Ключ кэша учитывает хэш содержимого, т.к. спрайты могут меняться.
-  const contentKey = sprite.map(r => r.length).join(",") + "_" + scale;
+  const contentKey = sprite.join("|") + "_" + scale;
   if (spriteCache.has(contentKey)) return spriteCache.get(contentKey);
 
   // Нормализуем: все строки → одинаковая ширина = максимальная.

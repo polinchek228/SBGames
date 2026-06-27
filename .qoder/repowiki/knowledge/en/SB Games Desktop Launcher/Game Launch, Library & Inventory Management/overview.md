@@ -1,1 +1,0 @@
-Manages Minecraft server launching with anti-cheat protection, cosmetic item library browsing and purchasing, and in-game inventory equipment.

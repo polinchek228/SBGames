@@ -1,1 +1,0 @@
-Automates cross-platform application builds, server provisioning, and security hardening for the SBGames ecosystem.

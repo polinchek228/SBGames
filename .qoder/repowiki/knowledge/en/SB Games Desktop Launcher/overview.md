@@ -1,1 +1,0 @@
-Orchestrates a Tauri-based React frontend by unifying authentication state, real-time WebSocket events, and native desktop integrations into a cohesive single-page application shell.

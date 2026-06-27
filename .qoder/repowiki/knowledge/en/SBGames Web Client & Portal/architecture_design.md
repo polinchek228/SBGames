@@ -1,4 +1,0 @@
-- Entry point: `src/main.jsx` bootstraps the React root; `src/App.jsx` defines client-side routing via `react-router-dom` with protected routes (`RequireAuth`, `RequireAdmin`).
-- Layering: Pages in `src/pages/` handle UI and local state; `src/lib/api.js` encapsulates API communication and token/user persistence in `localStorage`.
-- Build & Security: `vite.config.js` implements a custom Vite plugin using `javascript-obfuscator` to obfuscate production bundles, alongside `terser` minification and source map suppression.
-- Styling: Uses Tailwind CSS (via `tailwind.config.js` and `postcss.config.js`) combined with extensive inline React styles for component-specific layouts.

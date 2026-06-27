@@ -7,7 +7,7 @@ import {
   IdentificationCard, CalendarBlank, Shield, GameController,
   ArrowRight,
 } from "@phosphor-icons/react";
-import * as skinview3d from "skinview3d";
+// skinview3d (three.js) грузится динамически в useEffect — ленивая загрузка
 
 export default function CabinetPage({ user }) {
   const canvasRef    = useRef(null);
@@ -37,20 +37,27 @@ export default function CabinetPage({ user }) {
       ? URL.createObjectURL(skinFile)
       : `${API_URL}/skin-proxy/${username === "—" ? "Steve" : username}`;
 
-    const viewer = new skinview3d.SkinViewer({
-      canvas:     canvasRef.current,
-      width:      w,
-      height:     h,
-      skin:       skinUrl,
-      background: 0x000000,
+    let viewer = null;
+    let cancelled = false;
+    // Ленивая загрузка тяжёлого three.js/skinview3d — только когда кабинет открыт.
+    // UI кабинета рисуется сразу, 3D-модель появляется после подгрузки чанка.
+    import("skinview3d").then((skinview3d) => {
+      if (cancelled || !canvasRef.current) return;
+      viewer = new skinview3d.SkinViewer({
+        canvas:     canvasRef.current,
+        width:      w,
+        height:     h,
+        skin:       skinUrl,
+        background: 0x000000,
+      });
+      viewer.animation       = new skinview3d.WalkingAnimation();
+      viewer.animation.speed = 0.5;
+      viewer.autoRotate      = autoRotate;
+      viewer.controls.enableZoom = false;
+      viewerRef.current = viewer;
     });
-    viewer.animation       = new skinview3d.WalkingAnimation();
-    viewer.animation.speed = 0.5;
-    viewer.autoRotate      = autoRotate;
-    viewer.controls.enableZoom = false;
-    viewerRef.current = viewer;
 
-    return () => { viewer.dispose(); viewerRef.current = null; };
+    return () => { cancelled = true; if (viewer) viewer.dispose(); viewerRef.current = null; };
   }, [username, skinFile]);
 
   useEffect(() => {

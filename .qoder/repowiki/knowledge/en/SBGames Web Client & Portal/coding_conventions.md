@@ -1,2 +1,0 @@
-- Components heavily utilize inline style objects for layout and theming (e.g., glassmorphism effects, fixed dimensions) rather than relying exclusively on Tailwind utility classes.
-- Authentication state is managed globally via `localStorage` keys (`sbgames_user`, `sbgames_token`) and synchronized with the API through `lib/api.js` helpers.

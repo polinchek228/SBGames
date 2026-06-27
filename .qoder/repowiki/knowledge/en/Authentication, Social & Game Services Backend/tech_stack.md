@@ -1,1 +1,0 @@
-Node.js with Express, WebSocket (ws), and ioredis. Integrates Telegram Bot API for auth/notifications and CryptoBot for payments.

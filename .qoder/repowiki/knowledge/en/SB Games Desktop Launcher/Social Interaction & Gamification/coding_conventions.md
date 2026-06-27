@@ -1,3 +1,0 @@
-- Achievement data is persisted in `localStorage` using specific keys (e.g., `sbgames_achievements`) and synchronized across tabs via the `window.addEventListener('storage', ...)` pattern.
-- UI components consistently use inline styles for dynamic theming (e.g., achievement colors, online status indicators) combined with Tailwind CSS classes for layout and spacing.
-- Real-time event handling in `CommunityPage` uses a centralized `handleEvent` switch statement to process incoming WebSocket messages and update local state accordingly.

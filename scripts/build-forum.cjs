@@ -74,78 +74,110 @@ function parseFrontmatter(raw) {
 }
 
 // ─── Минимальный Markdown → HTML (без зависимостей) ─────────────────────
-function mdToHtml(md) {
-  // Экранируем HTML
-  let html = md
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  // Блочные элементы построчно
-  const lines = html.split(/\r?\n/);
-  const out = [];
-  let inList = false;
-  let inCode = false;
-  let codeBuf = [];
-
-  const flushList = () => { if (inList) { out.push("</ul>"); inList = false; } };
-
-  for (let idx = 0; idx < lines.length; idx++) {
-    const line = lines[idx];
-
-    // ```код``
-    if (/^```/.test(line.trim())) {
-      if (inCode) {
-        out.push(`<pre><code>${codeBuf.join("\n")}</code></pre>`);
-        codeBuf = [];
-        inCode = false;
-      } else {
-        flushList();
-        inCode = true;
-      }
-      continue;
-    }
-    if (inCode) { codeBuf.push(line); continue; }
-
-    // Заголовки
-    let h;
-    if ((h = line.match(/^(#{1,6})\s+(.*)$/))) {
-      flushList();
-      const level = h[1].length;
-      out.push(`<h${level}>${inline(h[2])}</h${level}>`);
-      continue;
-    }
-    // Цитата
-    if (/^&gt;\s?/.test(line)) {
-      flushList();
-      out.push(`<blockquote>${inline(line.replace(/^&gt;\s?/, ""))}</blockquote>`);
-      continue;
-    }
-    // Список
-    if (/^[-*]\s+/.test(line)) {
-      if (!inList) { out.push("<ul>"); inList = true; }
-      out.push(`<li>${inline(line.replace(/^[-*]\s+/, ""))}</li>`);
-      continue;
-    }
-    // Пустая строка
-    if (line.trim() === "") { flushList(); continue; }
-    // Параграф
-    flushList();
-    out.push(`<p>${inline(line)}</p>`);
-  }
-  flushList();
-  if (inCode) out.push(`<pre><code>${codeBuf.join("\n")}</code></pre>`);
-
-  return out.join("\n");
-}
-
-// Инлайн-форматирование: **bold**, *italic*, `code`, [text](url)
 function inline(text) {
   return text
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, '<img src="$2" alt="$1" loading="lazy">')
+    .replace(/\`([^\`]+)\`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, '<a href="$2" rel="nofollow">$1</a>');
+}
+
+function mdToHtml(md) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+  let i = 0;
+
+  const isTableSep = (s) => /^\s*\|?[\s:|-]+\|?\s*$/.test(s) && s.includes("-");
+
+  while (i < lines.length) {
+    let line = lines[i];
+
+    // fenced code
+    if (/^\s*```/.test(line)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) { buf.push(esc(lines[i])); i++; }
+      i++;
+      out.push("<pre><code>" + buf.join("\n") + "</code></pre>");
+      continue;
+    }
+
+    // table: header line followed by separator
+    if (line.includes("|") && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+      const splitRow = (r) => r.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+      const headers = splitRow(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") { rows.push(splitRow(lines[i])); i++; }
+      let t = "<table><thead><tr>" + headers.map((h) => "<th>" + inline(esc(h)) + "</th>").join("") + "</tr></thead><tbody>";
+      for (const r of rows) t += "<tr>" + r.map((c) => "<td>" + inline(esc(c)) + "</td>").join("") + "</tr>";
+      t += "</tbody></table>";
+      out.push(t);
+      continue;
+    }
+
+    // heading
+    let h;
+    if ((h = line.match(/^(#{1,6})\s+(.*)$/))) {
+      out.push("<h" + h[1].length + ">" + inline(esc(h[2])) + "</h" + h[1].length + ">");
+      i++; continue;
+    }
+
+    // hr
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { out.push("<hr>"); i++; continue; }
+
+    // blockquote (one or more lines)
+    if (/^\s*>\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) { buf.push(inline(esc(lines[i].replace(/^\s*>\s?/, "")))); i++; }
+      out.push("<blockquote>" + buf.join("<br>") + "</blockquote>");
+      continue;
+    }
+
+    // ordered list
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      out.push("<ol>");
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+        out.push("<li>" + inline(esc(lines[i].replace(/^\s*\d+[.)]\s+/, ""))) + "</li>"); i++;
+      }
+      out.push("</ol>"); continue;
+    }
+
+    // unordered list (supports one nesting level via indentation)
+    if (/^\s*[-*+]\s+/.test(line)) {
+      out.push("<ul>");
+      let openNested = false;
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+        const indent = lines[i].match(/^(\s*)/)[1].length;
+        const content = inline(esc(lines[i].replace(/^\s*[-*+]\s+/, "")));
+        if (indent >= 2) {
+          if (!openNested) { out.push("<ul>"); openNested = true; }
+          out.push("<li>" + content + "</li>");
+        } else {
+          if (openNested) { out.push("</ul>"); openNested = false; }
+          out.push("<li>" + content + "</li>");
+        }
+        i++;
+      }
+      if (openNested) out.push("</ul>");
+      out.push("</ul>"); continue;
+    }
+
+    // blank
+    if (line.trim() === "") { i++; continue; }
+
+    // paragraph (collect consecutive non-empty, non-special lines)
+    const para = [];
+    while (i < lines.length && lines[i].trim() !== "" &&
+           !/^\s*(#{1,6}\s|>|\d+[.)]\s|[-*+]\s|```|---|\*\*\*|___)/.test(lines[i]) &&
+           !(lines[i].includes("|") && i + 1 < lines.length && isTableSep(lines[i + 1]))) {
+      para.push(inline(esc(lines[i]))); i++;
+    }
+    out.push("<p>" + para.join("<br>") + "</p>");
+  }
+  return out.join("\n");
 }
 
 // ─── Блок «Похожие материалы» (внутренние ссылки для SEO) ───────────────
@@ -163,6 +195,29 @@ function renderRelated(related) {
 ${cards}
       </div>
     </div>`;
+}
+
+// ─── Извлечение FAQ из тела (## Частые вопросы → пары H3-вопрос/абзац-ответ) ──
+function extractFaq(md) {
+  const lines = md.split(/\r?\n/);
+  const faqs = [];
+  let inFaq = false, q = null, aBuf = [];
+  const flush = () => { if (q && aBuf.length) faqs.push({ q, a: aBuf.join(" ").trim() }); q = null; aBuf = []; };
+  for (const line of lines) {
+    const h2 = line.match(/^##\s+(.*)$/);
+    const h3 = line.match(/^###\s+(.*)$/);
+    if (h2) {
+      if (inFaq) { flush(); inFaq = false; }
+      if (/частые\s+вопросы|вопросы\s+и\s+ответы|faq/i.test(h2[1])) inFaq = true;
+      continue;
+    }
+    if (!inFaq) continue;
+    if (h3) { flush(); q = h3[1].trim(); continue; }
+    if (line.trim() === "") continue;
+    if (q) aBuf.push(line.trim());
+  }
+  flush();
+  return faqs;
 }
 
 // ─── Шаблон prerendered страницы в нашем дизайне ────────────────────────
@@ -191,6 +246,17 @@ function pageHtml(item, category, related = []) {
     ],
   };
 
+  const faqs = extractFaq(item.__body);
+  const faqLd = faqs.length >= 2 ? {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqs.map(f => ({
+      "@type": "Question",
+      "name": f.q,
+      "acceptedAnswer": { "@type": "Answer", "text": f.a },
+    })),
+  } : null;
+
   const bodyHtml = mdToHtml(item.__body);
   const tagsHtml = (item.tags || []).map(t => `<span class="f-tag">${escapeHtml(t)}</span>`).join("");
   const metaParts = [];
@@ -218,6 +284,7 @@ function pageHtml(item, category, related = []) {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
   <script type="application/ld+json">${JSON.stringify(breadcrumb)}</script>
+  ${faqLd ? `<script type="application/ld+json">${JSON.stringify(faqLd)}</script>` : ""}
   <style>
     *,*::before,*::after { box-sizing: border-box; }
     html,body { margin:0; padding:0; background:#0a0a0e; color:#fff; font-family:'Inter',system-ui,-apple-system,sans-serif; line-height:1.6; }
@@ -258,7 +325,25 @@ function pageHtml(item, category, related = []) {
     .related-cat { font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#60a5fa; margin-bottom:6px; }
     .related-title { font-size:13px; font-weight:600; line-height:1.4; color:rgba(255,255,255,0.85); }
     @media(max-width:600px){ .wrap{ padding:24px 16px 60px; } }
-  </style>
+  
+    .article p { margin:0 0 16px; }
+    .article ul, .article ol { margin:0 0 18px; padding-left:24px; }
+    .article li { margin:0 0 8px; }
+    .article ul ul, .article ol ol, .article ul ol, .article ol ul { margin:8px 0 4px; }
+    .article h4 { font-size:16px; font-weight:700; margin:22px 0 8px; color:#fff; }
+    .article hr { border:none; border-top:1px solid rgba(255,255,255,0.1); margin:32px 0; }
+    .article img { max-width:100%; height:auto; border-radius:12px; margin:8px 0 20px; border:1px solid rgba(255,255,255,0.08); display:block; }
+    .article a { color:#60a5fa; border-bottom:1px solid rgba(96,165,250,0.3); }
+    .article a:hover { border-bottom-color:#60a5fa; }
+    .article table { width:100%; border-collapse:collapse; margin:8px 0 24px; font-size:14px; overflow:hidden; border-radius:12px; border:1px solid rgba(255,255,255,0.1); }
+    .article thead th { background:rgba(96,165,250,0.12); color:#fff; font-weight:700; text-align:left; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.12); }
+    .article tbody td { padding:11px 14px; border-bottom:1px solid rgba(255,255,255,0.06); color:rgba(255,255,255,0.78); }
+    .article tbody tr:nth-child(even) td { background:rgba(255,255,255,0.02); }
+    .article tbody tr:last-child td { border-bottom:none; }
+    .article tbody tr:hover td { background:rgba(96,165,250,0.05); }
+    .article pre { margin:0 0 20px; }
+
+</style>
 </head>
 <body>
   <div class="wrap">
@@ -366,8 +451,97 @@ function build() {
   fs.writeFileSync(path.join(FORUM_DIST, "_index.json"), JSON.stringify(index, null, 2), "utf8");
   console.log("[forum] _index.json записан");
 
+  // ── SEO hub-страницы: /forum/ и /forum/<category>/ ──
+  writeHubPages(index);
+
   // обновить sitemap
   patchSitemap(index);
+}
+
+
+function writeHubPages(index) {
+  const tplPath = path.join(DIST_DIR, "index.html");
+  if (!fs.existsSync(tplPath)) { console.log("[forum] index.html шаблон не найден — пропускаю hub"); return; }
+  const tpl = fs.readFileSync(tplPath, "utf8");
+
+  function applySeo(html, { title, desc, canonical, jsonld, rootHtml }) {
+    let out = html;
+    // убрать существующие SEO-теги из шаблона лаунчера, чтобы не было дублей
+    out = out.replace(/[ \t]*<meta\s+name=["']description["'][^>]*>\s*/gi, "");
+    out = out.replace(/[ \t]*<link\s+rel=["']canonical["'][^>]*>\s*/gi, "");
+    out = out.replace(/[ \t]*<meta\s+property=["']og:(title|description|url|type)["'][^>]*>\s*/gi, "");
+    out = out.replace(/[ \t]*<meta\s+name=["']twitter:(title|description|card)["'][^>]*>\s*/gi, "");
+    out = out.replace(/<title>[\s\S]*?<\/title>/i, "<title>" + escapeHtml(title) + "</title>");
+    if (/<meta\s+name=["']description["'][^>]*>/i.test(out)) {
+      out = out.replace(/<meta\s+name=["']description["'][^>]*>/i, '<meta name="description" content="' + escapeHtml(desc) + '">');
+    } else {
+      out = out.replace(/<\/head>/i, '  <meta name="description" content="' + escapeHtml(desc) + '">\n</head>');
+    }
+    const head = [
+      '<link rel="canonical" href="' + canonical + '">',
+      '<meta property="og:type" content="website">',
+      '<meta property="og:title" content="' + escapeHtml(title) + '">',
+      '<meta property="og:description" content="' + escapeHtml(desc) + '">',
+      '<meta property="og:url" content="' + canonical + '">',
+      '<meta name="twitter:card" content="summary">',
+      '<script type="application/ld+json">' + JSON.stringify(jsonld) + '</script>',
+    ].join("\n  ");
+    out = out.replace(/<\/head>/i, "  " + head + "\n</head>");
+    out = out.replace(/<div id=["']root["']>\s*<\/div>/i, '<div id="root">' + rootHtml + '</div>');
+    return out;
+  }
+
+  const cats = Object.entries(index.categories).filter(([, c]) => !c.hidden);
+  const allItems = cats.flatMap(([k, c]) => (c.items || []).map(it => ({ ...it, _cat: k, _catTitle: c.title })));
+  const latest = [...allItems].sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || "")).slice(0, 12);
+
+  // ----- /forum/ -----
+  {
+    const title = "Форум SBGames — гайды по модам, картам и сборкам Minecraft";
+    const desc = "База материалов по Minecraft: моды, текстуры, карты, скины, шейдеры и сборки. Пошаговые гайды и разборы версий. Бесплатный лаунчер SBGames.";
+    const canonical = SITE_ORIGIN + "/forum";
+    const catLinks = cats.map(([k, c]) =>
+      '<li><a href="/forum/' + k + '"><strong>' + escapeHtml(c.title) + '</strong> — ' + escapeHtml(c.desc || "") + ' (' + (c.items ? c.items.length : 0) + ')</a></li>'
+    ).join("");
+    const latestLinks = latest.map(it =>
+      '<li><a href="/forum/' + it._cat + '/' + it.slug + '">' + escapeHtml(it.title) + '</a> — ' + escapeHtml(it._catTitle) + '</li>'
+    ).join("");
+    const rootHtml = '<main><h1>Форум SBGames</h1>' +
+      '<p>' + escapeHtml(desc) + '</p>' +
+      '<h2>Категории</h2><ul>' + catLinks + '</ul>' +
+      '<h2>Свежие материалы</h2><ul>' + latestLinks + '</ul></main>';
+    const jsonld = {
+      "@context": "https://schema.org", "@type": "CollectionPage",
+      "name": title, "description": desc, "url": canonical,
+      "hasPart": cats.map(([k, c]) => ({ "@type": "CollectionPage", "name": c.title, "url": SITE_ORIGIN + "/forum/" + k })),
+    };
+    fs.mkdirSync(FORUM_DIST, { recursive: true });
+    fs.writeFileSync(path.join(FORUM_DIST, "index.html"), applySeo(tpl, { title, desc, canonical, jsonld, rootHtml }), "utf8");
+  }
+
+  // ----- /forum/<category>/ -----
+  for (const [k, c] of cats) {
+    const title = escapeHtml(c.title) + " для Minecraft — скачать и установить | Форум SBGames";
+    const desc = (c.desc || c.title) + ". Подборки и гайды для Minecraft на форуме SBGames. Бесплатный лаунчер SBGames для игры с модами.";
+    const canonical = SITE_ORIGIN + "/forum/" + k;
+    const items = (c.items || []);
+    const itemLinks = items.map(it =>
+      '<li><a href="/forum/' + k + '/' + it.slug + '">' + escapeHtml(it.title) + '</a>' + (it.excerpt ? ' — ' + escapeHtml(it.excerpt) : '') + '</li>'
+    ).join("");
+    const rootHtml = '<main><nav><a href="/forum">Форум</a> / ' + escapeHtml(c.title) + '</nav>' +
+      '<h1>' + escapeHtml(c.title) + '</h1><p>' + escapeHtml(c.desc || "") + '</p>' +
+      '<ul>' + (itemLinks || '<li>Скоро здесь появятся материалы.</li>') + '</ul></main>';
+    const jsonld = {
+      "@context": "https://schema.org", "@type": "ItemList",
+      "name": c.title, "url": canonical,
+      "itemListElement": items.map((it, i) => ({ "@type": "ListItem", "position": i + 1, "url": SITE_ORIGIN + "/forum/" + k + "/" + it.slug, "name": it.title })),
+    };
+    const dir = path.join(FORUM_DIST, k);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "index.html"), applySeo(tpl, { title, desc, canonical, jsonld, rootHtml }), "utf8");
+  }
+
+  console.log("[forum] hub-страницы (/forum + категории) сгенерированы: " + (cats.length + 1));
 }
 
 function patchSitemap(index) {

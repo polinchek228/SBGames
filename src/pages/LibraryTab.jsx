@@ -215,7 +215,7 @@ function AnimatedPreview({ color, large }) {
 }
 
 function BadgePreview({ color, name, large, icon }) {
-  const sz = large ? 48 : 34;
+  const sz = large ? 76 : 56;
   const br = large ? 16 : 12;
 
   return (
@@ -244,7 +244,7 @@ function BadgePreview({ color, name, large, icon }) {
             <BadgeIcon name={name} color={color} size={sz} />
           )}
           {large && (
-            <span className="text-[10px] font-black uppercase tracking-wider" style={{ color, textShadow: `0 0 8px ${color}40` }}>
+            <span className="text-[10px] font-black uppercase tracking-wider" style={{ color, textShadow: "0 1px 2px rgba(0,0,0,0.55)" }}>
               {name}
             </span>
           )}
@@ -321,6 +321,7 @@ function EquipSlot({ type, meta, equippedItem, onDrop, onClear }) {
 
 function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy, onEquip, onUnequip, onClose }) {
   if (!item) return null;
+  const rarity = RARITIES[item.rarity];
 
   return (
     <motion.div
@@ -395,11 +396,19 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
         {/* Info — overlaps preview via negative margin */}
         <div className="px-5 pb-5 -mt-8 relative z-10 flex flex-col gap-3.5">
 
-          {/* Name */}
-          {item.name && <h3 className="text-[22px] font-black text-white leading-tight tracking-tight"
-            style={{ textShadow: `0 0 40px ${item.color}40` }}>
-            {item.name}
-          </h3>}
+          {/* Name + rarity */}
+          <div className="flex flex-col gap-1.5">
+            {rarity && (
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em] flex items-center gap-1.5" style={{ color: rarity.color }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: rarity.color }} />
+                {rarity.label}
+              </span>
+            )}
+            {item.name && <h3 className="text-[22px] font-black text-white leading-tight tracking-tight"
+              style={{ textShadow: "0 2px 12px rgba(0,0,0,0.5)" }}>
+              {item.name}
+            </h3>}
+          </div>
 
           {/* Divider */}
           <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
@@ -504,7 +513,7 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
       style={{
         background: "rgba(13,13,18,0.7)",
         backdropFilter: "blur(12px)",
-        border: isEquipped ? `1.5px solid ${item.color}80` : "1.5px solid rgba(255,255,255,0.12)",
+        border: isEquipped ? `1.5px solid ${item.color}80` : `1.5px solid ${(rarity?.color || "#ffffff")}28`,
         boxShadow: isEquipped 
           ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
           : "0 4px 20px rgba(0,0,0,0.4)",
@@ -514,7 +523,7 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
         e.currentTarget.style.boxShadow = `0 12px 30px -8px ${item.color}45, 0 0 0 1px ${item.color}20`;
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderColor = isEquipped ? `${item.color}80` : "rgba(255,255,255,0.12)";
+        e.currentTarget.style.borderColor = isEquipped ? `${item.color}80` : `${(rarity?.color || "#ffffff")}28`;
         e.currentTarget.style.boxShadow = isEquipped 
           ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
           : "0 4px 20px rgba(0,0,0,0.4)";
@@ -539,6 +548,14 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
         }}
       >
         <ItemVisual type={item.type} color={item.color} name={item.name} item={item} />
+
+        {/* Rarity tag — subtle, CS2-style */}
+        {rarity && (
+          <span className="absolute top-2 left-2 text-[8px] font-bold px-1.5 py-0.5 rounded-md z-20 uppercase tracking-[0.08em]"
+            style={{ background: "rgba(0,0,0,0.45)", color: rarity.color, border: `1px solid ${rarity.color}33`, backdropFilter: "blur(6px)" }}>
+            {rarity.label}
+          </span>
+        )}
 
         {/* Equipped badge */}
         {isEquipped && (
@@ -700,20 +717,22 @@ export default function LibraryTab({ user, equip, setEquip }) {
   }, [showSort]);
 
   const isAdmin = user?.role === "admin";
-  const balance = user?.balance ?? 0;
+  const [balanceOverride, setBalanceOverride] = useState(null);
+  const balance = balanceOverride ?? user?.balance ?? 0;
 
   const buy = async (item) => {
     if (busy) return;
     setBusy(item.id);
     try {
-      if (isAdmin) {
-        setOwned((prev) => [...prev, item.id]);
-      } else {
-        const r = await authedFetch("/api/inventory/buy", {
-          method: "POST",
-          body: JSON.stringify({ itemId: item.id }),
-        });
-        setOwned(r.inventory);
+      const r = await authedFetch("/api/inventory/buy", {
+        method: "POST",
+        body: JSON.stringify({ itemId: item.id }),
+      });
+      if (Array.isArray(r.inventory)) setOwned(r.inventory);
+      else setOwned((prev) => prev.includes(item.id) ? prev : [...prev, item.id]);
+      if (typeof r.balance === "number") {
+        setBalanceOverride(r.balance);
+        if (user) user.balance = r.balance;
       }
     } catch (e) {
       setError(e.message);
@@ -726,15 +745,11 @@ export default function LibraryTab({ user, equip, setEquip }) {
     if (busy) return;
     setBusy(item.id);
     try {
-      if (isAdmin) {
-        setEquip((prev) => ({ ...prev, [item.type]: item.id }));
-      } else {
-        const r = await authedFetch("/api/inventory/equip", {
-          method: "POST",
-          body: JSON.stringify({ itemId: item.id }),
-        });
-        setEquip((prev) => ({ ...prev, ...(r.equip || {}) }));
-      }
+      const r = await authedFetch("/api/inventory/equip", {
+        method: "POST",
+        body: JSON.stringify({ itemId: item.id }),
+      });
+      setEquip(r.equip || ((prev) => ({ ...prev, [item.type]: item.id })));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -746,19 +761,11 @@ export default function LibraryTab({ user, equip, setEquip }) {
     if (busy) return;
     setBusy(type);
     try {
-      if (isAdmin) {
-        setEquip((prev) => {
-          const next = { ...prev };
-          delete next[type];
-          return next;
-        });
-      } else {
-        const r = await authedFetch("/api/inventory/unequip", {
-          method: "POST",
-          body: JSON.stringify({ type }),
-        });
-        setEquip((prev) => ({ ...prev, ...(r.equip || {}) }));
-      }
+      const r = await authedFetch("/api/inventory/unequip", {
+        method: "POST",
+        body: JSON.stringify({ type }),
+      });
+      setEquip(r.equip || {});
     } catch (e) {
       setError(e.message);
     } finally {

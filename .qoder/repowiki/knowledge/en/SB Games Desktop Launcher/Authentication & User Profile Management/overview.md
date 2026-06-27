@@ -1,1 +1,0 @@
-Handles user authentication via Telegram, profile customization, and activity tracking within the desktop application.

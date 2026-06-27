@@ -1,1 +1,0 @@
-ProGuard 7.4.2 for bytecode shrinking/obfuscation; Node.js ES modules for build automation; JDK 17 JMODs for library references.

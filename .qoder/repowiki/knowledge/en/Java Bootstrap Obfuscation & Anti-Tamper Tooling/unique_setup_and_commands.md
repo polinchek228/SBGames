@@ -1,2 +1,0 @@
-- `node scratch/download_proguard.js`: Fetches the ProGuard distribution.
-- `node scratch/obfuscate.js`: Executes the full obfuscation pipeline, requiring a valid `JAVA_HOME` or hardcoded JDK path for JMOD resolution.

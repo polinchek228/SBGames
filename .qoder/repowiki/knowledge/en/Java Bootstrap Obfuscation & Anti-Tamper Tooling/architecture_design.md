@@ -1,4 +1,0 @@
-- Entry point: `scratch/obfuscate.js` orchestrates the build pipeline (extract ProGuard, generate config, run obfuscation, replace artifact).
-- Configuration generation: `scratch/setup_proguard.js` dynamically creates `proguard.conf` and a decompiler-resistant dictionary (`obf_dict.txt`) using zero-width Unicode characters.
-- Security logic: `src-java/com/sbgames/bootstrap/SBGBootstrap.java` implements runtime protections including XOR-obfuscated string literals, debugger detection via JVM arguments/environment variables, SHA-256 modpack integrity verification, and a background watchdog thread.
-- Dependency direction: Node.js scripts drive the static analysis and build steps, while the Java source provides the runtime security enforcement layer.

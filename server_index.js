@@ -1375,8 +1375,9 @@ app.post("/api/inventory/buy", requireAuth, async (req, res) => {
     if (!acc) return { ok: false, error: "Игрок не найден" };
     const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
     if (owned.includes(itemId)) return { ok: false, error: "Уже куплено" };
-    if ((acc.balance || 0) < item.price) return { ok: false, error: "Недостаточно СБТ" };
-    acc.balance = (acc.balance || 0) - item.price;
+    const admin = isAdmin(acc.username);
+    if (!admin && (acc.balance || 0) < item.price) return { ok: false, error: "Недостаточно СБТ" };
+    if (!admin) acc.balance = (acc.balance || 0) - item.price;
     acc.inventory = [...owned, itemId];
     return { ok: true, value: acc };
   });
@@ -1389,9 +1390,12 @@ app.post("/api/inventory/equip", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const owned = Array.isArray(acc.inventory) ? acc.inventory : [];
-  if (!owned.includes(itemId)) return res.status(400).json({ message: "Сначала купи предмет" });
   const item = getShopItem(itemId);
   if (!item) return res.status(404).json({ message: "Предмет не найден" });
+  if (!owned.includes(itemId)) {
+    if (isAdmin(acc.username)) { acc.inventory = [...owned, itemId]; }
+    else return res.status(400).json({ message: "Сначала купи предмет" });
+  }
   acc.equip = { ...(acc.equip || {}), [item.type]: itemId };
   await redisAccounts.set(req.userId, acc);
   res.json({ ok: true, equip: acc.equip });

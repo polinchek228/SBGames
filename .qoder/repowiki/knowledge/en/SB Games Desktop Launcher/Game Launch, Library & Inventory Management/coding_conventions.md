@@ -1,4 +1,0 @@
-- Hybrid state persistence using `localStorage` for user preferences and offline caching, combined with `authedFetch` for server-synced transactional operations.
-- Consistent use of `framer-motion` for modal transitions, page animations, and interactive feedback across all pages and components.
-- Centralized error handling and offline mode detection using try-catch blocks around `authedFetch` calls, falling back to cached `localStorage` data.
-- Standardized dark-mode UI styling with inline `style` props for glassmorphism effects, consistent color palettes, and responsive layout containers.

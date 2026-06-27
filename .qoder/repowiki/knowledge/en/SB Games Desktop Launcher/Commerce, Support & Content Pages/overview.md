@@ -1,1 +1,0 @@
-Provides user-facing interfaces for in-app purchases, customer support ticketing, news feeds, and screenshot management.

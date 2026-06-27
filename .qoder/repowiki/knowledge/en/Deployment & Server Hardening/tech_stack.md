@@ -1,1 +1,0 @@
-Uses Docker (Ubuntu 22.04 base) for isolated Linux builds of Tauri applications; leverages systemd for service management, Nginx for reverse proxying with custom security headers, and fail2ban for intrusion prevention.

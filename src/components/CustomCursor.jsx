@@ -44,6 +44,7 @@ export default function CustomCursor() {
     let flashAnim = null;
     let raf;
     let lastSrc = "";
+    let clickTime = -1e9;
 
     const styleEl = document.createElement("style");
     styleEl.id = "custom-cursor-style";
@@ -63,21 +64,7 @@ export default function CustomCursor() {
       } catch {}
     }
 
-    function triggerFlash(x, y) {
-      const cursor = CURSORS[serverId];
-      if (cursor && themedGlow) {
-        themedGlow.style.background = `radial-gradient(circle, ${cursor.glow} 0%, transparent 70%)`;
-      }
-      if (flashAnim) clearTimeout(flashAnim);
-      flash.style.left    = `${x - 24}px`;
-      flash.style.top     = `${y - 24}px`;
-      flash.style.opacity = "1";
-      flash.style.transform = "scale(1)";
-      flashAnim = setTimeout(() => {
-        flash.style.opacity   = "0";
-        flash.style.transform = "scale(2.2)";
-      }, 60);
-    }
+    // (клик-эффект теперь — «удар» самой иконки, без отдельного кольца)
 
     const loop = () => {
       if (!serverId) { raf = requestAnimationFrame(loop); return; }
@@ -86,14 +73,17 @@ export default function CustomCursor() {
 
       dot.style.opacity   = isThemed ? "0" : "1";
       ring.style.opacity  = isThemed ? "0" : "1";
-      flash.style.display = isThemed ? "block" : "none";
+      flash.style.display = "none";
 
       if (isThemed) {
-        // Показываем пиксельный курсор-предмет.
-        const sc = clicking ? 0.85 : hovering ? 1.15 : 1;
-        const drawSize = 24 * SPRITE_SCALE;
+        // Лёгкий «удар» при клике: быстрый замах ~200мс (поворот + просадка масштаба).
+        const dt = performance.now() - clickTime;
+        const punch = dt < 200 ? Math.sin((dt / 200) * Math.PI) : 0;
+        const baseSc = hovering ? 1.12 : 1;
+        const sc = baseSc - punch * 0.22;
+        const rot = -punch * 22; // градусов — короткий замах предмета
         themedWrap.style.transform =
-          `translate(${mx - cursor.tipX * SPRITE_SCALE}px, ${my - cursor.tipY * SPRITE_SCALE}px) scale(${sc})`;
+          `translate(${mx - cursor.tipX * SPRITE_SCALE}px, ${my - cursor.tipY * SPRITE_SCALE}px) rotate(${rot}deg) scale(${sc})`;
         const src = spriteUrls[serverId];
         if (src !== lastSrc) { themedImg.src = src; lastSrc = src; }
         themedGlow.style.opacity = hovering ? "0.5" : "0.25";
@@ -115,10 +105,7 @@ export default function CustomCursor() {
     raf = requestAnimationFrame(loop);
 
     const onMove = (e) => { mx = e.clientX; my = e.clientY; };
-    const onDown = (e) => {
-      clicking = true;
-      if (CURSORS[serverId]) triggerFlash(e.clientX, e.clientY);
-    };
+    const onDown = () => { clicking = true; clickTime = performance.now(); };
     const onUp   = () => { clicking = false; };
     const onOver = (e) => { if (e.target.closest("button,a,input,textarea,select,[role=button],label")) hovering = true; };
     const onOut  = (e) => { if (e.target.closest("button,a,input,textarea,select,[role=button],label")) hovering = false; };
@@ -178,7 +165,9 @@ export default function CustomCursor() {
       <div ref={flashRef} style={{
         position:"fixed", zIndex:10000, pointerEvents:"none",
         width:48, height:48, borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(167,139,250,0.7) 0%, transparent 70%)",
+        background:"transparent",
+        border:"2px solid rgba(255,255,255,0.85)",
+        boxShadow:"0 0 8px rgba(255,255,255,0.25)",
         opacity:0, display:"none",
         transition:"none",
         willChange:"transform, opacity",
@@ -190,7 +179,7 @@ export default function CustomCursor() {
         pointerEvents:"none",
         display:"none",
         willChange:"transform",
-        transition:"transform 0.04s linear",
+        transition:"transform 0.06s ease-out",
       }}>
         {/* Glow halo под предметом */}
         <div ref={themedGlowRef} style={{

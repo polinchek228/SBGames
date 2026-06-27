@@ -1,4 +1,0 @@
-- Commands use `Result<T, String>` return types to propagate user-facing error messages directly to the frontend.
-- Asynchronous file downloads utilize `reqwest` streams with throttled IPC event emission (every 150ms) to prevent frontend flooding.
-- Platform-specific logic is isolated using `#[cfg(target_os = "windows")]` attributes, particularly for security guards and window management.
-- External tools like `curl` are invoked via `std::process::Command` for robust asset retrieval with built-in retry and timeout handling.

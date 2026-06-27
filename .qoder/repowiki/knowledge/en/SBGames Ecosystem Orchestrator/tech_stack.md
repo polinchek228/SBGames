@@ -1,1 +1,0 @@
-Vite is used as the shared build tool for both the desktop and web frontends, ensuring consistent asset processing and React compilation. Tailwind CSS and PostCSS are configured identically across both frontend modules to maintain a unified design system.

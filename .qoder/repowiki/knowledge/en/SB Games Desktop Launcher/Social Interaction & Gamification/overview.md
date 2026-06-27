@@ -1,1 +1,0 @@
-Manages real-time community features including friend systems, chat, groups, and a client-side achievement tracking system.

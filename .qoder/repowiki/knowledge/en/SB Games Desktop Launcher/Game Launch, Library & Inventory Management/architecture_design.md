@@ -1,5 +1,0 @@
-- Entry point `PlayPage.jsx` orchestrates the game launch lifecycle, invoking Tauri backend commands (`launch_minecraft`, `killMinecraft`) and managing local state for RAM/Java settings via `localStorage`.
-- `LibraryTab.jsx` serves as the cosmetic storefront, fetching catalog data via `authedFetch` and handling client-side filtering, sorting, and drag-and-drop equipping logic.
-- `InventoryTab.jsx` manages server-specific game items (armor, weapons) with a master-detail UI pattern, syncing equipped state to the backend.
-- Shared components `SkinViewer.jsx` (WebGL-based 3D preview) and `FilePicker.jsx` (drag-and-drop file upload) are reused across tabs for profile customization.
-- State persistence is hybrid: critical session data and user preferences are stored in `localStorage` with offline fallbacks, while transactional data (purchases, equipping) relies on authenticated API calls.

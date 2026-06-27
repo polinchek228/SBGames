@@ -1,1 +1,0 @@
-React with Framer Motion for animations; Tauri for native desktop capabilities (window management, system tray); QRCodeLib for generating authentication codes.

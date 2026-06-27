@@ -1,2 +1,0 @@
-- Uses `skinview3d` for client-side 3D Minecraft skin rendering in `SkinViewer.jsx`.
-- Integrates with Tauri desktop backend via `invoke` for OS-level process management in `PlayPage.jsx`.

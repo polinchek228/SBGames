@@ -897,6 +897,50 @@ app.post("/admin/grant-sbt", async (req, res) => {
   res.json({ ok: true, balance: acc.balance });
 });
 
+// ─── Anti-cheat: бан / разбан / нарушители ───────────────────────────────────
+app.post("/admin/ban", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { userId, reason } = req.body;
+  if (!userId) return res.status(400).json({ message: "Bad request" });
+  const acc = await redisAccounts.get(String(userId));
+  if (!acc) return res.status(404).json({ message: "User not found" });
+  acc.banned = true;
+  acc.banReason = (reason && String(reason).slice(0, 300)) || "manual";
+  acc.bannedAt = new Date().toISOString();
+  acc.tokenVersion = (acc.tokenVersion || 0) + 1; // инвалидируем активные сессии
+  await redisAccounts.set(String(userId), acc);
+  try { sendToUser(String(userId), { type: "banned", reason: acc.banReason }); } catch {}
+  res.json({ ok: true, banned: true });
+});
+
+app.post("/admin/unban", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ message: "Bad request" });
+  const acc = await redisAccounts.get(String(userId));
+  if (!acc) return res.status(404).json({ message: "User not found" });
+  acc.banned = false;
+  acc.banReason = null;
+  if (acc.attest) acc.attest.strikes = 0; // сбрасываем страйки
+  await redisAccounts.set(String(userId), acc);
+  res.json({ ok: true, banned: false });
+});
+
+app.get("/admin/violations", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  const all = await redisAccounts.allValues();
+  const list = all
+    .filter(a => a.banned || (a.attest && a.attest.strikes > 0))
+    .map(a => ({
+      id: a.id, username: a.username, banned: !!a.banned,
+      banReason: a.banReason || null, bannedAt: a.bannedAt || null,
+      strikes: a.attest?.strikes || 0, lastViolation: a.attest?.last || null,
+      log: (a.attest?.log || []).slice(-10),
+    }))
+    .sort((x, y) => (y.strikes - x.strikes) || ((y.bannedAt || "") > (x.bannedAt || "") ? 1 : -1));
+  res.json({ violations: list, total: list.length });
+});
+
 app.get("/admin/tickets", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const all = [...tickets.values()].map(t => ({
@@ -963,6 +1007,7 @@ async function optionalAuth(req, _res, next) {
     const acc = await redisAccounts.get(payload.sub);
     if (acc && (acc.tokenVersion || 0) === (payload.ver || 0)) {
       req.userId = payload.sub;
+      req.account = acc;
     }
   }
   next();
@@ -970,6 +1015,9 @@ async function optionalAuth(req, _res, next) {
 async function requireAuth(req, res, next) {
   await optionalAuth(req, res, () => {});
   if (!req.userId) return res.status(401).json({ message: "Необходима авторизация" });
+  if (req.account && req.account.banned) {
+    return res.status(403).json({ message: "Аккаунт заблокирован", banReason: req.account.banReason || "anticheat" });
+  }
   next();
 }
 
@@ -3823,6 +3871,115 @@ app.get("/api/mods/manifest", (_req, res) => {
     res.json({ version: "", mods: [] });
   }
 });
+
+// ─── Anti-cheat: серверная аттестация клиента ────────────────────────────────
+// Клиент периодически шлёт подписанный отчёт о своём .exe-хеше и загруженных
+// модах/DLL. Сервер сверяет с release-attest.json (хеш .exe из билда) и
+// whitelist'ом модов из MODPACK_DIR. Нарушение → violation + action "kill",
+// повторные → бан. Подпись HMAC-SHA256 на SBG_ATTEST_SECRET.
+const ATTEST_SECRET = process.env.SBG_ATTEST_SECRET || "";
+let _attestCache = { mtime: 0, data: null };
+function loadReleaseAttest() {
+  try {
+    const p = _path.join(__dirname, "release-attest.json");
+    const st = fs.statSync(p);
+    if (st.mtimeMs !== _attestCache.mtime) {
+      _attestCache = { mtime: st.mtimeMs, data: JSON.parse(fs.readFileSync(p, "utf8")) };
+    }
+    return _attestCache.data;
+  } catch { return null; }
+}
+// Whitelist sha256 модов актуальной сборки (переиспользует логику manifest).
+function modWhitelist() {
+  const set = new Set();
+  try {
+    if (!fs.existsSync(MODPACK_DIR)) return set;
+    const versions = fs.readdirSync(MODPACK_DIR).filter(d => {
+      try { return fs.statSync(_path.join(MODPACK_DIR, d)).isDirectory(); } catch { return false; }
+    });
+    if (!versions.length) return set;
+    versions.sort((a,b)=> fs.statSync(_path.join(MODPACK_DIR,b)).mtimeMs - fs.statSync(_path.join(MODPACK_DIR,a)).mtimeMs);
+    const modsDir = _path.join(MODPACK_DIR, versions[0], "mods");
+    if (!fs.existsSync(modsDir)) return set;
+    for (const f of fs.readdirSync(modsDir)) {
+      if (!f.endsWith(".jar") && !f.endsWith(".disabled")) continue;
+      try { set.add(crypto.createHash("sha256").update(fs.readFileSync(_path.join(modsDir, f))).digest("hex")); } catch {}
+    }
+  } catch {}
+  return set;
+}
+
+// Выдаёт ожидаемые значения для клиента.
+app.get("/api/attest/expected", requireAuth, (_req, res) => {
+  const rel = loadReleaseAttest();
+  const wl = [...modWhitelist()];
+  res.set("Cache-Control", "no-store");
+  res.json({
+    exeHash: rel?.exeHash || null,
+    version: rel?.version || null,
+    mods: wl,
+    serverTime: Date.now(),
+  });
+});
+
+// Принимает отчёт клиента и выносит вердикт.
+app.post("/api/attest/report", requireAuth, async (req, res) => {
+  try {
+    const { exeHash, mods, dlls, ts, sig } = req.body || {};
+    const now = Date.now();
+    if (!ts || Math.abs(now - Number(ts)) > 120000) {
+      return res.status(400).json({ ok: false, action: "kill", reasons: ["stale_report"] });
+    }
+    // Проверка подписи (если секрет настроен).
+    if (ATTEST_SECRET) {
+      const modHashes = (Array.isArray(mods) ? mods.map(m => m.sha256) : []).filter(Boolean).sort();
+      const canonical = [exeHash || "", ts, modHashes.join(",")].join("|");
+      const expectSig = crypto.createHmac("sha256", ATTEST_SECRET).update(canonical).digest("hex");
+      if (sig !== expectSig) {
+        return res.status(403).json({ ok: false, action: "kill", reasons: ["bad_signature"] });
+      }
+    }
+
+    const reasons = [];
+    const rel = loadReleaseAttest();
+    // 1. Целостность .exe
+    if (rel?.exeHash && exeHash && exeHash !== rel.exeHash) reasons.push("exe_tampered");
+    // 2. Свой-мод / подмена: каждый мод обязан быть в whitelist
+    const wl = modWhitelist();
+    if (wl.size > 0 && Array.isArray(mods)) {
+      for (const m of mods) {
+        if (!m?.sha256 || !wl.has(m.sha256)) reasons.push("foreign_mod:" + (m?.name || "unknown"));
+      }
+    }
+    // 3. Подозрительные DLL (клиент уже отметил)
+    if (Array.isArray(dlls)) {
+      for (const d of dlls) if (d?.suspicious) reasons.push("suspicious_dll:" + (d.name || "?"));
+    }
+
+    if (reasons.length === 0) return res.json({ ok: true, action: "ok", reasons: [] });
+
+    // Фиксируем нарушение и решаем меру.
+    let strikes = 1;
+    try {
+      await redisAccounts.mutate(req.userId, (acc) => {
+        if (!acc.attest) acc.attest = { strikes: 0, last: null, log: [] };
+        acc.attest.strikes = (acc.attest.strikes || 0) + 1;
+        acc.attest.last = new Date().toISOString();
+        acc.attest.log = [...(acc.attest.log || []), { ts: acc.attest.last, reasons }].slice(-20);
+        strikes = acc.attest.strikes;
+        if (strikes >= 3) { acc.banned = true; acc.banReason = "anticheat: " + reasons.join("; "); }
+        return acc;
+      });
+    } catch (e) { console.error("[attest] mutate", e.message); }
+
+    console.warn("[attest] violation user=" + req.userId + " strikes=" + strikes + " -> " + reasons.join("; "));
+    return res.json({ ok: false, action: strikes >= 3 ? "ban" : "kill", strikes, reasons });
+  } catch (e) {
+    console.error("[attest/report]", e.message);
+    return res.status(500).json({ ok: false, action: "kill", reasons: ["server_error"] });
+  }
+});
+
 
 // --- Forum articles (Redis-backed, AI-generated + admin-managed) -------------
 // Хранение: forum:article:<slug> = {slug,title,category,version,tags[],excerpt,

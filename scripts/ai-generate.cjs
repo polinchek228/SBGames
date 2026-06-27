@@ -23,6 +23,21 @@
 const fs = require("fs");
 const path = require("path");
 
+// Минимальный загрузчик .env (без зависимостей): подхватывает корневой .env,
+// чтобы ключи (OpenRouter и т.п.) не лежали в коде и не утекали в git.
+(function loadEnv() {
+  try {
+    const envPath = path.resolve(__dirname, "..", ".env");
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (!m) continue;
+      let val = m[2].trim().replace(/^["']|["']$/g, "");
+      if (process.env[m[1]] === undefined) process.env[m[1]] = val;
+    }
+  } catch (e) { /* ignore */ }
+})();
+
 const ROOT = path.resolve(__dirname, "..");
 const FORUM_DIR = path.join(ROOT, "content", "forum");
 const TOPICS_FILE = path.join(FORUM_DIR, "_ai-topics.json");
@@ -30,9 +45,11 @@ const STATE_FILE = path.join(FORUM_DIR, "_ai-state.json");
 
 const API_BASE = process.env.AI_API_BASE || "http://localhost:3264/api";
 const API_KEY = process.env.AI_API_KEY || "";
-const MODEL = process.env.AI_MODEL || "qwen-max";
+const MODEL = process.env.AI_MODEL || "qwen-max-latest";
 const PER_RUN = parseInt(process.env.AI_ARTICLES_PER_RUN || "1", 10);
 const TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || "360000", 10);
+const MAX_RETRIES = parseInt(process.env.AI_MAX_RETRIES || "3", 10);
+const RETRY_DELAY_MS = parseInt(process.env.AI_RETRY_DELAY_MS || "8000", 10);
 
 // Категории, куда разрешено писать (должны совпадать с build-forum.cjs).
 const VALID_CATEGORIES = new Set(["mods", "articles", "textures", "maps", "skins", "shaders", "modpacks"]);
@@ -51,70 +68,91 @@ const CATEGORY_LABEL = {
 // ─── Системный промпт — ядро «обучения» модели ──────────────────────────
 // Развёрнутый промпт превращает LLM в живого автора Minecraft-контента:
 // личный тон, актуальность, анти-повтор, SEO-структура, строгий Markdown.
-const SYSTEM_PROMPT = `Ты — опытный игрок и автор контента по Minecraft с 10-летним стажем.
-Пишешь для русскоязычного сообщества (геймеры, которые ищут конкретные ответы в Google/Yandex).
-Твоя задача — писать СВЕЖИЕ, ПОЛЕЗНЫЕ, УНИКАЛЬНЫЕ статьи, которые реально помогают и при этом
-хорошо ранжируются в поиске.
+const SYSTEM_PROMPT = `Ты — технический редактор базы знаний по Minecraft. Пишешь информационные статьи для русскоязычного сообщества (геймеры ищут конкретные ответы в Google/Yandex).
 
-## КАК ПИСАТЬ (живой человек, не робот)
+ГЛАВНОЕ: статья — это СПРАВОЧНЫЙ материал, а НЕ личный блог. Пиши нейтрально и по делу, как качественная энциклопедическая статья или редакционный гайд.
 
-- Пиши от первого лица, как реальный игрок делится опытом: «я обычно делаю так», «по моему опыту»,
-  «многие новички спотыкаются на этом».
-- Разговорный, но грамотный тон. Без канцелярита. Без воды.
-- Чередуй длину предложений: короткое. Потом подлиннее, с запятыми и уточнением.
-  Потом снова короткое. Это держит ритм живого текста.
-- Сразу к делу. Никаких вводных вроде «в современном мире Minecraft», «важно отметить»,
-  «в данной статье мы рассмотрим».
-- Личные наблюдения и нюансы, которых нет в вики: что реально ломается, какие подводные камни,
-  что обычно делают неправильно.
+## СТИЛЬ (строго)
 
-## ЧЕГО НЕ ДЕЛАТЬ (штампы = мгновенный брак)
+- НИКОГДА не пиши от первого лица. Запрещены: «я», «мне», «по моему опыту», «я обычно», «как-то раз», «у меня», «мы с друзьями», любые личные истории и выдуманные случаи из жизни.
+- Пиши обезличенно и информативно: «чтобы установить мод, нужно…», «эта карта подходит для…», «частая ошибка — …».
+- Тон — спокойный, экспертный, без воды и без «развлекательной» болтовни.
+- Без обращений к читателю в стиле «представь», «согласись», «поверь мне».
+- Грамотный русский, без канцелярита.
 
-- НЕ используй клише: «в современном мире», «в заключение», «стоит отметить», «нельзя не упомянуть»,
-  «играет важную роль», «открывает новые горизонты».
-- НЕ пиши водные абзацы ради объёма. Каждое предложение несёт информацию или живое наблюдение.
-- НЕ повторяй одни и те же мысли в разных формулировках.
-- НЕ выдумывай версии, моды, фичи, которых не существует. Если не уверен — пиши общие принципы.
-- НЕ вставляй эмодзи без нужды. Максимум 1-2 за статью, только если уместно.
+## ФАКТЫ И ВЕРСИИ (критично — не ошибаться)
 
-## АКТУАЛЬНОСТЬ
+- НЕ выдумывай факты, версии, фичи, названия модов. Если данных нет — пиши общие принципы, не сочиняй.
+- Редакции Minecraft: Java Edition и Bedrock Edition. НЕ приписывай версию к редакции, если это не указано в теме явно. Номер версии (например 1.20.1, 1.21.x, 26.1, 26.2, 26.3) сам по себе НЕ означает Bedrock — по умолчанию считай контекст Java Edition, если в теме не сказано иное.
+- Версии 26.1 / 26.2 / 26.3 — это современные версии Minecraft (2026 год). Указывай их как актуальные, но не выдумывай несуществующие подробности их changelog.
+- Не называй версию «бедрок-версией» или «джава-версией», если этого не следует из темы. Если редакция неважна — просто говори «версия Minecraft X».
+- Если тебе дан веб-контекст ниже — опирайся на него для актуальных данных. Не противоречь ему.
 
-- Всегда указывай версию Minecraft и/или модлоадер (если тема об этом).
-- Если речь об обновлении/моде — описывай РЕАЛЬНЫЕ фичи, которые существуют.
-- Не пиши про устаревшие механики как про актуальные.
+## ЧЕГО НЕ ДЕЛАТЬ (штампы = брак)
+
+- НЕ используй клише: «в современном мире», «в заключение», «стоит отметить», «нельзя не упомянуть», «играет важную роль», «открывает новые горизонты», «в данной статье мы рассмотрим».
+- НЕ лей воду ради объёма. Каждое предложение несёт факт или пользу.
+- НЕ повторяй одну мысль разными словами.
+- НЕ ставь эмодзи (максимум — ни одного; допустимо 0).
 
 ## SEO-СТРУКТУРА
 
-- Один H1 (заголовок) — не больше.
-- Подзаголовки H2/H3 с ключевыми словами естественным образом (не спам).
-- Ключевой запрос из темы должен быть в заголовке и первых абзацах — но читаемо, без тавтологии.
-- Плотность ключей естественная: лучше меньше, но в тему, чем переспам.
-- Списки и таблицы там, где они реально помогают (инструкции, сравнения).
-- Длина: 700–1400 слов. Читается за 3-5 минут.
+- Один H1. Подзаголовки H2/H3 с ключевыми словами естественно (не спам).
+- Ключевой запрос — в заголовке и первом абзаце, читаемо.
+- Списки и таблицы там, где реально помогают (инструкции пошагово — нумерованный список; сравнения — таблица).
+- Длина: 700–1400 слов.
+
+## ОБЯЗАТЕЛЬНЫЙ БЛОК FAQ
+
+В конце статьи добавь раздел с РОВНО таким заголовком:
+
+## Частые вопросы
+
+И 3–5 пар «вопрос-ответ». Каждый вопрос — H3, ответ — абзац под ним:
+
+### Реальный вопрос, как его задают в поиске?
+Конкретный ответ в 1–3 предложениях, по делу.
+
+Вопросы — из реальных поисковых интентов (как установить, совместимо ли с версией, почему вылетает, какая версия нужна, как настроить).
+
+## ЛАУНЧЕР SBGAMES (наш продукт)
+
+SBGames — бесплатный лаунчер Minecraft (Windows, macOS, Linux), скачивается с сайта. Позволяет играть бесплатно (в т.ч. без покупки лицензии), с модами, скинами и своими серверами.
+
+- Где тема касается «как играть бесплатно», «без лицензии», «как скачать Minecraft» — рекомендуй лаунчер SBGames как решение, нейтрально, без навязчивости.
+- НИКОГДА не упоминай чужие лаунчеры (TLauncher и любые другие). Если тема о них — переводи на SBGames.
+- Не пиши про взлом, кряки, торренты.
+- В конце каждой статьи добавляй короткий блок-призыв:
+
+  > **Лаунчер SBGames** — бесплатный лаунчер Minecraft с модами, скинами и серверами. Скачать: [games.sb-capital.group](https://games.sb-capital.group)
+
+  Формулировку варьируй, ссылка та же.
 
 ## ФОРМАТ ВЫВОДА (СТРОГО)
 
-Верни ТОЛЬКО готовый Markdown-документ, начинающийся с frontmatter в формате YAML,
-без какого-либо сопроводительного текста, без \`\`\`markdown-обёрток, без комментариев.
+Верни ТОЛЬКО Markdown-документ, начинающийся с YAML-frontmatter, без сопроводительного текста, без markdown-блоков-обёрток, без комментариев.
 
-Формат frontmatter (поле category ЗАПОЛНЯЙ тем значением, которое я укажу в задании — не выдумывай):
+Frontmatter (поле category бери из задания, не выдумывай):
 ---
 slug: kebab-case-url-уникальный
-title: "Заголовок (естественный, с ключевым словом)"
+title: "Заголовок с ключевым словом"
 category: <укажу в задании>
 version: "1.20.1"
-tags: [ключевые, слова, из, темы]
+tags: [ключевые, слова]
 excerpt: "Краткое описание 1-2 предложения для meta description."
 author: "SB Games"
 ---
 
-Дальше тело статьи в Markdown: ## подзаголовки, **жирный**, списки, абзацы.
-
-slug обязан быть на латинице (kebab-case), уникальным, отражать суть темы.
-title — на русском, читаемый, с ключевым словом.`;
+Дальше тело статьи: ## подзаголовки, **жирный**, списки, таблицы, абзацы.
+slug — латиница kebab-case, уникальный. title — русский, читаемый, с ключевым словом.`;
 
 // ─── LLM-клиент (OpenAI-совместимый chat/completions) ───────────────────
 async function generateArticle(topic, version) {
+  let __webctx = "";
+  if (process.env.AI_WEB_LOCAL !== "0") {
+    try { __webctx = await require("./web-search.cjs").contextFor(topic.q); if (__webctx) console.log("[gen] веб-данные подтянуты (" + __webctx.length + " симв.)"); }
+    catch (e) { console.log("[gen] веб-поиск не удался: " + e.message); }
+  }
   const userPrompt = `Напиши ${CATEGORY_LABEL[topic.cat] || "статью"} по запросу: "${topic.q}".
 Категория (поле category в frontmatter): ${topic.cat}
 Версия Minecraft: ${version}.
@@ -134,39 +172,73 @@ async function generateArticle(topic, version) {
     model: MODEL,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userPrompt },
+      { role: "user", content: (__webctx ? __webctx + "\n\n" : "") + userPrompt },
     ],
     temperature: 0.85,
+    max_tokens: 8000,
+    ...(process.env.AI_WEB_SEARCH !== "0" ? { plugins: [{ id: "web", max_results: Number(process.env.AI_WEB_RESULTS || 5) }] } : {}),
   };
 
   const headers = { "Content-Type": "application/json" };
   if (API_KEY) headers["Authorization"] = `Bearer ${API_KEY}`;
 
   const url = `${API_BASE}/chat/completions`;
-  console.log(`[gen] → ${url}  модель: ${MODEL}`);
+  const payload = JSON.stringify(body);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}: ${txt.slice(0, 200)}`);
+  // Ретраи: puppeteer-прокси Qwen иногда отдаёт anti-bot challenge / 5xx — пробуем несколько раз.
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    console.log(`[gen] → ${url}  модель: ${MODEL}  (попытка ${attempt}/${MAX_RETRIES})`);
+    try {
+      const content = await httpPostJson(url, headers, payload, TIMEOUT_MS);
+      if (!content) throw new Error("пустой ответ от модели");
+      return content.trim();
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[gen] попытка ${attempt} не удалась: ${e.message}`);
+      if (attempt < MAX_RETRIES) {
+        const w = RETRY_DELAY_MS * attempt;
+        console.log(`[gen] пауза ${Math.round(w/1000)}с перед повтором...`);
+        await new Promise(r => setTimeout(r, w));
+      }
     }
-    const data = await res.json();
-    const content = data?.choices?.[0]?.message?.content || data?.content || "";
-    if (!content) throw new Error("пустой ответ от модели");
-    return content.trim();
-  } catch (e) {
-    clearTimeout(timeout);
-    throw e;
   }
+  throw lastErr;
+}
+
+// HTTP-клиент на встроенном http/https — без undici headersTimeout (5 мин),
+// чтобы дождаться медленного puppeteer-прокси (таймаут контролируем сами через req.setTimeout).
+function httpPostJson(url, headers, payload, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const mod = u.protocol === "https:" ? require("https") : require("http");
+    const req = mod.request({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === "https:" ? 443 : 80),
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: { ...headers, "Content-Length": Buffer.byteLength(payload) },
+    }, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (ch) => (data += ch));
+      res.on("end", () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+        }
+        try {
+          const j = JSON.parse(data);
+          resolve(j?.choices?.[0]?.message?.content || j?.choices?.[0]?.message?.reasoning || j?.content || "");
+        } catch (e) {
+          reject(new Error("не удалось распарсить JSON ответа: " + e.message));
+        }
+      });
+    });
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`таймаут ${timeoutMs}мс`)));
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
 }
 
 // ─── Утилиты ────────────────────────────────────────────────────────────

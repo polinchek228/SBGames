@@ -4,27 +4,44 @@ import { motion } from "framer-motion";
 import { CaretLeft, ArrowClockwise } from "@phosphor-icons/react";
 import { API_URL } from "../../lib/api.js";
 
-// Минимальный Markdown → HTML (тот же, что в build-forum, для тела статьи)
+// Markdown → HTML (полный: заголовки, списки, таблицы, картинки, код, цитаты)
+function inline(text) {
+  return text
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, '<img src="$2" alt="$1" loading="lazy">')
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+}
 function mdToHtml(md) {
-  let h = md.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  const lines = h.split(/\r?\n/), out = [];
-  let inList = false, inCode = false, buf = [];
-  const flush = () => { if (inList) { out.push("</ul>"); inList = false; } };
-  for (const line of lines) {
-    if (/^```/.test(line.trim())) { if (inCode) { out.push(`<pre><code>${buf.join("\n")}</code></pre>`); buf=[]; inCode=false; } else { flush(); inCode=true; } continue; }
-    if (inCode) { buf.push(line); continue; }
-    let m;
-    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { flush(); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); continue; }
-    if (/^&gt;\s?/.test(line)) { flush(); out.push(`<blockquote>${inline(line.replace(/^&gt;\s?/,""))}</blockquote>`); continue; }
-    if (/^[-*]\s+/.test(line)) { if (!inList){out.push("<ul>");inList=true;} out.push(`<li>${inline(line.replace(/^[-*]\s+/,""))}</li>`); continue; }
-    if (line.trim()==="") { flush(); continue; }
-    flush(); out.push(`<p>${inline(line)}</p>`);
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = (md || "").replace(/\r\n/g, "\n").split("\n");
+  const out = []; let i = 0;
+  const isSep = (s) => /^\s*\|?[\s:|-]+\|?\s*$/.test(s) && s.includes("-");
+  while (i < lines.length) {
+    let line = lines[i];
+    if (/^\s*```/.test(line)) { const buf = []; i++; while (i < lines.length && !/^\s*```/.test(lines[i])) { buf.push(esc(lines[i])); i++; } i++; out.push("<pre><code>" + buf.join("\n") + "</code></pre>"); continue; }
+    if (line.includes("|") && i + 1 < lines.length && isSep(lines[i + 1])) {
+      const row = (r) => r.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+      const hs = row(line); i += 2; const rows = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") { rows.push(row(lines[i])); i++; }
+      let t = "<table><thead><tr>" + hs.map((h) => "<th>" + inline(esc(h)) + "</th>").join("") + "</tr></thead><tbody>";
+      for (const r of rows) t += "<tr>" + r.map((c) => "<td>" + inline(esc(c)) + "</td>").join("") + "</tr>";
+      t += "</tbody></table>"; out.push(t); continue;
+    }
+    let h;
+    if ((h = line.match(/^(#{1,6})\s+(.*)$/))) { out.push("<h" + h[1].length + ">" + inline(esc(h[2])) + "</h" + h[1].length + ">"); i++; continue; }
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { out.push("<hr>"); i++; continue; }
+    if (/^\s*>\s?/.test(line)) { const buf = []; while (i < lines.length && /^\s*>\s?/.test(lines[i])) { buf.push(inline(esc(lines[i].replace(/^\s*>\s?/, "")))); i++; } out.push("<blockquote>" + buf.join("<br>") + "</blockquote>"); continue; }
+    if (/^\s*\d+[.)]\s+/.test(line)) { out.push("<ol>"); while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) { out.push("<li>" + inline(esc(lines[i].replace(/^\s*\d+[.)]\s+/, ""))) + "</li>"); i++; } out.push("</ol>"); continue; }
+    if (/^\s*[-*+]\s+/.test(line)) { out.push("<ul>"); let nest = false; while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { const ind = lines[i].match(/^(\s*)/)[1].length; const ct = inline(esc(lines[i].replace(/^\s*[-*+]\s+/, ""))); if (ind >= 2) { if (!nest) { out.push("<ul>"); nest = true; } out.push("<li>" + ct + "</li>"); } else { if (nest) { out.push("</ul>"); nest = false; } out.push("<li>" + ct + "</li>"); } i++; } if (nest) out.push("</ul>"); out.push("</ul>"); continue; }
+    if (line.trim() === "") { i++; continue; }
+    const para = [];
+    while (i < lines.length && lines[i].trim() !== "" && !/^\s*(#{1,6}\s|>|\d+[.)]\s|[-*+]\s|```|---|\*\*\*|___)/.test(lines[i]) && !(lines[i].includes("|") && i + 1 < lines.length && isSep(lines[i + 1]))) { para.push(inline(esc(lines[i]))); i++; }
+    out.push("<p>" + para.join("<br>") + "</p>");
   }
-  flush();
-  if (inCode) out.push(`<pre><code>${buf.join("\n")}</code></pre>`);
   return out.join("\n");
 }
-function inline(t){return t.replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>").replace(/\*([^*]+)\*/g,"<em>$1</em>").replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noreferrer">$1</a>');}
 
 export default function ForumArticle() {
   const { slug } = useParams();

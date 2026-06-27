@@ -1,1 +1,0 @@
-Tauri desktop framework with `@tauri-apps/api/window` for native window control and `@tauri-apps/api/core` / `@tauri-apps/api/event` for IPC communication with the Rust backend; Framer Motion for page transitions and animations.

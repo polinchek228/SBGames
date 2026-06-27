@@ -1,4 +1,0 @@
-- React 18 with Vite 5 build tooling.
-- `framer-motion` for page transitions and animations.
-- `skinview3d` for 3D Minecraft skin rendering (implied by dependency).
-- `javascript-obfuscator` integrated into the build pipeline for code protection.
