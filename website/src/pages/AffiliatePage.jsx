@@ -86,7 +86,8 @@ function HomeTab({ user, stats, levels, onCodeChanged }) {
   const referralLink = stats?.referralCode
     ? `https://games.sb-capital.group/invite/${stats.referralCode}`
     : "Загрузка...";
-  const currentLevel = levels.find(l => l.percent === stats.levelPercent) || levels[0];
+  const effectivePercent = stats?.effectivePercent ?? stats?.levelPercent ?? 30;
+  const currentLevel = levels.find(l => l.percent === (stats?.levelPercent || 30)) || levels[0];
 
   // --- Custom code editor state ---
   const [editing, setEditing] = useState(false);
@@ -240,7 +241,12 @@ function HomeTab({ user, stats, levels, onCodeChanged }) {
             {currentLevel.level}
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Уровень {currentLevel.level} — {currentLevel.percent}%</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>
+              Уровень {currentLevel.level} — {effectivePercent}%
+              {stats?.customPercent != null && (
+                <span style={{ fontSize: 11, color: "#facc15", fontWeight: 600, marginLeft: 6 }}>(настроено админом)</span>
+              )}
+            </div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
               Нужно {currentLevel.players} активных рефералов
             </div>
@@ -699,7 +705,8 @@ export default function AffiliatePage({ user }) {
   const [levels, setLevels] = useState(DEFAULT_LEVELS);
   const [stats, setStats] = useState({
     totalEarned: 0, pendingPayout: 0, totalReferrals: 0,
-    levelPercent: 30, referrals: [], subAffiliates: [],
+    levelPercent: 30, effectivePercent: 30, customPercent: null,
+    referrals: [], subAffiliates: [],
     recentCommissions: [], allCommissions: [], payouts: [],
     monthlyStats: [],
   });

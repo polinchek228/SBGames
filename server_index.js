@@ -2290,11 +2290,14 @@ app.get("/affiliate/stats", requireAuth, async (req, res) => {
   const data = ensureReferralData(req.userId);
   const acc = await redisAccounts.get(req.userId);
   const level = getAffiliateLevel(data.referralCount);
+  const effectivePercent = data.customPercent ?? level.percent;
   res.json({
     totalEarned: data.totalEarned || 0,
     pendingPayout: data.pendingPayout || 0,
     totalReferrals: data.referralCount || 0,
     levelPercent: level.percent,
+    customPercent: data.customPercent ?? null,
+    effectivePercent,
     referralCode: data.code,
     referrals: (data.referrals || []).slice(-50).reverse(),
     subAffiliates: data.subAffiliates || [],
@@ -2439,6 +2442,8 @@ app.get("/api/referral", requireAuth, async (req, res) => {
     pendingPayout: data.pendingPayout || 0,
     level: level.level,
     levelPercent: level.percent,
+    customPercent: data.customPercent ?? null,
+    effectivePercent: data.customPercent ?? level.percent,
   });
 });
 
