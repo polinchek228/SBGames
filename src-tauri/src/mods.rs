@@ -24,7 +24,7 @@ fn emit(app: &AppHandle, msg: &str, d: u64, t: u64) {
 }
 
 /// Скачать все моды/ресурсы из cfg.mods в соответствующие папки инстанса.
-/// Идемпотентно: существующие файлы пропускаются.
+/// Идемпотентно: существующие файлы пропускаются. Параллельно (8 потоков).
 pub async fn sync_mods(
     instance_dir: &Path,
     cfg: &InstanceConfig,
@@ -38,7 +38,6 @@ pub async fn sync_mods(
     }
 
     // Удалить чужие .jar в mods/, которых нет в списке (по имени файла).
-    // Делаем мягко: только mods/, чтобы не трогать resourcepacks/shaders юзера.
     let keep_names: std::collections::HashSet<String> = cfg
         .mods
         .iter()
@@ -48,14 +47,50 @@ pub async fn sync_mods(
     cleanup_extra_jars(&mods_dir, &keep_names);
 
     let total = cfg.mods.len();
-    emit(app, &format!("Синхронизация модов ({})", total), 0, total as u64);
+    let dirs = [mods_dir.clone(), resourcepacks_dir, shaderpacks_dir];
 
-    for (i, item) in cfg.mods.iter().enumerate() {
-        if let Err(e) = sync_one(item, cfg, &[&mods_dir, &resourcepacks_dir, &shaderpacks_dir], app).await {
-            eprintln!("[mods] skip {}: {}", item.title, e);
-        }
-        emit(app, &format!("Моды: {}/{}", i + 1, total), (i + 1) as u64, total as u64);
+    // Фильтруем: пропускаем локальные и уже скачанные.
+    let pending: Vec<ModEntry> = cfg.mods.iter().filter(|item| {
+        if item.local { return false; }
+        let dest = dest_for_kind(item, &[dirs[0].as_path(), dirs[1].as_path(), dirs[2].as_path()]);
+        !dest.exists()
+    }).cloned().collect();
+
+    let to_download = pending.len();
+    if to_download == 0 {
+        emit(app, "Моды синхронизированы", total as u64, total as u64);
+        return Ok(());
     }
+    emit(app, &format!("Моды ({}/{} новых)", to_download, total), 0, total as u64);
+
+    use futures_util::stream::{self, StreamExt};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+    let done = Arc::new(AtomicU64::new(0));
+
+    stream::iter(pending)
+        .map(|item| {
+            let dirs_ref: [&Path; 3] = [&dirs[0], &dirs[1], &dirs[2]];
+            let app = app.clone();
+            let done = done.clone();
+            async move {
+                if let Err(e) = sync_one(&item, cfg, &dirs_ref, &app).await {
+                    eprintln!("[mods] skip {}: {}", item.title, e);
+                }
+                let count = done.fetch_add(1, Ordering::Relaxed) + 1;
+                let _ = app.emit("download_progress", crate::DownloadProgress {
+                    file: format!("Моды: {}/{}", count, to_download),
+                    downloaded: count,
+                    total: total as u64,
+                    speed_kbs: 0,
+                });
+            }
+        })
+        .buffer_unordered(8)
+        .for_each(|_| async {})
+        .await;
+
+    emit(app, "Моды синхронизированы", total as u64, total as u64);
     Ok(())
 }
 
@@ -151,13 +186,18 @@ pub async fn resolve_modrinth_version(
         "https://api.modrinth.com/v2/project/{}/version?loaders=[\"{}\"]&game_versions=[\"{}\"]",
         project_id, loader_str, mc_version
     );
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("SBGames-Launcher/1.0")
-        .build()
-        .map_err(|e| format!("http: {}", e))?;
+    let client = crate::SHARED_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .pool_max_idle_per_host(32)
+            .pool_idle_timeout(std::time::Duration::from_secs(300))
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    });
     let resp = client
         .get(&url)
+        .header("User-Agent", "SBGames-Launcher/1.0")
         .send()
         .await
         .map_err(|e| format!("modrinth: {}", e))?;
@@ -197,13 +237,18 @@ pub async fn mod_versions(
         "https://api.modrinth.com/v2/project/{}/version?loaders=[\"{}\"]&game_versions=[\"{}\"]",
         project_id, loader, mc_version
     );
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("SBGames-Launcher/1.0")
-        .build()
-        .map_err(|e| format!("http: {}", e))?;
+    let client = crate::SHARED_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .pool_max_idle_per_host(32)
+            .pool_idle_timeout(std::time::Duration::from_secs(300))
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    });
     let resp = client
         .get(&url)
+        .header("User-Agent", "SBGames-Launcher/1.0")
         .send()
         .await
         .map_err(|e| format!("modrinth: {}", e))?;

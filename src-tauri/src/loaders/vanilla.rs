@@ -32,15 +32,20 @@ fn emit(app: &AppHandle, file: &str, downloaded: u64, total: u64) {
     );
 }
 
-/// HTTP GET JSON через reqwest (json-фича включена).
+/// HTTP GET JSON через общий HTTP-клиент (HTTP/2 + keep-alive).
 async fn http_get_json(url: &str) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .user_agent("SBGames-Launcher/1.0")
-        .build()
-        .map_err(|e| format!("http client: {}", e))?;
+    let client = crate::SHARED_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .pool_max_idle_per_host(32)
+            .pool_idle_timeout(std::time::Duration::from_secs(300))
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    });
     let resp = client
         .get(url)
+        .header("User-Agent", "SBGames-Launcher/1.0")
         .send()
         .await
         .map_err(|e| format!("GET {}: {}", url, e))?;
@@ -99,16 +104,18 @@ pub async fn ensure(mc_version: &str, instance_dir: &Path, app: &AppHandle) -> R
             .map_err(|e| format!("client.jar: {}", e))?;
     }
 
-    // 3. libraries (artifact + natives) — общий резолвер.
-    ensure_profile_libraries(instance_dir, mc_version, app).await?;
-
-    // 4. assets.
-    ensure_assets(instance_dir, &ver, app).await?;
+    // 3. libraries + assets ПАРАЛЛЕЛЬНО (независимы друг от друга).
+    let (lib_result, asset_result) = tokio::join!(
+        ensure_profile_libraries(instance_dir, mc_version, app),
+        ensure_assets(instance_dir, &ver, app)
+    );
+    lib_result?;
+    asset_result?;
 
     Ok(mc_version.to_string())
 }
 
-/// Скачать assetIndex + все объекты по sha1.
+/// Скачать assetIndex + все объекты по sha1 (параллельно).
 async fn ensure_assets(instance_dir: &Path, ver: &Value, app: &AppHandle) -> Result<(), String> {
     let assets_root = instance_dir.join("assets");
     let objects = assets_root.join("objects");
@@ -118,7 +125,7 @@ async fn ensure_assets(instance_dir: &Path, ver: &Value, app: &AppHandle) -> Res
 
     let ai = match ver.get("assetIndex") {
         Some(ai) => ai,
-        None => return Ok(()), // старые версии могут не иметь assetIndex.
+        None => return Ok(()),
     };
     let index_id = ai.get("id").and_then(|i| i.as_str()).unwrap_or("legacy");
     let index_url = ai.get("url").and_then(|u| u.as_str()).unwrap_or("");
@@ -140,39 +147,64 @@ async fn ensure_assets(instance_dir: &Path, ver: &Value, app: &AppHandle) -> Res
         Some(o) => o,
         None => return Ok(()),
     };
-    let total = objs.len();
-    emit(app, &format!("Ассеты ({} файлов)", total), 0, total as u64);
 
-    let mut i = 0usize;
-    for (_name, info) in objs {
-        let hash = match info.get("hash").and_then(|h| h.as_str()) {
-            Some(h) => h,
-            None => continue,
-        };
-        if hash.len() < 2 {
-            continue;
-        }
+    // Собираем задачи: пропускаем уже скачанные.
+    let tasks: Vec<(String, PathBuf, String)> = objs.iter().filter_map(|(_name, info)| {
+        let hash = info.get("hash")?.as_str()?;
+        if hash.len() < 2 { return None; }
         let first2 = &hash[..2];
         let dest = objects.join(first2).join(hash);
-        if !dest.exists() {
-            std::fs::create_dir_all(dest.parent().unwrap()).ok();
-            let url = format!("https://resources.download.minecraft.net/{}/{}", first2, hash);
-            if let Err(e) = download_file(&url, &dest, app).await {
-                eprintln!("[asset] {} fail: {}", hash, e);
-            } else {
-                // мягкая проверка sha1 (не падаем при расхождении — ресурсы не критичны).
-                if let Ok(actual) = sha1_of_file(&dest) {
-                    if actual != hash {
-                        let _ = std::fs::remove_file(&dest);
+        if dest.exists() { return None; }
+        let url = format!("https://resources.download.minecraft.net/{}/{}", first2, hash);
+        Some((hash.to_string(), dest, url))
+    }).collect();
+
+    let total = objs.len();
+    let to_download = tasks.len();
+    if to_download == 0 {
+        emit(app, "Ассеты готовы", total as u64, total as u64);
+        return Ok(());
+    }
+    emit(app, &format!("Ассеты ({}/{} файлов)", to_download, total), 0, total as u64);
+
+    use futures_util::stream::{self, StreamExt};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+    let done = Arc::new(AtomicU64::new(0));
+    let start = std::time::Instant::now();
+
+    stream::iter(tasks)
+        .map(|(hash, dest, url)| {
+            let done = done.clone();
+            let app = app.clone();
+            async move {
+                std::fs::create_dir_all(dest.parent().unwrap()).ok();
+                if let Err(e) = download_file(&url, &dest, &app).await {
+                    eprintln!("[asset] {} fail: {}", hash, e);
+                } else {
+                    if let Ok(actual) = sha1_of_file(&dest) {
+                        if actual != hash {
+                            let _ = std::fs::remove_file(&dest);
+                        }
                     }
                 }
+                let count = done.fetch_add(1, Ordering::Relaxed) + 1;
+                if count % 50 == 0 || count == to_download as u64 {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 { (count as f64 / elapsed) as u64 } else { 0 };
+                    let _ = app.emit("download_progress", crate::DownloadProgress {
+                        file: format!("Ассеты: {}/{}", count, to_download),
+                        downloaded: count,
+                        total: total as u64,
+                        speed_kbs: speed,
+                    });
+                }
             }
-        }
-        i += 1;
-        if i % 25 == 0 {
-            emit(app, "Ассеты", i as u64, total as u64);
-        }
-    }
+        })
+        .buffer_unordered(16)
+        .for_each(|_| async {})
+        .await;
+
     emit(app, "Ассеты готовы", total as u64, total as u64);
     Ok(())
 }

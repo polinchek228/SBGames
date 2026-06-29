@@ -22,6 +22,8 @@ use tauri::{
 };
 use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use std::collections::HashSet;
+
+pub(crate) static SHARED_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 use std::path::PathBuf;
 use hmac::Mac;
 
@@ -2236,80 +2238,106 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
         return Ok(report);
     }
 
-    // 4. Скачиваем только отсутствующие/изменённые моды по одному
-    // Используем /api/mods/file/:name — каждый jar отдельно, не весь zip
+    // 4. Скачиваем отсутствующие/изменённые моды ПАРАЛЛЕЛЬНО через reqwest
     let base_url = zip_url.split("/api/mods/zip").next().unwrap_or("").to_string();
     let total_mods = allowed.len() as u64;
-    let mut done: u64 = 0;
 
+    // Собираем задачи для параллельной загрузки.
+    let mut tasks: Vec<(String, String, String, String, std::path::PathBuf)> = Vec::new();
     for (name_lower, (expected_sha, _)) in &allowed {
         let fname = mods_list.iter()
             .find(|m| m["name"].as_str().unwrap_or("").to_lowercase() == *name_lower)
             .and_then(|m| m["name"].as_str())
             .unwrap_or("").to_string();
         if fname.is_empty() { continue; }
-
         let dst = mods_dir.join(&fname);
-
-        // Если мод уже есть с правильным хешем — пропускаем
+        // Пропускаем если файл уже есть с правильным хешем
         if dst.exists() && !expected_sha.is_empty() {
             let actual = sha256_file(&dst).unwrap_or_default();
-            if actual.eq_ignore_ascii_case(expected_sha) {
-                done += 1;
-                continue;
-            }
+            if actual.eq_ignore_ascii_case(expected_sha) { continue; }
         }
-
-        let _ = app.emit("download_progress", DownloadProgress {
-            file:       format!("[{}/{}] {}", done + 1, total_mods, fname),
-            downloaded: done,
-            total:      total_mods,
-            speed_kbs:  0,
-        });
-
-        // Скачиваем мод с /api/mods/file/:name
         let encoded_name = fname.replace(' ', "%20").replace('(', "%28").replace(')', "%29");
         let mod_url = format!("{}/api/mods/file/{}", base_url, encoded_name);
-        let tmp_file = tmp_dir.join(&fname);
+        tasks.push((fname.clone(), mod_url, expected_sha.clone(), name_lower.clone(), tmp_dir.join(&fname)));
+    }
 
-        let dl = std::process::Command::new("curl").creation_flags(0x08000000)
-            .arg("--proto").arg("=https").arg("--tlsv1.2")
-            .arg("-fL").arg("--max-time").arg("120")
-            .arg("--connect-timeout").arg("15")
-            .arg("--retry").arg("3")
-            .arg(&mod_url).arg("-o").arg(&tmp_file)
-            .output()
-            .map_err(|e| format!("curl mod {}: {}", fname, e))?;
+    let to_download = tasks.len() as u64;
+    if to_download == 0 {
+        report.synced = total_mods as u32;
+    } else {
+        let _ = app.emit("download_progress", DownloadProgress {
+            file: format!("Модпак: скачивание {}/{}", to_download, total_mods),
+            downloaded: 0,
+            total: total_mods,
+            speed_kbs: 0,
+        });
 
-        if !dl.status.success() {
-            report.missing.push(ModIssue {
-                name: fname.clone(),
-                reason: "missing".into(),
-                detail: format!("Не удалось скачать: HTTP {}", dl.status),
-            });
-            done += 1;
-            continue;
-        }
+        use futures_util::stream::{self, StreamExt};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+        let done = Arc::new(AtomicU64::new(0));
+        let synced = Arc::new(AtomicU64::new(0));
+        let synced_ref = synced.clone();
 
-        // Проверяем SHA256
-        if !expected_sha.is_empty() {
-            let actual = sha256_file(&tmp_file).unwrap_or_default();
-            if !actual.eq_ignore_ascii_case(expected_sha) {
-                report.rejected.push(ModIssue {
-                    name: fname.clone(),
-                    reason: "tampered".into(),
-                    detail: format!("SHA256 не совпал ({}… ≠ {}…)", &expected_sha[..12], &actual[..12.min(actual.len())]),
-                });
-                let _ = std::fs::remove_file(&tmp_file);
-                done += 1;
-                continue;
-            }
-        }
+        // Клонируем mods_dir для замыканий
+        let mods_dir = mods_dir.clone();
 
-        let _ = std::fs::copy(&tmp_file, &dst);
-        let _ = std::fs::remove_file(&tmp_file);
-        report.synced += 1;
-        done += 1;
+        stream::iter(tasks)
+            .map(move |(fname, mod_url, expected_sha, name_lower, tmp_file)| {
+                let app = app.clone();
+                let done = done.clone();
+                let synced = synced_ref.clone();
+                let mods_dir = mods_dir.clone();
+                async move {
+                    let client = SHARED_CLIENT.get_or_init(|| {
+                        reqwest::Client::builder()
+                            .pool_max_idle_per_host(32)
+                            .pool_idle_timeout(std::time::Duration::from_secs(300))
+                            .tcp_keepalive(std::time::Duration::from_secs(30))
+                            .timeout(std::time::Duration::from_secs(120))
+                            .build()
+                            .unwrap_or_else(|_| reqwest::Client::new())
+                    });
+
+                    match client.get(&mod_url).send().await {
+                        Ok(resp) if resp.status().is_success() => {
+                            let bytes = resp.bytes().await.unwrap_or_default();
+                            let _ = std::fs::write(&tmp_file, &bytes);
+
+                            // SHA256 проверка
+                            if !expected_sha.is_empty() {
+                                let actual = sha256_file(&tmp_file).unwrap_or_default();
+                                if !actual.eq_ignore_ascii_case(&expected_sha) {
+                                    let _ = std::fs::remove_file(&tmp_file);
+                                    let c = done.fetch_add(1, Ordering::Relaxed) + 1;
+                                    let _ = app.emit("download_progress", DownloadProgress {
+                                        file: format!("Модпак: {}/{}", c, to_download),
+                                        downloaded: c, total: total_mods, speed_kbs: 0,
+                                    });
+                                    return;
+                                }
+                            }
+                            let dst = mods_dir.join(&fname);
+                            let _ = std::fs::copy(&tmp_file, &dst);
+                            let _ = std::fs::remove_file(&tmp_file);
+                            synced.fetch_add(1, Ordering::Relaxed);
+                        }
+                        _ => {
+                            // мод не скачался — пропускаем
+                        }
+                    }
+                    let c = done.fetch_add(1, Ordering::Relaxed) + 1;
+                    let _ = app.emit("download_progress", DownloadProgress {
+                        file: format!("Модпак: {}/{}", c, to_download),
+                        downloaded: c, total: total_mods, speed_kbs: 0,
+                    });
+                }
+            })
+            .buffer_unordered(8)
+            .for_each(|_| async {})
+            .await;
+
+        report.synced += synced.load(Ordering::Relaxed) as u32;
     }
 
     let _ = app.emit("download_progress", DownloadProgress {
@@ -2746,11 +2774,10 @@ pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri
     // Переиспользуем общий HTTP-клиент с пулом соединений (keep-alive) —
     // критично для скорости при параллельной загрузке десятков библиотек.
     // Создание клиента на каждый файл = ~100ms оверхед на TLS-handshake.
-    static SHARED_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     let client = SHARED_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
-            .pool_max_idle_per_host(16)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .pool_max_idle_per_host(32)
+            .pool_idle_timeout(std::time::Duration::from_secs(300))
             .tcp_keepalive(std::time::Duration::from_secs(30))
             .timeout(std::time::Duration::from_secs(120))
             .build()
