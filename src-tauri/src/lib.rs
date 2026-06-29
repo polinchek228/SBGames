@@ -24,6 +24,19 @@ use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use std::collections::HashSet;
 
 pub(crate) static SHARED_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+/// Гарантированно инициализировать SHARED_CLIENT (вызывать при старте приложения).
+pub(crate) fn init_shared_http_client() {
+    SHARED_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .pool_max_idle_per_host(32)
+            .pool_idle_timeout(std::time::Duration::from_secs(300))
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    });
+}
 use std::path::PathBuf;
 use hmac::Mac;
 
@@ -2289,15 +2302,8 @@ async fn sync_modpack(app: &tauri::AppHandle) -> Result<ModpackReport, String> {
                 let synced = synced_ref.clone();
                 let mods_dir = mods_dir.clone();
                 async move {
-                    let client = SHARED_CLIENT.get_or_init(|| {
-                        reqwest::Client::builder()
-                            .pool_max_idle_per_host(32)
-                            .pool_idle_timeout(std::time::Duration::from_secs(300))
-                            .tcp_keepalive(std::time::Duration::from_secs(30))
-                            .timeout(std::time::Duration::from_secs(120))
-                            .build()
-                            .unwrap_or_else(|_| reqwest::Client::new())
-                    });
+                    let client = SHARED_CLIENT.get()
+                        .expect("HTTP client not initialized");
 
                     match client.get(&mod_url).send().await {
                         Ok(resp) if resp.status().is_success() => {
@@ -2774,15 +2780,8 @@ pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri
     // Переиспользуем общий HTTP-клиент с пулом соединений (keep-alive) —
     // критично для скорости при параллельной загрузке десятков библиотек.
     // Создание клиента на каждый файл = ~100ms оверхед на TLS-handshake.
-    let client = SHARED_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .pool_max_idle_per_host(32)
-            .pool_idle_timeout(std::time::Duration::from_secs(300))
-            .tcp_keepalive(std::time::Duration::from_secs(30))
-            .timeout(std::time::Duration::from_secs(120))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    });
+    let client = SHARED_CLIENT.get()
+        .expect("HTTP client not initialized");
 
     let mut urls = vec![url.to_string()];
     if url.contains("libraries.minecraft.net") {
@@ -3291,6 +3290,10 @@ pub fn run() {
         if scan_loaded_modules() { std::process::exit(1); }
         start_guard_thread();
     }
+
+    // Инициализируем общий HTTP-клиент заранее, чтобы все модули использовали
+    // один экземпляр с правильным timeout (120s) и HTTP/2.
+    init_shared_http_client();
 
     tauri::Builder::default()
         .manage(DiscordState(Mutex::new(None)))

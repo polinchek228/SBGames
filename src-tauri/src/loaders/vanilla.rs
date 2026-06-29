@@ -34,15 +34,8 @@ fn emit(app: &AppHandle, file: &str, downloaded: u64, total: u64) {
 
 /// HTTP GET JSON через общий HTTP-клиент (HTTP/2 + keep-alive).
 async fn http_get_json(url: &str) -> Result<Value, String> {
-    let client = crate::SHARED_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .pool_max_idle_per_host(32)
-            .pool_idle_timeout(std::time::Duration::from_secs(300))
-            .tcp_keepalive(std::time::Duration::from_secs(30))
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    });
+    let client = crate::SHARED_CLIENT.get()
+        .ok_or("HTTP client not initialized")?;
     let resp = client
         .get(url)
         .header("User-Agent", "SBGames-Launcher/1.0")
@@ -171,7 +164,6 @@ async fn ensure_assets(instance_dir: &Path, ver: &Value, app: &AppHandle) -> Res
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
     let done = Arc::new(AtomicU64::new(0));
-    let start = std::time::Instant::now();
 
     stream::iter(tasks)
         .map(|(hash, dest, url)| {
@@ -190,13 +182,11 @@ async fn ensure_assets(instance_dir: &Path, ver: &Value, app: &AppHandle) -> Res
                 }
                 let count = done.fetch_add(1, Ordering::Relaxed) + 1;
                 if count % 50 == 0 || count == to_download as u64 {
-                    let elapsed = start.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.0 { (count as f64 / elapsed) as u64 } else { 0 };
                     let _ = app.emit("download_progress", crate::DownloadProgress {
                         file: format!("Ассеты: {}/{}", count, to_download),
                         downloaded: count,
                         total: total as u64,
-                        speed_kbs: speed,
+                        speed_kbs: 0,
                     });
                 }
             }

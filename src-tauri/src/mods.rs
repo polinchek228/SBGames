@@ -186,15 +186,8 @@ pub async fn resolve_modrinth_version(
         "https://api.modrinth.com/v2/project/{}/version?loaders=[\"{}\"]&game_versions=[\"{}\"]",
         project_id, loader_str, mc_version
     );
-    let client = crate::SHARED_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .pool_max_idle_per_host(32)
-            .pool_idle_timeout(std::time::Duration::from_secs(300))
-            .tcp_keepalive(std::time::Duration::from_secs(30))
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    });
+    let client = crate::SHARED_CLIENT.get()
+        .ok_or("HTTP client not initialized")?;
     let resp = client
         .get(&url)
         .header("User-Agent", "SBGames-Launcher/1.0")
@@ -237,15 +230,8 @@ pub async fn mod_versions(
         "https://api.modrinth.com/v2/project/{}/version?loaders=[\"{}\"]&game_versions=[\"{}\"]",
         project_id, loader, mc_version
     );
-    let client = crate::SHARED_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .pool_max_idle_per_host(32)
-            .pool_idle_timeout(std::time::Duration::from_secs(300))
-            .tcp_keepalive(std::time::Duration::from_secs(30))
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    });
+    let client = crate::SHARED_CLIENT.get()
+        .ok_or("HTTP client not initialized")?;
     let resp = client
         .get(&url)
         .header("User-Agent", "SBGames-Launcher/1.0")
