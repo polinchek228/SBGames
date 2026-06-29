@@ -2772,24 +2772,20 @@ fn check_jar_has_module_info(jar: &PathBuf) -> std::io::Result<bool> {
 
 pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri::AppHandle) -> Result<(), String> {
     use futures_util::StreamExt;
-    use std::io::Write as _;
     use reqwest::header::USER_AGENT;
 
-    std::fs::create_dir_all(dest.parent().unwrap()).ok();
+    let dest = dest.to_path_buf();
+    let dest_clone = dest.clone();
+    let _ = tokio::task::spawn_blocking(move || std::fs::create_dir_all(dest_clone.parent().unwrap_or(&dest_clone))).await;
 
-    // Переиспользуем общий HTTP-клиент с пулом соединений (keep-alive) —
-    // критично для скорости при параллельной загрузке десятков библиотек.
-    // Создание клиента на каждый файл = ~100ms оверхед на TLS-handshake.
     let client = SHARED_CLIENT.get()
         .expect("HTTP client not initialized");
 
     let mut urls = vec![url.to_string()];
     if url.contains("libraries.minecraft.net") {
         if let Some(path) = url.strip_prefix("https://libraries.minecraft.net/") {
-            let mc = format!("https://repo1.maven.org/maven2/{}", path);
-            let forge = format!("https://maven.minecraftforge.net/{}", path);
-            urls.push(mc);
-            urls.push(forge);
+            urls.push(format!("https://repo1.maven.org/maven2/{}", path));
+            urls.push(format!("https://maven.minecraftforge.net/{}", path));
         }
     }
 
@@ -2797,7 +2793,7 @@ pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri
     for attempt_url in &urls {
         for retry in 0..2 {
             let req = client.get(attempt_url)
-                .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SBGames-Launcher/1.0");
+                .header(USER_AGENT, "SBGames-Launcher/1.0");
 
             let res = match req.send().await {
                 Ok(r) => r,
@@ -2815,57 +2811,36 @@ pub(crate) async fn download_file(url: &str, dest: &std::path::Path, app: &tauri
             }
 
             let total_size = res.content_length().unwrap_or(0);
-            let mut file = std::fs::File::create(dest).map_err(|e| format!("File create error: {}", e))?;
+            let capacity = (total_size as usize).min(100 * 1024 * 1024);
+            let mut buf = Vec::with_capacity(capacity);
             let mut stream = res.bytes_stream();
-            
-            let mut downloaded = 0u64;
-            let start_time = std::time::Instant::now();
-            let mut last_emit = std::time::Instant::now();
-
             while let Some(chunk_result) = stream.next().await {
-                let chunk = chunk_result.map_err(|e| format!("Stream chunk read error: {}", e))?;
-                file.write_all(&chunk).map_err(|e| format!("Failed to write chunk to file: {}", e))?;
-                downloaded += chunk.len() as u64;
-
-                // Emit progress every 150ms to prevent flooding IPC
-                if last_emit.elapsed() >= std::time::Duration::from_millis(150) {
-                    let elapsed_secs = start_time.elapsed().as_secs_f64();
-                    let speed_kbs = if elapsed_secs > 0.0 {
-                        ((downloaded as f64 / 1024.0) / elapsed_secs) as u64
-                    } else {
-                        0
-                    };
-
-                    let file_name = dest.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                    let _ = app.emit("download_progress", DownloadProgress {
-                        file: file_name,
-                        downloaded,
-                        total: total_size,
-                        speed_kbs,
-                    });
-                    last_emit = std::time::Instant::now();
-                }
+                let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
+                buf.extend_from_slice(&chunk);
             }
 
-            // Final 100% progress emit
-            let file_name = dest.file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let _ = app.emit("download_progress", DownloadProgress {
-                file: file_name,
-                downloaded,
-                total: total_size,
-                speed_kbs: 0,
-            });
+            // Запись на диск в отдельном blocking-токене — не блокирует async runtime.
+            let write_dest = dest.clone();
+            let write_result = tokio::task::spawn_blocking(move || -> Result<(), String> {
+                std::fs::write(&write_dest, &buf).map_err(|e| format!("File write: {}", e))
+            }).await;
 
-            return Ok(());
+            match write_result {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(e)) => {
+                    last_err = e;
+                    tokio::time::sleep(std::time::Duration::from_millis(300 * (retry as u64 + 1))).await;
+                    continue;
+                }
+                Err(join_err) => {
+                    last_err = format!("spawn_blocking: {}", join_err);
+                    continue;
+                }
+            }
         }
     }
 
-    Err(format!("Не удалось скачать {}: {}", url, last_err))
+    Err(format!("{}: {}", url, last_err))
 }
 
 // ─── Tray popup (custom UI) ──────────────────────────────────────────────────
