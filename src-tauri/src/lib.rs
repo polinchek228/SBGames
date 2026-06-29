@@ -4,6 +4,17 @@
 #[allow(unused_imports)]
 use std::os::windows::process::CommandExt as _CmdExtGlobal; // __global_cmdext__
 
+// On non-Windows platforms, provide a no-op .creation_flags() method
+// so the same code compiles everywhere without #[cfg] scattered everywhere.
+#[cfg(not(windows))]
+trait _CmdExtCompat {
+    fn creation_flags(self, _flags: u32) -> Self;
+}
+#[cfg(not(windows))]
+impl _CmdExtCompat for std::process::Command {
+    fn creation_flags(self, _flags: u32) -> Self { self }
+}
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -492,7 +503,7 @@ fn get_system_ram_gb() -> u64 {
                 }
             }
         }
-        if let Ok(o) = std::process::Command::new("sysctl").creation_flags(0x08000000).args(["-n","hw.memsize"]).output() {
+        if let Ok(o) = std::process::Command::new("sysctl").args(["-n","hw.memsize"]).output() {
             if let Ok(s) = std::str::from_utf8(&o.stdout) {
                 if let Ok(b) = s.trim().parse::<u64>() { return b / (1024*1024*1024); }
             }
@@ -2537,7 +2548,7 @@ pub(crate) fn find_java() -> Option<PathBuf> {
     // 2. PATH через системный which/where (where = Windows, which = unix).
     let exe = if cfg!(target_os = "windows") { "java.exe" } else { "java" };
     let lookup = if cfg!(target_os = "windows") { "where" } else { "which" };
-    if let Ok(out) = std::process::Command::new(lookup).creation_flags(0x08000000).arg(exe).output() {
+    if let Ok(out) = std::process::Command::new(lookup).arg(exe).output() {
         if out.status.success() {
             let s = String::from_utf8_lossy(&out.stdout);
             if let Some(line) = s.lines().next() {
@@ -2557,7 +2568,7 @@ pub(crate) fn find_java() -> Option<PathBuf> {
     } else if cfg!(target_os = "macos") {
         // macOS: JDK лежат в /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home.
         // /usr/libexec/java_home возвращает текущий активный JDK.
-        if let Ok(out) = std::process::Command::new("/usr/libexec/java_home").creation_flags(0x08000000).output() {
+        if let Ok(out) = std::process::Command::new("/usr/libexec/java_home").output() {
             if out.status.success() {
                 let home = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !home.is_empty() {

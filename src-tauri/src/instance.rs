@@ -299,7 +299,7 @@ fn open_in_file_manager(path: &PathBuf) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open").creation_flags(0x08000000)
+        std::process::Command::new("open")
             .arg(path)
             .spawn()
             .map_err(|e| format!("open: {}", e))?;
@@ -307,7 +307,7 @@ fn open_in_file_manager(path: &PathBuf) -> Result<(), String> {
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        std::process::Command::new("xdg-open").creation_flags(0x08000000)
+        std::process::Command::new("xdg-open")
             .arg(path)
             .spawn()
             .map_err(|e| format!("xdg-open: {}", e))?;

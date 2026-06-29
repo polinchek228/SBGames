@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import {
   Coins, UploadSimple, ArrowCounterClockwise, TelegramLogo,
   IdentificationCard, CalendarBlank, Shield, GameController,
-  ArrowRight,
 } from "@phosphor-icons/react";
 // skinview3d (three.js) грузится динамически в useEffect — ленивая загрузка
 
@@ -198,42 +197,7 @@ export default function CabinetPage({ user }) {
             </div>
           </div>
 
-          {/* Skin customization */}
-          <div className="rounded-2xl p-5 flex-1"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-            <p className="text-[11px] font-bold tracking-widest uppercase mb-4"
-              style={{ color: "rgba(255,255,255,0.3)" }}>Скин</p>
 
-            {skinUnlocked ? (
-              <div>
-                <p className="text-[13px] font-semibold mb-1" style={{ color: "#4ade80" }}>Разблокировано</p>
-                <p className="text-[12px] mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
-                  Загрузи квадратный PNG 64×64 или 128×128 — появится в игре.
-                </p>
-                <label className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold text-[13px] text-white cursor-pointer hover:opacity-90 transition-opacity"
-                  style={{ background: "rgba(37,99,235,0.9)" }}>
-                  <UploadSimple size={14} weight="bold" />
-                  Загрузить скин
-                  <input type="file" accept="image/png" style={{ display: "none" }}
-                    onChange={e => { const f = e.target.files?.[0]; if (f) setSkinFile(f); }} />
-                </label>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[14px] font-bold text-white mb-1">Разблокируй за 1 000 SBT</p>
-                  <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                    Загружай свой PNG-скин 64×64 — появится в 3D-вьювере и в игре.
-                  </p>
-                </div>
-                <Link to="/topup"
-                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold text-[13px] text-white flex-shrink-0 hover:opacity-90 transition-opacity"
-                  style={{ background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#93c5fd" }}>
-                  Пополнить <ArrowRight size={13} />
-                </Link>
-              </div>
-            )}
-          </div>
         </motion.div>
       </div>
 

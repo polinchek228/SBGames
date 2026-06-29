@@ -661,7 +661,7 @@ app.get("/auth/google/check", (req, res) => {
 
 // Step 4: Register nickname for new Google user
 app.post("/auth/google/register", authLimiter, async (req, res) => {
-  const { state, username } = req.body;
+  const { state, username, referralCode } = req.body;
   if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
   const pending = googlePending.get(state);
   if (!pending || pending.step !== "need_nick") return res.status(400).json({ message: "Недействительный запрос" });
@@ -682,6 +682,29 @@ app.post("/auth/google/register", authLimiter, async (req, res) => {
     authProvider: "google",
   };
   await redisAccounts.set(googleId, account);
+
+  const refCode = (referralCode || "").toUpperCase();
+  if (refCode) {
+    let referrerId = null;
+    for (const [rid, data] of referralData) {
+      if (data.code === refCode) { referrerId = rid; break; }
+    }
+    if (referrerId && referrerId !== googleId) {
+      const refData = ensureReferralData(referrerId);
+      refData.referralCount = (refData.referralCount || 0) + 1;
+      refData.referrals.push({
+        tgId: googleId, nick: cleanNick, joinedAt: new Date().toISOString(), totalDonated: 0,
+      });
+      const level = getAffiliateLevel(refData.referralCount);
+      refData.levelPercent = level.percent;
+      await saveReferral(referrerId, refData);
+
+      const newData = ensureReferralData(googleId);
+      newData.referredBy = referrerId;
+      await saveReferral(googleId, newData);
+    }
+  }
+
   const token = signToken(googleId, account.tokenVersion || 0);
   googlePending.set(state, { step: "done", token, user: account });
   res.json({ user: account, token });
@@ -2257,6 +2280,7 @@ function ensureReferralData(tgId) {
       monthlyStats: [],
     };
     referralData.set(tgId, data);
+    saveReferral(tgId, data);
   }
   return referralData.get(tgId);
 }
@@ -2456,12 +2480,11 @@ setInterval(() => {
   }
 }, 60_000);
 
-// GET /invite/:code — redirect to registration with code
+// GET /invite/:code — redirect to login with referral code
 app.get("/invite/:code", (req, res) => {
   const code = (req.params.code || "").toUpperCase();
-  const data = [...referralData.values()].find(d => d.code === code);
-  if (!data) return res.redirect("https://games.sb-capital.group/");
-  res.redirect(`https://games.sb-capital.group/?ref=${code}`);
+  if (!code || code.length < 3) return res.redirect("https://games.sb-capital.group/");
+  res.redirect(302, `https://games.sb-capital.group/login?ref=${code}`);
 });
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────

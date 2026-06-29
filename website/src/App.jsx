@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import { getUser, refreshUser } from "./lib/api.js";
 
@@ -50,6 +50,13 @@ function ReferralCapture() {
   return null;
 }
 
+function InviteRedirect() {
+  const { code } = useParams();
+  if (code) localStorage.setItem("referral", code.toUpperCase());
+  if (getUser()) return <Navigate to="/affiliate/dashboard" replace />;
+  return <Navigate to="/login" replace />;
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
@@ -93,6 +100,7 @@ export default function App() {
             <Routes>
               <Route path="/"           element={<HomePage />} />
               <Route path="/login"      element={<LoginPage onLogin={handleLogin} />} />
+              <Route path="/invite/:code" element={<InviteRedirect />} />
               <Route path="/rules"      element={<RulesPage />} />
               <Route path="/download"   element={<DownloadPage />} />
               <Route path="/howtoplay"  element={<HowToPlayPage />} />
