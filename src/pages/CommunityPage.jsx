@@ -27,7 +27,7 @@ function highlight(text, query) {
 const STATUS_DOT = { online: "#4ade80", offline: "rgba(255,255,255,0.12)" };
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini, suppressNotifications }) {
+export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini, suppressNotifications, pendingCall, onPendingCallConsumed }) {
   const [tab,         setTab]         = useState("friends");
   const [friends,     setFriends]     = useState([]);
   const [requests,    setRequests]    = useState([]);
@@ -63,6 +63,14 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   const pcRef        = useRef({});   // { [peerId]: RTCPeerConnection }
   const localStream  = useRef(null);
   const screenStream = useRef(null);
+
+  // Поглощаем входящий звонок из MainLayout (когда сайдбар открывается по incoming_call)
+  useEffect(() => {
+    if (pendingCall) {
+      setIncomingCall({ fromId: pendingCall.fromId, fromUsername: pendingCall.fromUsername, offer: pendingCall.offer, callType: pendingCall.callType });
+      onPendingCallConsumed?.();
+    }
+  }, [pendingCall]);
 
   useEffect(() => {
     if (tab !== "add" || addNick.length < 2) { setSearchResults([]); return; }
@@ -295,8 +303,17 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     };
 
     pc.ontrack = e => {
-      const audio = document.getElementById(`audio-${peerId}`);
-      if (audio) { audio.srcObject = e.streams[0]; audio.play().catch(() => {}); }
+      // Создаём <audio> динамически, т.к. pcRef — ref и React не перерендеривает компонент
+      let audio = document.getElementById(`audio-${peerId}`);
+      if (!audio) {
+        audio = document.createElement("audio");
+        audio.id = `audio-${peerId}`;
+        audio.autoplay = true;
+        audio.playsInline = true;
+        audio.style.display = "none";
+        document.body.appendChild(audio);
+      }
+      if (e.streams[0]) { audio.srcObject = e.streams[0]; audio.play().catch(() => {}); }
     };
 
     pc.onconnectionstatechange = () => {
@@ -312,6 +329,8 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     pcRef.current = {};
     if (localStream.current) { localStream.current.getTracks().forEach(t => t.stop()); localStream.current = null; }
     if (screenStream.current) { screenStream.current.getTracks().forEach(t => t.stop()); screenStream.current = null; }
+    // Удаляем динамически созданные audio-элементы
+    document.querySelectorAll("audio[id^='audio-']").forEach(el => el.remove());
     setActiveCall(null);
     setIncomingCall(null);
     setGroupVoiceIds([]);

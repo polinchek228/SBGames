@@ -91,6 +91,7 @@ export default function MainLayout({ user, onLogout }) {
   const [viewUserId, setViewUserId] = useState(null);
   const [balance, setBalance] = useState(user?.balance ?? 0);
   const [communityOpen, setCommunityOpen] = useState(false);
+  const [pendingCall, setPendingCall] = useState(null); // входящий звонок когда сайдбар закрыт
 
   const balanceRef = useRef(balance);
   balanceRef.current = balance;
@@ -116,6 +117,12 @@ export default function MainLayout({ user, onLogout }) {
       }
       if (msg.type === "ticket_update" && msg.ticket?.status === "answered") {
         pushNotification("Поддержка ответила", `Ответ по обращению #${msg.ticket.id}`, "ticket");
+      }
+      // Входящий звонок — показываем уведомление и открываем сайдбар
+      if (msg.type === "incoming_call") {
+        pushNotification("Входящий звонок", `Звонит ${msg.fromUsername}`, "call");
+        setPendingCall(msg);
+        setCommunityOpen(true);
       }
     });
 
@@ -331,6 +338,8 @@ export default function MainLayout({ user, onLogout }) {
                   user={user}
                   mini
                   suppressNotifications={page === "community"}
+                  pendingCall={pendingCall}
+                  onPendingCallConsumed={() => setPendingCall(null)}
                   onBadgeChange={() => {}}
                   onViewProfile={(id) => { setViewUserId(id); setPage("profile"); setCommunityOpen(false); }}
                 />
