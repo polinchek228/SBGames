@@ -1639,6 +1639,8 @@ async fn launch_minecraft(
             }
 
             #[cfg(not(target_os = "windows"))]
+            {
+            let mut tick: u32 = 0;
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
                 let alive = std::process::Command::new("kill").creation_flags(0x08000000)
@@ -1705,6 +1707,7 @@ async fn launch_minecraft(
                     break;
                 }
                 tick = tick.wrapping_add(1);
+            }
             }
         });
     }
