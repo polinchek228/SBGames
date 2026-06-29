@@ -134,8 +134,8 @@ export function NotificationProvider({ children }) {
 // ─── Toast stack — Steam style, top-right corner ─────────────────────────────
 function ToastStack({ toasts, onDismiss }) {
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"
-      style={{ width: 340 }}
+    <div className="fixed top-4 right-4 flex flex-col gap-2 pointer-events-none"
+      style={{ width: 340, zIndex: 100000 }}
     >
       <AnimatePresence>
         {toasts.map((n) => (
@@ -176,8 +176,10 @@ function Toast({ notif, onDismiss }) {
       <div
         className="relative rounded-xl overflow-hidden"
         style={{
-          background: "linear-gradient(135deg, #1a1a24 0%, #14141c 100%)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+          background: "rgba(20, 20, 28, 0.97)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08)",
         }}
       >
         {/* Accent top line */}
@@ -328,9 +330,10 @@ export function NotificationBell() {
             transition={{ type: "spring", stiffness: 450, damping: 32 }}
             className="absolute top-10 right-0 w-[320px] rounded-xl overflow-hidden"
             style={{
-              zIndex: 10001,
-              background: "linear-gradient(180deg, #1a1a24 0%, #14141c 100%)",
-              boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+              zIndex: 100001,
+              background: "rgba(20, 20, 28, 0.97)",
+              backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+              boxShadow: "0 12px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08)",
             }}
           >
             {/* Header */}

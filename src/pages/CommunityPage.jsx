@@ -497,6 +497,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
             call={activeCall}
             groupVoiceIds={groupVoiceIds}
             friends={friends}
+            localStream={localStream}
             onMute={toggleMute}
             onShare={activeCall.sharing ? stopScreenShare : startScreenShare}
             onHangUp={hangUp}
@@ -2238,7 +2239,8 @@ function IncomingCallModal({ call, onAccept, onReject }) {
     >
       <div style={{
         width: 300, borderRadius: 20,
-        background: "linear-gradient(180deg, #1a1a24 0%, #14141c 100%)",
+        background: "rgba(20, 20, 28, 0.97)",
+        backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
         border: "1px solid rgba(255,255,255,0.08)",
         boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
         padding: "28px 24px 24px",
@@ -2300,91 +2302,133 @@ function IncomingCallModal({ call, onAccept, onReject }) {
 }
 
 // ─── CallOverlay ──────────────────────────────────────────────────────────────
-function CallOverlay({ call, groupVoiceIds, friends, onMute, onShare, onHangUp }) {
+function CallOverlay({ call, groupVoiceIds, friends, localStream, onMute, onShare, onHangUp }) {
+  const selfVideoRef = React.useRef(null);
+  const [elapsed, setElapsed] = React.useState(0);
+  const startRef = React.useRef(Date.now());
+
+  React.useEffect(() => {
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Привязываем локальный стрим к video-элементу
+  React.useEffect(() => {
+    const video = selfVideoRef.current;
+    if (!video || !localStream?.current) return;
+    // Останавливаем предыдущий srcObject чтобы не дублировать
+    video.srcObject = null;
+    const tracks = localStream.current.getTracks();
+    if (tracks.length > 0) {
+      video.srcObject = localStream.current;
+    }
+  }, [call]);
+
+  const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const label = call.type === "dm"
     ? (call.peerName || "Собеседник")
-    : `Голосовой чат (${groupVoiceIds.length})`;
+    : `Голосовой чат · ${groupVoiceIds.length}`;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 20, scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 380, damping: 28 }}
+      initial={{ opacity: 0, scale: 0.92, y: 30 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.92, y: 30 }}
+      transition={{ type: "spring", stiffness: 350, damping: 28 }}
       style={{
-        position: "fixed", bottom: 20, right: 20, zIndex: 9998,
-        width: 280, borderRadius: 18,
-        background: "linear-gradient(180deg, #1a1a24 0%, #14141c 100%)",
+        position: "fixed", bottom: 24, right: 24, zIndex: 99999,
+        width: 320, borderRadius: 22, overflow: "hidden",
+        background: "rgba(16, 16, 24, 0.97)",
+        backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
         border: "1px solid rgba(255,255,255,0.08)",
-        boxShadow: "0 12px 48px rgba(0,0,0,0.7)",
-        overflow: "hidden",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05)",
       }}
     >
+      {/* Accent line */}
       <div style={{ height: 2, background: "linear-gradient(90deg, transparent, #2563eb, transparent)" }} />
-      <div style={{ padding: "14px 16px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+
+      {/* Self-video preview */}
+      <div style={{ padding: "12px 12px 0" }}>
+        <video
+          ref={selfVideoRef}
+          autoPlay muted playsInline
+          style={{
+            width: "100%", height: 100, borderRadius: 14, objectFit: "cover",
+            background: "#0a0a12",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        />
+      </div>
+
+      {/* Info */}
+      <div style={{ padding: "10px 16px 4px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: 12,
+            background: "linear-gradient(135deg, rgba(37,99,235,0.2), rgba(37,99,235,0.05))",
+            border: "1px solid rgba(59,130,246,0.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
             <Phone size={15} weight="fill" style={{ color: "#60a5fa" }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ color: "#fff", fontSize: 13, fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</p>
-            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, margin: 0 }}>
-              {call.muted ? "Микрофон выкл" : "В эфире"}{call.sharing ? " · Экран" : ""}
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, margin: 0, fontWeight: 600, fontFamily: "monospace" }}>
+              {fmt(elapsed)}{call.muted ? " · Выкл. микро" : ""}{call.sharing ? " · Экран" : ""}
             </p>
           </div>
         </div>
+      </div>
 
-        {call.type === "group" && groupVoiceIds.length > 0 && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-            {groupVoiceIds.map(uid => {
-              const f = friends.find(x => x.id === uid);
-              return (
-                <div key={uid} style={{
-                  width: 32, height: 32, borderRadius: 8,
-                  background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.25)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 10, fontWeight: 700, color: "#60a5fa",
-                }}>
-                  {(f?.username || "?").slice(0, 2).toUpperCase()}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onMute}
-            style={{
-              flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
-              background: call.muted ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.06)",
-              color: call.muted ? "#f87171" : "rgba(255,255,255,0.6)",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 11, fontWeight: 600,
-            }}>
-            {call.muted ? <MicrophoneSlash size={13} weight="fill" /> : <Microphone size={13} weight="fill" />}
-            {call.muted ? "Вкл" : "Выкл"}
-          </button>
-          <button onClick={onShare}
-            style={{
-              flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
-              background: call.sharing ? "rgba(37,99,235,0.3)" : "rgba(255,255,255,0.06)",
-              color: call.sharing ? "#60a5fa" : "rgba(255,255,255,0.6)",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 11, fontWeight: 600,
-            }}>
-            <MonitorArrowUp size={13} weight="fill" />
-            {call.sharing ? "Стоп" : "Экран"}
-          </button>
-          <button onClick={onHangUp}
-            style={{
-              flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
-              background: "rgba(239,68,68,0.2)", color: "#f87171",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 11, fontWeight: 600,
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.35)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}>
-            <PhoneSlash size={13} weight="fill" />
-            Завершить
-          </button>
+      {/* Participants (group) */}
+      {call.type === "group" && groupVoiceIds.length > 0 && (
+        <div style={{ display: "flex", gap: 6, padding: "6px 16px", flexWrap: "wrap" }}>
+          {groupVoiceIds.map(uid => {
+            const f = friends.find(x => x.id === uid);
+            return (
+              <div key={uid} style={{
+                padding: "4px 10px", borderRadius: 8,
+                background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)",
+                fontSize: 10, fontWeight: 700, color: "#93c5fd",
+              }}>
+                {f?.username || "?"}
+              </div>
+            );
+          })}
         </div>
+      )}
+
+      {/* Controls */}
+      <div style={{ display: "flex", gap: 8, padding: "10px 16px 14px" }}>
+        <button onClick={onMute} style={{
+          flex: 1, padding: "10px 0", borderRadius: 12, border: "none", cursor: "pointer",
+          background: call.muted ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.06)",
+          color: call.muted ? "#f87171" : "rgba(255,255,255,0.6)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+          fontSize: 11, fontWeight: 600, transition: "background 0.15s",
+        }}>
+          {call.muted ? <MicrophoneSlash size={14} weight="fill" /> : <Microphone size={14} weight="fill" />}
+          {call.muted ? "Вкл" : "Выкл"}
+        </button>
+        <button onClick={onShare} style={{
+          flex: 1, padding: "10px 0", borderRadius: 12, border: "none", cursor: "pointer",
+          background: call.sharing ? "rgba(37,99,235,0.25)" : "rgba(255,255,255,0.06)",
+          color: call.sharing ? "#60a5fa" : "rgba(255,255,255,0.6)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+          fontSize: 11, fontWeight: 600, transition: "background 0.15s",
+        }}>
+          <MonitorArrowUp size={14} weight="fill" />
+          {call.sharing ? "Стоп" : "Экран"}
+        </button>
+        <button onClick={onHangUp} style={{
+          flex: 1, padding: "10px 0", borderRadius: 12, border: "none", cursor: "pointer",
+          background: "rgba(239,68,68,0.15)", color: "#f87171",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+          fontSize: 11, fontWeight: 600, transition: "background 0.15s",
+        }}>
+          <PhoneSlash size={14} weight="fill" />
+          Завершить
+        </button>
       </div>
     </motion.div>
   );
