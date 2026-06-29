@@ -293,7 +293,17 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     const pc = new RTCPeerConnection(STUN);
     pcRef.current[peerId] = pc;
 
-    if (localStream.current) localStream.current.getTracks().forEach(t => pc.addTrack(t, localStream.current));
+    if (localStream.current) {
+      const tracks = localStream.current.getTracks();
+      if (tracks.length > 0) {
+        tracks.forEach(t => pc.addTrack(t, localStream.current));
+      } else {
+        // Нет аудио-треков (микро не найден) — создаём трансивер чтобы ontrack сработал
+        pc.addTransceiver("audio", { direction: "sendrecv" });
+      }
+    } else {
+      pc.addTransceiver("audio", { direction: "sendrecv" });
+    }
     if (screenStream.current) screenStream.current.getTracks().forEach(t => pc.addTrack(t, screenStream.current));
 
     pc.onicecandidate = e => {
@@ -350,7 +360,12 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
       return;
     }
     try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Пытаемся захватить микро. Если его нет — звонок всё равно стартует (только приём).
+      try {
+        localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        localStream.current = new MediaStream(); // пустой стрим — нет аудио, но WebRTC жив
+      }
       const pc = createPeerConnection(peer.id, null, true);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -365,7 +380,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   const acceptDMCall = async () => {
     if (!incomingCall) return;
     try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      try {
+        localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        localStream.current = new MediaStream();
+      }
       const pc = createPeerConnection(incomingCall.fromId, null, false);
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
       const answer = await pc.createAnswer();
@@ -391,7 +410,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
   const joinGroupCall = async (groupId, existingParticipants = []) => {
     try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      try {
+        localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        localStream.current = new MediaStream();
+      }
       sendWS({ type: "group_call_join", groupId });
       setActiveCall({ type: "group", groupId, muted: false, sharing: false });
       for (const peerId of existingParticipants) {
