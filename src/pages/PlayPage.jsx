@@ -223,7 +223,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
         const [versions, modrinthLoaders] = await Promise.all([getMcVersions(), getModrinthLoaders()]);
         if (versions?.length) setMcVersions(versions);
         if (modrinthLoaders?.length) {
-          const mapped = modrinthLoaders.map(l => ({ id: l.slug, label: l.name || l.slug }));
+          const ALLOWED_LOADERS = ["forge", "fabric", "quilt", "neoforge"];
+          const mapped = modrinthLoaders
+            .filter(l => ALLOWED_LOADERS.includes(l.slug))
+            .map(l => ({ id: l.slug, label: l.name || l.slug }));
           if (mapped.length) setLoaders([...mapped, { id: "all", label: "Все" }]);
         }
       } catch {}
