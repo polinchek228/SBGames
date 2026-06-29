@@ -319,6 +319,14 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         pc.close(); delete pcRef.current[peerId];
+        // Если это был активный звонок — завершаем UI
+        setActiveCall(prev => {
+          if (prev && prev.peerId === peerId) {
+            document.querySelectorAll(`audio[id^='audio-${peerId}']`).forEach(el => el.remove());
+            return null;
+          }
+          return prev;
+        });
       }
     };
     return pc;
@@ -337,6 +345,10 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   }
 
   const startDMCall = async (peer) => {
+    if (!isWSConnected()) {
+      pushNotif?.("Ошибка", "Нет соединения с сервером. Попробуй позже.", "error");
+      return;
+    }
     try {
       localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       const pc = createPeerConnection(peer.id, null, true);
@@ -346,6 +358,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
       setActiveCall({ type: "dm", peerId: peer.id, peerName: peer.username, muted: false, sharing: false });
     } catch (e) {
       console.error("startDMCall error:", e);
+      pushNotif?.("Ошибка", "Не удалось начать звонок: " + (e.message || e), "error");
     }
   };
 

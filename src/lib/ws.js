@@ -86,9 +86,10 @@ export function sendWS(data) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     try {
       socket.send(JSON.stringify(data));
-    } catch {}
-  } else {
+      return true;
+    } catch { return false; }
   }
+  return false;
 }
 
 export function onWSMessage(fn) {

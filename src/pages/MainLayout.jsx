@@ -202,7 +202,7 @@ export default function MainLayout({ user, onLogout }) {
     switch (id) {
       case "play":        return <Suspense fallback={fallback}><PlayPage user={user} onOpenCommunity={() => setCommunityOpen(v => !v)} /></Suspense>;
       case "profile":     return <Suspense fallback={fallback}><ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} /></Suspense>;
-      case "community":   return <Suspense fallback={fallback}><CommunityPage user={user} onBadgeChange={() => {}} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} suppressNotifications={communityOpen && page !== "community"} /></Suspense>;
+      case "community":   return <Suspense fallback={fallback}><CommunityPage user={user} onBadgeChange={() => {}} pendingCall={pendingCall} onPendingCallConsumed={() => setPendingCall(null)} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} suppressNotifications={communityOpen && page !== "community"} /></Suspense>;
       case "news":        return <Suspense fallback={fallback}><NewsPage /></Suspense>;
       case "shop":        return <Suspense fallback={fallback}><ShopPage user={user} onBalanceChange={setBalance} /></Suspense>;
       case "support":     return <Suspense fallback={fallback}><SupportPage user={user} /></Suspense>;
