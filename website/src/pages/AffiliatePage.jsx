@@ -243,9 +243,6 @@ function HomeTab({ user, stats, levels, onCodeChanged }) {
           <div>
             <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>
               Уровень {currentLevel.level} — {effectivePercent}%
-              {stats?.customPercent != null && (
-                <span style={{ fontSize: 11, color: "#facc15", fontWeight: 600, marginLeft: 6 }}>(настроено админом)</span>
-              )}
             </div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
               Нужно {currentLevel.players} активных рефералов
