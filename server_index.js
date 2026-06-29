@@ -1276,6 +1276,59 @@ async function seedShopItems() {
   console.log(`[shop] seeded ${count} items`);
 }
 
+// Всегда загружаем косметические предметы из фронтенд-каталога (рамки, фоны, бейджи, анимации).
+// Они НЕ хранятся в Redis и не проходят через seed — добавляются в память при старте.
+function loadCosmeticItems() {
+  const now = Date.now();
+  const COSMETIC_ITEMS = [
+    // Рамки
+    { id: "frame_basic_gray",  type: "frame",  name: "Torn",            price: 0,    color: "#6b7280",  rarity: "common" },
+    { id: "frame_basic_blue",  type: "frame",  name: "Sketched Memory", price: 200,  color: "#3b82f6",  rarity: "common" },
+    { id: "frame_neon",        type: "frame",  name: "Bewitching Frame",price: 500,  color: "#a855f7",  rarity: "rare" },
+    { id: "frame_gold",        type: "frame",  name: "Oil",             price: 1500, color: "#facc15",  rarity: "epic" },
+    { id: "frame_galaxy",      type: "frame",  name: "Элли у окна",     price: 3000, color: "#818cf8",  rarity: "legendary" },
+    { id: "frame_fire",        type: "frame",  name: "Husk Frame",      price: 2000, color: "#f97316",  rarity: "epic" },
+    // Фоны
+    { id: "bg_fon1",  type: "background", name: "Фон 1",  price: 0,    color: "#3b82f6", rarity: "common" },
+    { id: "bg_fon2",  type: "background", name: "Фон 2",  price: 500,  color: "#8b5cf6", rarity: "rare" },
+    { id: "bg_fon3",  type: "background", name: "Фон 3",  price: 800,  color: "#ec4899", rarity: "rare" },
+    { id: "bg_fon4",  type: "background", name: "Фон 4",  price: 1200, color: "#f97316", rarity: "epic" },
+    { id: "bg_fon5",  type: "background", name: "Фон 5",  price: 1500, color: "#eab308", rarity: "epic" },
+    { id: "bg_fon6",  type: "background", name: "Фон 6",  price: 2000, color: "#22c55e", rarity: "legendary" },
+    { id: "bg_fon7",  type: "background", name: "Фон 7",  price: 2500, color: "#06b6d4", rarity: "legendary" },
+    { id: "bg_fon8",  type: "background", name: "Фон 8",  price: 600,  color: "#f43f5e", rarity: "rare" },
+    { id: "bg_fon9",  type: "background", name: "Фон 9",  price: 700,  color: "#8b5cf6", rarity: "rare" },
+    { id: "bg_fon10", type: "background", name: "Фон 10", price: 900,  color: "#ec4899", rarity: "rare" },
+    { id: "bg_fon11", type: "background", name: "Фон 11", price: 1100, color: "#f97316", rarity: "epic" },
+    { id: "bg_fon12", type: "background", name: "Фон 12", price: 1300, color: "#eab308", rarity: "epic" },
+    { id: "bg_fon13", type: "background", name: "Фон 13", price: 1500, color: "#22c55e", rarity: "epic" },
+    { id: "bg_fon14", type: "background", name: "Фон 14", price: 1800, color: "#06b6d4", rarity: "epic" },
+    { id: "bg_fon15", type: "background", name: "Фон 15", price: 2000, color: "#818cf8", rarity: "epic" },
+    // Анимации аватара
+    { id: "anim_pulse", type: "avatar_animated", name: "Импульс", price: 1200, color: "#60a5fa", rarity: "epic" },
+    { id: "anim_flame", type: "avatar_animated", name: "Пламя",   price: 1200, color: "#f97316", rarity: "epic" },
+    { id: "anim_neon",  type: "avatar_animated", name: "Неон",    price: 1500, color: "#a855f7", rarity: "legendary" },
+    // Бейджи
+    { id: "badge_cross",    type: "badge", name: "Cross",    price: 0,   color: "#f43f5e", rarity: "common" },
+    { id: "badge_glitch",   type: "badge", name: "Glitch",   price: 500, color: "#64748b", rarity: "rare" },
+    { id: "badge_toxic",    type: "badge", name: "Toxic",    price: 500, color: "#84cc16", rarity: "rare" },
+    { id: "badge_sans",     type: "badge", name: "Sans",     price: 500, color: "#ef4444", rarity: "rare" },
+    { id: "badge_panic",    type: "badge", name: "Panic",    price: 500, color: "#fbbf24", rarity: "rare" },
+    { id: "badge_hollow",   type: "badge", name: "Hollow",   price: 500, color: "#e2e8f0", rarity: "rare" },
+    { id: "badge_horned",   type: "badge", name: "Horned",   price: 500, color: "#334155", rarity: "rare" },
+    { id: "badge_void",     type: "badge", name: "Void",     price: 500, color: "#94a3b8", rarity: "rare" },
+    { id: "badge_trigger",  type: "badge", name: "Trigger",  price: 500, color: "#f97316", rarity: "rare" },
+    { id: "badge_creeper",  type: "badge", name: "Creeper",  price: 500, color: "#22c55e", rarity: "rare" },
+    { id: "badge_voodoo",   type: "badge", name: "Voodoo",   price: 500, color: "#a855f7", rarity: "rare" },
+  ];
+  for (const ci of COSMETIC_ITEMS) {
+    if (!shopItems.has(ci.id)) {
+      shopItems.set(ci.id, { ...ci, category: "Косметика", subcategory: ci.type, image: null, description: "", active: true, createdAt: now, updatedAt: now });
+    }
+  }
+  console.log(`[shop] loaded ${COSMETIC_ITEMS.length} cosmetic items from frontend catalog`);
+}
+
 // ─── Public profile ───────────────────────────────────────────────────────────
 app.get("/api/user/:id", async (req, res) => {
   const id = sanitize(req.params.id, 64);
@@ -4143,6 +4196,7 @@ if (fs.existsSync(websiteDir)) {
   await loadReferralData().catch(() => {});
   await loadAffiliateConfig().catch(() => {});
   await loadShopItems().catch(() => {});
+  loadCosmeticItems();
   await seedShopItems().catch(e => console.warn("[shop] seed failed:", e.message));
 
   
