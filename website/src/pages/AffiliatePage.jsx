@@ -87,7 +87,7 @@ function HomeTab({ user, stats, levels, onCodeChanged }) {
     ? `https://games.sb-capital.group/invite/${stats.referralCode}`
     : "Загрузка...";
   const effectivePercent = stats?.effectivePercent ?? stats?.levelPercent ?? 30;
-  const currentLevel = levels.find(l => l.percent === (stats?.levelPercent || 30)) || levels[0];
+  const currentLevel = levels.reduce((best, l) => l.percent <= effectivePercent ? l : best, levels[0]);
 
   // --- Custom code editor state ---
   const [editing, setEditing] = useState(false);
