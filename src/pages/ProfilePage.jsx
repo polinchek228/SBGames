@@ -209,7 +209,7 @@ const itemVariants = {
 
 function ProfileTab({ user, equip }) {
   const username = user?.username || "Player";
-  const [avatar, setAvatar] = useState(null);
+  const [avatar, setAvatar] = useState(user?.avatar || null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [showScreenshots, setShowScreenshots] = useState(false);
   const [savedBio, setSavedBio] = useState(user?.bio || "");
@@ -457,7 +457,15 @@ function ProfileTab({ user, equip }) {
       <AnimatePresence>
         {showAvatarPicker && (
           <FilePicker accept="image/*" title="Сменить аватар" hint="JPG, PNG · рекомендуется квадратное фото"
-            onSelect={(_, preview) => { setAvatar(preview); setShowAvatarPicker(false); }}
+            onSelect={(_, preview) => {
+              setAvatar(preview);
+              setShowAvatarPicker(false);
+              // Save to server
+              authedFetch("/api/user/avatar", { method: "PUT", body: JSON.stringify({ avatar: preview }) })
+                .then(r => r.json()).then(d => {
+                  if (d.avatar && user) user.avatar = d.avatar;
+                }).catch(() => {});
+            }}
             onClose={() => setShowAvatarPicker(false)} />
         )}
       </AnimatePresence>
@@ -1131,7 +1139,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
                   border: frameColor ? `2.5px solid ${frameColor}55` : "2.5px solid rgba(255,255,255,0.1)",
                   boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
                 }}>
-                <img src="/logo.jpg" alt="avatar" className="w-full h-full object-cover" />
+                <img src={profile.avatar || "/logo.jpg"} alt="avatar" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-[18px] h-[18px] rounded-full"
                 style={{ background: profile.online ? "#22c55e" : "#6b7280", border: "3px solid #0a0a14", zIndex: 15 }} />

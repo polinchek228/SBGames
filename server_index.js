@@ -523,7 +523,10 @@ app.post("/auth/widget-login", async (req, res) => {
   }
 
   account.telegram = tgData.username || account.telegram;
-  account.role     = adminRole;
+  // Never downgrade role on login — only upgrade
+  if (adminRole === "admin" || account.role !== "admin") {
+    account.role = adminRole;
+  }
   await redisAccounts.set(tgId, account);
 
   res.json({ user: account, token: signToken(tgId) });
@@ -547,7 +550,10 @@ app.post("/auth/tg-login", async (req, res) => {
   let account = await redisAccounts.get(tgId);
   if (account) {
     account.telegram = tgUser.username || account.telegram;
-    account.role = isAdmin(tgUser.username || account.username) || isAdminId(tgId) ? "admin" : "user";
+    // Never downgrade role on login — only upgrade
+    if (isAdmin(tgUser.username || account.username) || isAdminId(tgId)) {
+      account.role = "admin";
+    }
     await redisAccounts.set(tgId, account);
     return res.json({ user: account, token: signToken(tgId) });
   }
@@ -740,6 +746,14 @@ app.get("/auth/me", async (req, res) => {
     await redisAccounts.set(payload.sub, acc);
   }
   res.json({ user: acc });
+});
+
+app.put("/api/user/avatar", requireAuth, async (req, res) => {
+  const acc = await redisAccounts.get(req.userId);
+  if (!acc) return res.status(404).json({ message: "Игрок не найден" });
+  acc.avatar = sanitize(req.body.avatar || "", 500);
+  await redisAccounts.set(req.userId, acc);
+  res.json({ ok: true, avatar: acc.avatar });
 });
 
 // ????? ??????? ?? ???? — ???????? ?? ???? ?????????????????? (?? ?????? ??????)
@@ -1344,6 +1358,7 @@ app.get("/api/user/:id", async (req, res) => {
     username: acc.username,
     role: acc.role,
     bio: acc.bio || "",
+    avatar: acc.avatar || null,
     equip: acc.equip || {},
     inventory: Array.isArray(acc.inventory) ? acc.inventory : [],
     createdAt: acc.createdAt,
