@@ -650,19 +650,21 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
   const [error, setError]   = useState(null);
 
   const allItems = useMemo(() => {
+    const shopMap = {};
+    for (const item of (catalog || [])) shopMap[item.id] = item;
     const map = {};
     for (const id of owned) {
       const mkt = CATALOG[id];
       if (mkt) { map[id] = { name: mkt.name, preview: mkt.preview, type: mkt.type, source: "market" }; continue; }
-      const cat = CATALOG_BY_ID[id];
+      const cat = CATALOG_BY_ID[id] || shopMap[id];
       if (cat) {
-        const name = cat.name || (cat.type === "background" ? `Фон ${id.replace("bg_fon", "")}` : id);
+        const name = cat.name || (cat.type === "background" ? `Фон ${id.replace("bg_fon", "")}` : id.replace(/_/g, " "));
         const preview = cat.image || cat.icon || null;
         const video = cat.video || null;
-        map[id] = { name, preview, video, color: cat.color, type: cat.type, rarity: cat.rarity, source: "shop" };
+        map[id] = { name, preview, video, color: cat.color || "#888", type: cat.type || "?", rarity: cat.rarity, source: "shop" };
         continue;
       }
-      map[id] = { name: id, preview: null, video: null, color: "#888", type: "?", source: "unknown" };
+      map[id] = { name: id.replace(/_/g, " "), preview: null, video: null, color: "#888", type: "?", source: "unknown" };
     }
     return map;
   }, [owned, catalog]);

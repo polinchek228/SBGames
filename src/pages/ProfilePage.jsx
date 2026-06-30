@@ -393,49 +393,6 @@ function ProfileTab({ user, equip }) {
       <div className="flex-1 flex flex-col gap-5 px-6 py-5 min-h-0"
         style={{ paddingTop: 20 }}>
 
-        {/* ── Мои предметы ── */}
-        {(() => {
-          const owned = [...new Set(user?.inventory || [])].map(id => CATALOG_BY_ID[id]).filter(Boolean);
-          if (owned.length === 0) return null;
-          return (
-            <motion.div variants={itemVariants}>
-              <p className="text-[9px] font-bold uppercase tracking-[0.16em] mb-2.5" style={{ color: "rgba(255,255,255,0.28)" }}>Мои предметы</p>
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                {owned.map(item => {
-                  const meta = TYPE_META[item.type] || { label: item.type, color: "#94a3b8" };
-                  const rarity = RARITIES[item.rarity] || RARITIES.common;
-                  const isEquipped = equip?.frame === item.id || equip?.background === item.id || equip?.badge === item.id;
-                  return (
-                    <div key={item.id} className="flex-shrink-0 w-[100px] rounded-2xl overflow-hidden"
-                      style={{ background: isEquipped ? `${rarity.color}15` : "rgba(255,255,255,0.05)", border: isEquipped ? `1.5px solid ${rarity.color}30` : "1px solid rgba(255,255,255,0.08)" }}>
-                      <div className="h-[70px] flex items-center justify-center relative"
-                        style={{ background: `radial-gradient(ellipse at 50% 120%, ${rarity.color}12 0%, transparent 70%)` }}>
-                        {item.image ? (
-                          <img src={item.image} alt={item.name || "Предмет"} className="w-12 h-12 object-cover rounded-lg" onError={e => { e.currentTarget.style.display = "none"; }} />
-                        ) : item.icon ? (
-                          <img src={item.icon} alt={item.name || "Предмет"} className="w-10 h-10 object-contain" onError={e => { e.currentTarget.style.display = "none"; }} />
-                        ) : (
-                          <div className="w-10 h-10 rounded-xl" style={{ background: `${rarity.color}20` }} />
-                        )}
-                        {isEquipped && (
-                          <span className="absolute top-1.5 right-1.5 text-[7px] font-black px-1.5 py-0.5 rounded-full"
-                            style={{ background: "rgba(34,197,94,0.25)", color: "#4ade80" }}>
-                            ✓
-                          </span>
-                        )}
-                      </div>
-                      <div className="px-2 py-2">
-                        {item.name && <p className="text-[9px] font-bold text-white truncate">{item.name}</p>}
-                        <p className="text-[8px] truncate" style={{ color: `${rarity.color}aa` }}>{meta.label}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          );
-        })()}
-
         {/* ── Achievement showcase ── */}
         <motion.div variants={itemVariants}>
           <p className="text-[9px] font-bold uppercase tracking-[0.16em] mb-2.5" style={{ color: "rgba(255,255,255,0.28)" }}>Достижения</p>
