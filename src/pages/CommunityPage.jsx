@@ -1165,7 +1165,6 @@ function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, onl
 
 // ─── GroupsPanel ─────────────────────────────────────────────────────────────
 function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCreate, onAcceptInvite, onDeclineInvite }) {
-  const [subTab, setSubTab] = useState("join");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -1178,6 +1177,8 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
   const [applyingId, setApplyingId] = useState(null);
   const [viewingGroup, setViewingGroup] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showingBrowse, setShowingBrowse] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const inAnyClan = groups.length > 0;
   const myClan = groups[0] || null;
@@ -1351,7 +1352,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
   }
 
   /* ── Clan management panel (Steam/Discord style) ── */
-  if (inAnyClan) {
+  if (inAnyClan && !showingBrowse) {
     const g = myClan;
     const members = g.members || [];
     const memberNames = g.memberNames || {};
@@ -1360,8 +1361,43 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
     const isOwner = g.ownerId === user?.id;
     const onlineCount = members.filter(m => onlineIds.has(m)).length;
 
+    const doLeave = async () => {
+      try {
+        await authFetch(`/api/groups/${g.id}/leave`, { method: "POST" });
+      } catch {}
+      setConfirmLeave(false);
+    };
+
     return (
       <div className="flex-1 overflow-y-auto px-3 pb-3">
+        {/* Leave confirmation modal */}
+        {confirmLeave && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={() => setConfirmLeave(false)}>
+            <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.6)" }} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className="relative w-full max-w-[280px] rounded-2xl p-5"
+              style={{ background: "#141418", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
+              onClick={e => e.stopPropagation()}>
+              <p className="text-[14px] font-bold text-white text-center mb-2">Покинуть клан?</p>
+              <p className="text-[11px] text-center mb-5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                Ты выйдешь из «{g.name}». Чтобы вернуться, потребуется заявка.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmLeave(false)}
+                  className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold transition-all"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
+                  Отмена
+                </button>
+                <button onClick={doLeave}
+                  className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all"
+                  style={{ background: "rgba(239,68,68,0.6)" }}>
+                  Покинуть
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {/* Invites */}
         {groupInvites.length > 0 && (
           <div className="mb-4">
@@ -1456,7 +1492,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <ChatCircle size={13} /> Чат
             </button>
-            <button onClick={() => { if (confirm("Покинуть клан?")) { /* leave */ } }}
+            <button onClick={() => setConfirmLeave(true)}
               className="py-3 px-4 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all"
               style={{ color: "rgba(239,68,68,0.6)" }}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "rgba(239,68,68,0.9)"; }}
@@ -1466,8 +1502,8 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           </div>
         </div>
 
-        {/* Members list — Discord style */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+        {/* Members list — horizontal row for small, vertical for large */}
+        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="px-4 pt-3 pb-2">
             <p className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>
               Участники &middot; {members.length}
@@ -1514,22 +1550,30 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
         </div>
 
         {/* Browse other clans */}
-        <div className="mt-4">
-          <button onClick={() => setSubTab("browse")}
-            className="w-full py-2.5 rounded-xl text-[11px] font-semibold transition-all text-center"
-            style={{ background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.06)" }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}>
-            Просмотреть другие кланы
-          </button>
-        </div>
+        <button onClick={() => { setShowingBrowse(true); loadBrowse(); }}
+          className="w-full py-2.5 rounded-xl text-[11px] font-semibold transition-all text-center"
+          style={{ background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.06)" }}
+          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+          onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}>
+          Просмотреть другие кланы
+        </button>
       </div>
     );
   }
 
-  /* ── Browse / Create clan (not in any clan) ── */
+  /* ── Browse / Create clan (not in any clan or browsing) ── */
   return (
     <div className="flex-1 overflow-y-auto px-3 pb-3">
+      {showingBrowse && (
+        <button onClick={() => setShowingBrowse(false)}
+          className="flex items-center gap-1.5 text-[11px] font-semibold mb-3 transition-all px-1"
+          style={{ color: "rgba(168,85,247,0.7)" }}
+          onMouseEnter={e => e.currentTarget.style.color = "rgba(168,85,247,1)"}
+          onMouseLeave={e => e.currentTarget.style.color = "rgba(168,85,247,0.7)"}>
+          <CaretLeft size={12} weight="bold" /> Назад к клану
+        </button>
+      )}
+
       {/* Search */}
       <div className="mb-3 px-1">
         <input
@@ -1827,37 +1871,35 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
               </button>
             </div>
 
-            {/* Player slots */}
-            <div className="flex flex-col gap-2">
+            {/* Player slots — horizontal grid */}
+            <div className="grid grid-cols-5 gap-2">
               {activePartyData.members.map(m => {
                 const online = onlineIds.has(m.id);
                 const isLeader = m.id === activePartyData.leaderId;
                 return (
-                  <div key={m.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                  <div key={m.id} className="relative flex flex-col items-center gap-1.5 p-2 rounded-xl"
                     style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                    <div className="relative flex-shrink-0">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-bold"
+                    <div className="relative">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-bold"
                         style={{ background: isLeader ? "rgba(251,191,36,0.12)" : "rgba(99,102,241,0.15)", color: isLeader ? "rgba(251,191,36,0.9)" : "rgba(168,85,247,0.8)" }}>
                         {m.username?.slice(0, 2).toUpperCase()}
                       </div>
                       <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
                         style={{ borderColor: "rgba(15,15,20,1)", background: online ? "#4ade80" : "rgba(255,255,255,0.12)" }} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold truncate" style={{ color: online ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.45)" }}>
-                        {m.id === user?.id ? "Ты" : m.username}
-                      </p>
-                      <p className="text-[9px]" style={{ color: isLeader ? "rgba(251,191,36,0.6)" : "rgba(255,255,255,0.25)" }}>
-                        {isLeader ? "Лидер" : "Участник"}
-                      </p>
-                    </div>
+                    <p className="text-[9px] font-semibold truncate w-full text-center" style={{ color: online ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)" }}>
+                      {m.id === user?.id ? "Ты" : (m.username || "").slice(0, 6)}
+                    </p>
+                    {isLeader && (
+                      <span className="text-[7px] px-1 rounded font-black" style={{ background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.8)" }}>★</span>
+                    )}
                     {activePartyData.leaderId === user?.id && m.id !== user?.id && (
                       <button onClick={() => onKick(activePartyData.id, m.id)}
-                        className="text-[9px] px-2 py-1 rounded-lg transition-all"
-                        style={{ background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.5)" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.15)"}
-                        onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}>
-                        Кик
+                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px]"
+                        style={{ background: "rgba(239,68,68,0.7)", color: "#fff", opacity: 0, transition: "opacity 0.15s" }}
+                        onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+                        onMouseLeave={e => e.currentTarget.style.opacity = "0"}>
+                        <X size={8} />
                       </button>
                     )}
                   </div>
@@ -1866,10 +1908,9 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
 
               {/* Empty slots */}
               {Array.from({ length: Math.max(0, MAX_SLOTS - activePartyData.members.length) }).map((_, i) => (
-                <div key={`empty-${i}`} className="flex items-center justify-center gap-2 px-3 py-4 rounded-xl"
+                <div key={`empty-${i}`} className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl aspect-square"
                   style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.08)" }}>
-                  <UserPlus size={12} style={{ color: "rgba(255,255,255,0.12)" }} />
-                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.15)" }}>Слот свободен</span>
+                  <UserPlus size={14} style={{ color: "rgba(255,255,255,0.1)" }} />
                 </div>
               ))}
             </div>
@@ -1907,28 +1948,17 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
       ) : !creating ? (
         /* ── Empty state + Create ── */
         <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="px-4 pt-4 pb-3">
-            <p className="text-[11px] font-semibold text-white mb-1">Создай группу</p>
-            <p className="text-[10px] mb-4" style={{ color: "rgba(255,255,255,0.35)" }}>
-              Собери друзей для совместной игры
-            </p>
-
-            {/* Slot preview */}
-            <div className="flex gap-2 mb-4">
-              {Array.from({ length: MAX_SLOTS }).map((_, i) => (
-                <div key={i} className="flex-1 aspect-square rounded-xl flex items-center justify-center"
-                  style={{ background: i === 0 ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)", border: i === 0 ? "1px solid rgba(59,130,246,0.2)" : "1px dashed rgba(255,255,255,0.06)" }}>
-                  {i === 0 ? (
-                    <div className="text-[9px] font-bold" style={{ color: "rgba(96,165,250,0.8)" }}>
-                      {user?.username?.slice(0, 2).toUpperCase() || "ТЫ"}
-                    </div>
-                  ) : (
-                    <UserPlus size={12} style={{ color: "rgba(255,255,255,0.1)" }} />
-                  )}
-                </div>
-              ))}
+          <div className="px-4 py-5 flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{ background: "rgba(37,99,235,0.12)" }}>
+              <UsersThree size={20} style={{ color: "rgba(96,165,250,0.7)" }} />
             </div>
-
+            <div className="text-center">
+              <p className="text-[12px] font-semibold text-white mb-1">Создай группу</p>
+              <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                Собери до {MAX_SLOTS} друзей для совместной игры
+              </p>
+            </div>
             <button onClick={() => setCreating(true)}
               className="w-full py-3 rounded-xl text-[12px] font-bold text-white flex items-center justify-center gap-2 transition-all"
               style={{ background: "rgba(37,99,235,0.35)" }}
