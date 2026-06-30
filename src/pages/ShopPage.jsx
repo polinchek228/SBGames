@@ -6,9 +6,8 @@ import {
   ArrowsLeftRight, CaretLeft, Plus, Tag,
 } from "@phosphor-icons/react";
 import { authedFetch, API_URL } from "../lib/api.js";
+import { useNotifications } from "../components/NotificationSystem.jsx";
 import { CATALOG_BY_ID, LIBRARY_CATALOG } from "./catalog.js";
-
-// Цветовая "редкость" для визуала карточек — вычисляется по цене товара из БД.
 function rarityForPrice(price) {
   if (price >= 2000) return { label: "Легендарный", color: "#f59e0b", bg: "rgba(245,158,11,0.07)" };
   if (price >= 750)  return { label: "Эпический",   color: "#a855f7", bg: "rgba(168,85,247,0.07)" };
@@ -129,6 +128,7 @@ function DonateView({ user, onBalanceChange }) {
   const [detail,   setDetail]   = useState(null);
   const [showCart, setShowCart]  = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const { push: pushNotif } = useNotifications() || {};
 
   // Загружаем каталог из БД — те же товары, что админ редактирует на сайте.
   useEffect(() => {
@@ -156,6 +156,7 @@ function DonateView({ user, onBalanceChange }) {
     if (onBalanceChange && lastBalance != null) onBalanceChange(lastBalance);
     if (okCount > 0) {
       setCart(new Set()); setShowCart(false);
+      pushNotif?.("Покупка", `Товаров куплено: ${okCount}`, "market");
     }
     setCheckingOut(false);
   };
@@ -597,14 +598,16 @@ function ListingRow({ listing, index, onBought, onViewProfile }) {
   const hasImage = !!(catItem?.image || catItem?.icon);
   const hasGradient = !!mktItem?.preview?.startsWith?.("linear");
   const [buying, setBuying] = useState(false);
+  const { push: pushNotif } = useNotifications() || {};
 
   const buy = async () => {
     if (buying) return;
     setBuying(true);
     try {
       await authedFetch(`/api/market/buy/${listing.id}`, { method: "POST" });
+      pushNotif?.("Покупка", `${name} куплен`, "market");
       onBought?.();
-    } catch (e) { /* silent */ }
+    } catch (e) { pushNotif?.("Ошибка", e.message, "group"); }
     finally { setBuying(false); }
   };
 

@@ -31,6 +31,30 @@ export async function listen(event, handler) {
 
 let _notifWin = null;
 let _notifTimer = null;
+let _notifReady = false;
+
+// Точный размер окна = размер карточки. Никакого margin внутри HTML — иначе
+// прозрачная зона по краям на Windows рендерится непрозрачной ("второй фон").
+const NOTIF_W = 360;
+const NOTIF_H = 76;
+const NOTIF_PAD = 16;
+const NOTIF_DURATION = 5000; // должно совпадать с таймер-баром в notification.html
+
+function notifPosition(monitor) {
+  const scale = monitor?.scaleFactor || 1;
+  // workArea исключает таскбар/док (в отличие от size, который покрывает весь
+  // экран). position может быть смещён, если таскбар сверху/слева — учитываем.
+  // Все значения физические → делим на scaleFactor для логических координат.
+  const wa = monitor?.workArea;
+  const areaX = (wa?.position?.x ?? 0) / scale;
+  const areaY = (wa?.position?.y ?? 0) / scale;
+  const areaW = (wa?.size?.width ?? monitor?.size?.width ?? 1920) / scale;
+  const areaH = (wa?.size?.height ?? monitor?.size?.height ?? 1080) / scale;
+  return {
+    x: Math.round(areaX + areaW - NOTIF_W - NOTIF_PAD),
+    y: Math.round(areaY + areaH - NOTIF_H - NOTIF_PAD),
+  };
+}
 
 export async function notifyDesktop(title, body, type = "system") {
   if (!title) return;
@@ -39,64 +63,89 @@ export async function notifyDesktop(title, body, type = "system") {
     const { currentMonitor } = await import("@tauri-apps/api/window");
 
     const monitor = await currentMonitor();
-    const scale = monitor?.scaleFactor || 1;
-    const mw = (monitor?.size?.width ?? 1920) / scale;
-    const mh = (monitor?.size?.height ?? 1080) / scale;
-    const ww = 380, wh = 90, pad = 16;
-    const x = Math.round(mw - ww - pad);
-    const y = Math.round(mh - wh - pad);
+    const { x, y } = notifPosition(monitor);
 
-    const safeTitle = title.slice(0, 100);
-    const safeBody = (body || "").slice(0, 200);
-    const params = new URLSearchParams({ title: safeTitle, body: safeBody, type });
-    const url = `notification.html?${params.toString()}`;
+    const payload = {
+      title: title.slice(0, 100),
+      body: (body || "").slice(0, 200),
+      type,
+      duration: NOTIF_DURATION,
+    };
 
-    // Пробуем найти существующее окно
+    // Пробуем подобрать уже существующее окно (после reload фронта).
     if (!_notifWin) {
-      try { _notifWin = await WebviewWindow.getByLabel("sb-notif"); } catch {}
+      try {
+        _notifWin = await WebviewWindow.getByLabel("sb-notif");
+        if (_notifWin) _notifReady = true;
+      } catch {}
     }
 
-    if (_notifWin) {
+    // Окно уже есть: НЕ перезагружаем страницу (navigate вызывал мигание и
+    // повторную отрисовку фона). Просто шлём событие с новыми данными,
+    // переставляем и показываем.
+    if (_notifWin && _notifReady) {
       try {
-        await _notifWin.hide();
-        await _notifWin.navigate(url);
         await _notifWin.setPosition({ type: "Logical", x, y });
-        await new Promise(r => setTimeout(r, 80));
+        await _notifWin.emit("sbg-notif", payload);
         await _notifWin.show();
-        await _notifWin.setFocus();
+        scheduleHide();
+        return;
       } catch {
         try { await _notifWin.close(); } catch {}
         _notifWin = null;
+        _notifReady = false;
       }
     }
 
-    if (!_notifWin) {
-      _notifWin = new WebviewWindow("sb-notif", {
-        url,
-        title: "SB Games",
-        width: ww,
-        height: wh,
-        x, y,
-        visible: false,
-        transparent: true,
-        decorations: false,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-        resizable: false,
-        focus: false,
-      });
-      await new Promise(r => setTimeout(r, 150));
-      await _notifWin.show();
-      await _notifWin.setFocus();
-    }
+    // Первое создание окна: данные передаём через query (страница рендерит
+    // их сразу на загрузке), плюс слушаем 'sbg-notif' для последующих показов.
+    const params = new URLSearchParams(payload);
+    _notifWin = new WebviewWindow("sb-notif", {
+      url: `notification.html?${params.toString()}`,
+      title: "SB Games",
+      width: NOTIF_W,
+      height: NOTIF_H,
+      x, y,
+      visible: false,
+      transparent: true,
+      decorations: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      shadow: false,
+      focus: false,
+    });
 
-    clearTimeout(_notifTimer);
-    _notifTimer = setTimeout(async () => {
-      try { if (_notifWin) await _notifWin.hide(); } catch {}
-    }, 5500);
+    // Показываем только когда DOM готов, чтобы не было вспышки пустого окна.
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      _notifWin.once("tauri://created", async () => {
+        _notifReady = true;
+        try { await _notifWin.show(); } catch {}
+        finish();
+      });
+      // Fallback на случай, если событие не пришло.
+      setTimeout(async () => {
+        if (!_notifReady) {
+          _notifReady = true;
+          try { await _notifWin.show(); } catch {}
+        }
+        finish();
+      }, 250);
+    });
+
+    scheduleHide();
   } catch (e) {
     console.warn("[notifyDesktop]", e);
   }
+}
+
+function scheduleHide() {
+  clearTimeout(_notifTimer);
+  _notifTimer = setTimeout(async () => {
+    try { if (_notifWin) await _notifWin.hide(); } catch {}
+  }, NOTIF_DURATION + 300);
 }
 
 export async function setDiscordPresence(details, status, largeImage = "sbgames") {

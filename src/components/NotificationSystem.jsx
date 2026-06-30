@@ -85,8 +85,9 @@ export function NotificationProvider({ children }) {
     const id = ++idRef.current;
     const notif = { id, title, body, type, time: Date.now(), read: false };
 
-    setToasts(prev => [notif, ...prev].slice(0, 5));
-    setTimeout(() => setToasts(prev => prev.filter(n => n.id !== id)), 4500);
+    // Тосты в лаунчере отключены — уведомления идут через ОС (Windows/Mac)
+    // setToasts(prev => [notif, ...prev].slice(0, 5));
+    // setTimeout(() => setToasts(prev => prev.filter(n => n.id !== id)), 4500);
 
     setInbox(prev => {
       const next = [notif, ...prev].slice(0, 50);
@@ -94,10 +95,7 @@ export function NotificationProvider({ children }) {
       return next;
     });
 
-    // Кастомное десктопное уведомление (Steam-стиль)
     notifyDesktop(title, body, type);
-
-    // Звуковой эффект
     playNotifSound(type);
   }, []);
 
