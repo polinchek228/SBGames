@@ -941,6 +941,10 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 try { const r = await authFetch(`/api/groups/${g.id}/messages`); const d = await r.json(); setGroupMessages(d.messages || []); } catch {}
               }}
               onCreate={(g) => setGroups(prev => [g, ...prev])}
+              onLeave={async (gid) => {
+                try { await authFetch(`/api/groups/${gid}/leave`, { method: "POST" }); } catch {}
+                setGroups(prev => prev.filter(g => g.id !== gid));
+              }}
               onAcceptInvite={async (gid) => {
                 try {
                   const r = await authFetch(`/api/groups/${gid}/respond`, { method: "POST", body: JSON.stringify({ accept: true }) });
@@ -1164,7 +1168,7 @@ function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, onl
 }
 
 // ─── GroupsPanel ─────────────────────────────────────────────────────────────
-function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCreate, onAcceptInvite, onDeclineInvite }) {
+function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCreate, onLeave, onAcceptInvite, onDeclineInvite }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -1206,9 +1210,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
     finally { setBrowseLoading(false); }
   }, []);
 
-  useEffect(() => {
-    if (subTab === "join" || subTab === "browse") loadBrowse();
-  }, [subTab, loadBrowse]);
+  useEffect(() => { loadBrowse(); }, [loadBrowse]);
 
   const apply = async (gid) => {
     if (applyingId || inAnyClan) return;
@@ -1362,10 +1364,8 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
     const onlineCount = members.filter(m => onlineIds.has(m)).length;
 
     const doLeave = async () => {
-      try {
-        await authFetch(`/api/groups/${g.id}/leave`, { method: "POST" });
-      } catch {}
       setConfirmLeave(false);
+      onLeave?.(g.id);
     };
 
     return (
