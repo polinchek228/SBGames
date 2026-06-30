@@ -395,7 +395,7 @@ function ProfileTab({ user, equip }) {
 
         {/* ── Мои предметы ── */}
         {(() => {
-          const owned = (user?.inventory || []).map(id => CATALOG_BY_ID[id]).filter(Boolean);
+          const owned = [...new Set(user?.inventory || [])].map(id => CATALOG_BY_ID[id]).filter(Boolean);
           if (owned.length === 0) return null;
           return (
             <motion.div variants={itemVariants}>
@@ -1057,7 +1057,7 @@ function PublicProfileView({ viewer, targetId, onBack }) {
     .map(([type, id]) => ({ ...CATALOG_BY_ID[id], equipType: type }))
     .filter(Boolean);
 
-  const ownedItems = (profile?.inventory || [])
+  const ownedItems = [...new Set(profile?.inventory || [])]
     .map(id => CATALOG_BY_ID[id])
     .filter(Boolean);
 

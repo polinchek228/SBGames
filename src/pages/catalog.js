@@ -32,7 +32,6 @@ export const LIBRARY_CATALOG = [
   { id: "bg_fon8",           type: "background", name: "",                       price: 600,  color: "#14b8a6",  rarity: "rare",      video: `${CDN}/backgrounds/fon8.mp4${CACHE_BUST}` },
   { id: "bg_fon9",           type: "background", name: "",                       price: 700,  color: "#c084fc",  rarity: "rare",      video: `${CDN}/backgrounds/fon9.mp4${CACHE_BUST}` },
   { id: "bg_fon10",          type: "background", name: "",                       price: 900,  color: "#fb7185",  rarity: "rare",      video: `${CDN}/backgrounds/fon10.mp4${CACHE_BUST}` },
-  { id: "bg_fon11",          type: "background", name: "",                       price: 1100, color: "#f43f5e",  rarity: "rare",      video: `${CDN}/backgrounds/fon11.mp4${CACHE_BUST}` },
   { id: "bg_fon12",          type: "background", name: "",                       price: 1300, color: "#facc15",  rarity: "epic",      video: `${CDN}/backgrounds/fon12.mp4${CACHE_BUST}` },
   { id: "bg_fon13",          type: "background", name: "",                       price: 1500, color: "#4ade80",  rarity: "epic",      video: `${CDN}/backgrounds/fon13.mp4${CACHE_BUST}` },
   { id: "bg_fon14",          type: "background", name: "",                       price: 1800, color: "#22d3ee",  rarity: "epic",      video: `${CDN}/backgrounds/fon14.mp4${CACHE_BUST}` },

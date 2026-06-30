@@ -64,8 +64,8 @@ async function loadJwtSecret() {
 }
 
 const redisAccounts = { _map: new Map(),
-  async get(k)    { try { const v = await redis.get(`acc:${k}`); return v ? JSON.parse(v) : this._map.get(k); } catch { return this._map.get(k); } },
-  async set(k, v) { this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
+  async get(k)    { try { const v = await redis.get(`acc:${k}`); const acc = v ? JSON.parse(v) : this._map.get(k); if (acc) { if (Array.isArray(acc.inventory)) acc.inventory = [...new Set(acc.inventory)]; if (Array.isArray(acc.market_inventory)) acc.market_inventory = [...new Set(acc.market_inventory)]; } return acc; } catch { return this._map.get(k); } },
+  async set(k, v) { if (v && Array.isArray(v.inventory)) v.inventory = [...new Set(v.inventory)]; if (v && Array.isArray(v.market_inventory)) v.market_inventory = [...new Set(v.market_inventory)]; this._map.set(k, v); try { await redis.set(`acc:${k}`, JSON.stringify(v)); } catch {} },
   values()        { return this._map.values(); },
   // Атомарная мутация аккаунта (оптимистичная блокировка).
   // fn(acc) получает текущий объект аккаунта (или null) и должен вернуть
@@ -85,6 +85,8 @@ const redisAccounts = { _map: new Map(),
         const cur = raw ? JSON.parse(raw) : (this._map.get(k) || null);
         const out = fn(cur ? JSON.parse(JSON.stringify(cur)) : null);
         if (!out || out.ok !== true) { await redis.unwatch(); return { ok: false, error: out?.error || "mutation rejected" }; }
+        if (out.value && Array.isArray(out.value.inventory)) out.value.inventory = [...new Set(out.value.inventory)];
+        if (out.value && Array.isArray(out.value.market_inventory)) out.value.market_inventory = [...new Set(out.value.market_inventory)];
         const exec = await redis.multi().set(key, JSON.stringify(out.value)).exec();
         if (exec === null) { continue; } // ключ изменился между watch и exec — повтор
         this._map.set(k, out.value);
@@ -95,6 +97,8 @@ const redisAccounts = { _map: new Map(),
         const cur = this._map.get(k) || null;
         const out = fn(cur ? JSON.parse(JSON.stringify(cur)) : null);
         if (!out || out.ok !== true) return { ok: false, error: out?.error || "mutation rejected" };
+        if (out.value && Array.isArray(out.value.inventory)) out.value.inventory = [...new Set(out.value.inventory)];
+        if (out.value && Array.isArray(out.value.market_inventory)) out.value.market_inventory = [...new Set(out.value.market_inventory)];
         this._map.set(k, out.value);
         return { ok: true, value: out.value };
       }
@@ -1299,7 +1303,6 @@ function loadCosmeticItems() {
     { id: "bg_fon8",  type: "background", name: "Фон 8",  price: 600,  color: "#f43f5e", rarity: "rare" },
     { id: "bg_fon9",  type: "background", name: "Фон 9",  price: 700,  color: "#8b5cf6", rarity: "rare" },
     { id: "bg_fon10", type: "background", name: "Фон 10", price: 900,  color: "#ec4899", rarity: "rare" },
-    { id: "bg_fon11", type: "background", name: "Фон 11", price: 1100, color: "#f97316", rarity: "epic" },
     { id: "bg_fon12", type: "background", name: "Фон 12", price: 1300, color: "#eab308", rarity: "epic" },
     { id: "bg_fon13", type: "background", name: "Фон 13", price: 1500, color: "#22c55e", rarity: "epic" },
     { id: "bg_fon14", type: "background", name: "Фон 14", price: 1800, color: "#06b6d4", rarity: "epic" },
@@ -1436,8 +1439,8 @@ app.get("/api/inventory/catalog", (_req, res) => res.json({ items: getActiveShop
 
 app.get("/api/inventory", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
-  const owned = Array.isArray(acc?.inventory) ? acc.inventory : [];
-  const marketOwn = Array.isArray(acc?.market_inventory) ? acc.market_inventory : [];
+  const owned = Array.isArray(acc?.inventory) ? [...new Set(acc.inventory)] : [];
+  const marketOwn = Array.isArray(acc?.market_inventory) ? [...new Set(acc.market_inventory)] : [];
   const equip = acc?.equip && typeof acc.equip === "object" ? acc.equip : {};
   res.json({ owned, market: marketOwn, equip, catalog: getActiveShopItems(), marketCatalog: MARKET_CATALOG });
 });
@@ -1469,7 +1472,7 @@ app.post("/api/inventory/equip", requireAuth, async (req, res) => {
   const item = getShopItem(itemId);
   if (!item) return res.status(404).json({ message: "Предмет не найден" });
   if (!owned.includes(itemId)) {
-    if (isAdmin(acc.username)) { acc.inventory = [...owned, itemId]; }
+    if (isAdmin(acc.username) || acc.role === "admin") { acc.inventory = [...new Set([...owned, itemId])]; }
     else return res.status(400).json({ message: "Сначала купи предмет" });
   }
   acc.equip = { ...(acc.equip || {}), [item.type]: itemId };
