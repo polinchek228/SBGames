@@ -415,12 +415,21 @@ function ProfileTab({ user, equip }) {
         {showAvatarPicker && (
           <FilePicker accept="image/*" title="Сменить аватар" hint="JPG, PNG · рекомендуется квадратное фото"
             onSelect={(_, preview) => {
-              setAvatar(preview);
+              setAvatar(preview);            // мгновенный предпросмотр
               setShowAvatarPicker(false);
-              // Save to server
+              // authedFetch уже возвращает распарсенный JSON — НЕ вызываем r.json()
+              // (раньше это молча падало в .catch, и аватар не сохранялся).
               authedFetch("/api/user/avatar", { method: "PUT", body: JSON.stringify({ avatar: preview }) })
-                .then(r => r.json()).then(d => {
-                  if (d.avatar && user) user.avatar = d.avatar;
+                .then(d => {
+                  const finalAvatar = d?.avatar || preview;
+                  setAvatar(finalAvatar);
+                  if (user) user.avatar = finalAvatar;
+                  // Сохраняем в localStorage, иначе после перезахода грузится старый аватар.
+                  try {
+                    const u = JSON.parse(localStorage.getItem("sbgames_user") || "{}");
+                    u.avatar = finalAvatar;
+                    localStorage.setItem("sbgames_user", JSON.stringify(u));
+                  } catch {}
                 }).catch(() => {});
             }}
             onClose={() => setShowAvatarPicker(false)} />

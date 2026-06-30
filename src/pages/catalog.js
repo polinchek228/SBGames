@@ -37,11 +37,6 @@ export const LIBRARY_CATALOG = [
   { id: "bg_fon14",          type: "background", name: "",                       price: 1800, color: "#22d3ee",  rarity: "epic",      video: `${CDN}/backgrounds/fon14.mp4${CACHE_BUST}` },
   { id: "bg_fon15",          type: "background", name: "",                       price: 2000, color: "#818cf8",  rarity: "epic",      video: `${CDN}/backgrounds/fon15.mp4${CACHE_BUST}` },
 
-  // ── Анимации аватара ──
-  { id: "anim_pulse",        type: "avatar_animated", name: "Импульс",   price: 1200, color: "#60a5fa",  rarity: "epic" },
-  { id: "anim_flame",        type: "avatar_animated", name: "Пламя",     price: 1200, color: "#f97316",  rarity: "epic" },
-  { id: "anim_neon",         type: "avatar_animated", name: "Неон",      price: 1500, color: "#a855f7",  rarity: "legendary" },
-
   // ── Бейджи ──
   { id: "badge_glitch",      type: "badge",      name: "Glitch",                 price: 500,  color: "#64748b",  rarity: "rare",      icon: `${CDN}/icons/icon.png` },
   { id: "badge_toxic",       type: "badge",      name: "Toxic",                  price: 500,  color: "#84cc16",  rarity: "rare",      icon: `${CDN}/icons/icon1.png` },

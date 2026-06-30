@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, ArrowUpDown, Loader2, Package, X,
-  Frame, Image, Sparkles, Award, LayoutGrid,
+  Frame, Image, Award, LayoutGrid,
   Filter, Tag, GripVertical,
 } from "lucide-react";
 import { authedFetch } from "../lib/api.js";
@@ -14,7 +14,6 @@ const TYPE_META = {
   all:              { label: "Все",         icon: LayoutGrid, color: "#94a3b8" },
   frame:            { label: "Рамки",       icon: Frame,      color: "#3b82f6" },
   background:       { label: "Фоны",        icon: Image,      color: "#6366f1" },
-  avatar_animated:  { label: "Анимации",    icon: Sparkles,   color: "#f59e0b" },
   badge:            { label: "Бейджи",      icon: Award,      color: "#ef4444" },
 };
 
@@ -674,6 +673,14 @@ export default function LibraryTab({ user, equip, setEquip }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Синхронизация между вкладками: если инвентарь изменился в другом месте
+  // (InventoryTab), перечитываем, чтобы owned/equip не расходились.
+  useEffect(() => {
+    const onChanged = () => { load(); };
+    window.addEventListener("sbgames_inventory_changed", onChanged);
+    return () => window.removeEventListener("sbgames_inventory_changed", onChanged);
+  }, [load]);
+
   // close sort dropdown on outside click
   useEffect(() => {
     if (!showSort) return;
@@ -694,12 +701,18 @@ export default function LibraryTab({ user, equip, setEquip }) {
         method: "POST",
         body: JSON.stringify({ itemId: item.id }),
       });
-      if (Array.isArray(r.inventory)) setOwned(r.inventory);
-      else setOwned((prev) => prev.includes(item.id) ? prev : [...prev, item.id]);
+      const nextOwned = Array.isArray(r.inventory)
+        ? r.inventory
+        : (owned.includes(item.id) ? owned : [...owned, item.id]);
+      setOwned(nextOwned);
       if (typeof r.balance === "number") {
         setBalanceOverride(r.balance);
         if (user) user.balance = r.balance;
       }
+      // Кэш + оповещаем другие вкладки (InventoryTab), чтобы купленное
+      // появлялось сразу, без перезахода.
+      try { localStorage.setItem("sbg_pers_inventory", JSON.stringify({ owned: nextOwned, equip })); } catch {}
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -715,7 +728,13 @@ export default function LibraryTab({ user, equip, setEquip }) {
         method: "POST",
         body: JSON.stringify({ itemId: item.id }),
       });
-      setEquip(r.equip || ((prev) => ({ ...prev, [item.type]: item.id })));
+      // Сервер ВСЕГДА возвращает актуальный equip — используем его как
+      // источник правды (прежний фолбэк-функцией приводил к рассинхрону).
+      const nextEquip = (r && typeof r.equip === "object" && r.equip)
+        ? r.equip
+        : { ...equip, [item.type]: item.id };
+      setEquip(nextEquip);
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -731,7 +750,9 @@ export default function LibraryTab({ user, equip, setEquip }) {
         method: "POST",
         body: JSON.stringify({ type }),
       });
-      setEquip(r.equip || {});
+      const nextEquip = (r && typeof r.equip === "object" && r.equip) ? r.equip : {};
+      setEquip(nextEquip);
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
     } catch (e) {
       setError(e.message);
     } finally {

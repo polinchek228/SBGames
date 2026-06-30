@@ -110,7 +110,7 @@ export default function ShopPage({ user, onBalanceChange, onViewProfile }) {
               onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.5)"}>
               <CaretLeft size={13} weight="bold" /> Назад
             </button>
-            <MarketplaceView onViewProfile={onViewProfile} />
+            <MarketplaceView user={user} onViewProfile={onViewProfile} />
           </motion.div>
         )}
 
@@ -370,6 +370,7 @@ const MARKET_TYPE_LABELS = {
 
 const MKT_SERVERS = [
   { id: "all",      name: "Все серверы",    image: null, color: "#60a5fa" },
+  { id: "cosmetic", name: "Косметика",      image: null, color: "#c084fc", cosmetic: true },
   { id: "starwars", name: "Starwars",       image: "https://games.sb-capital.group/servers/starwars.jpg", color: "#818cf8" },
   { id: "minigames",name: "Minigames",      image: "https://games.sb-capital.group/servers/minigames.jpg", color: "#22c55e" },
   { id: "gta",      name: "GTA",            image: "https://games.sb-capital.group/servers/gta.jpg", color: "#ef4444" },
@@ -377,31 +378,33 @@ const MKT_SERVERS = [
   { id: "anarchy",  name: "Анархия",        image: "https://games.sb-capital.group/servers/anarchy.jpg", color: "#f59e0b" },
 ];
 
-function MarketplaceView({ onViewProfile }) {
+function MarketplaceView({ user, onViewProfile }) {
   const [listings, setListings] = useState([]);
   const [owned, setOwned]       = useState([]);
   const [equip, setEquip]       = useState({});
   const [catalog, setCatalog]   = useState([]);
   const [filter, setFilter]     = useState("all");
   const [serverFilter, setServerFilter] = useState("all");
+  const section = serverFilter === "cosmetic" ? "cosmetic" : "items";
   const [searchQuery, setSearchQuery] = useState("");
   const [sortTab, setSortTab]   = useState("popular");
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [sellOpen, setSellOpen] = useState(false);
+  const [previewListing, setPreviewListing] = useState(null);
 
   const loadListings = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      if (filter !== "all") params.set("type", filter);
-      if (serverFilter !== "all") params.set("server", serverFilter);
+      if (section === "cosmetic" && filter !== "all") params.set("type", filter);
+      if (section === "items" && serverFilter !== "all") params.set("server", serverFilter);
       const qs = params.toString();
       const data = await authedFetch(`/api/market/listings${qs ? `?${qs}` : ""}`);
       setListings(data.listings || []);
     } catch (e) {
       setError("Не удалось загрузить маркет");
     }
-  }, [filter, serverFilter]);
+  }, [filter, section, serverFilter]);
 
   const loadOwned = useCallback(async () => {
     try {
@@ -424,10 +427,21 @@ function MarketplaceView({ onViewProfile }) {
 
   const filteredListings = useMemo(() => {
     let items = [...listings];
+
+    // Основные серверные разделы показывают только игровые предметы.
+    // Косметика вынесена в отдельный раздел и не смешивается с серверами.
+    items = items.filter(l => section === "cosmetic" ? isCosmeticId(l.itemId) : !isCosmeticId(l.itemId));
+
+    if (section === "items" && serverFilter !== "all") {
+      items = items.filter(l => l.server === serverFilter);
+    }
+    if (section === "cosmetic" && filter !== "all") {
+      items = items.filter(l => (CATALOG_BY_ID[l.itemId]?.type || CATALOG[l.itemId]?.type) === filter);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       items = items.filter(l => {
-        const item = CATALOG[l.itemId] || {};
+        const item = CATALOG[l.itemId] || CATALOG_BY_ID[l.itemId] || {};
         return (item.name || l.name || "").toLowerCase().includes(q)
           || (l.sellerName || "").toLowerCase().includes(q);
       });
@@ -436,7 +450,24 @@ function MarketplaceView({ onViewProfile }) {
     else if (sortTab === "new") items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     else if (sortTab === "cheap") items.sort((a, b) => a.price - b.price);
     return items;
-  }, [listings, searchQuery, sortTab]);
+  }, [filter, listings, searchQuery, section, sortTab, serverFilter]);
+
+  const currentUserId = user?.id ?? user?._id ?? user?.userId;
+  const canManageListing = useCallback((listing) => {
+    const sellerId = listing?.sellerId ?? listing?.seller_id ?? listing?.userId ?? listing?.user_id;
+    return currentUserId != null && sellerId != null && String(currentUserId) === String(sellerId);
+  }, [currentUserId]);
+
+  const deleteListing = useCallback(async (listing) => {
+    if (!listing?.id) return;
+    try {
+      await authedFetch(`/api/market/listings/${listing.id}`, { method: "DELETE" });
+      setPreviewListing(null);
+      await load();
+    } catch (e) {
+      setError(e.message || "Не удалось удалить листинг");
+    }
+  }, [load]);
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -446,7 +477,10 @@ function MarketplaceView({ onViewProfile }) {
         <div className="px-6 pt-4 pb-3 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div>
-            <h1 className="text-[17px] font-black text-white">Торговая площадка</h1>
+              <h1 className="text-[17px] font-black text-white">Торговая площадка</h1>
+              <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                {section === "cosmetic" ? "Только косметика профиля" : "Игровые предметы по серверам"}
+              </p>
             </div>
             <button onClick={() => setSellOpen(true)}
               disabled={owned.length === 0}
@@ -459,7 +493,7 @@ function MarketplaceView({ onViewProfile }) {
           {/* Search */}
           <div className="relative mb-3">
             <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Поиск предметов…"
+              placeholder={section === "cosmetic" ? "Поиск косметики…" : "Поиск предметов…"}
               className="w-full rounded-lg text-[12px] px-3 py-2.5 pl-9 outline-none"
               style={{ background: "rgba(255,255,255,0.06)", color: "#fff" }} />
             <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -519,7 +553,16 @@ function MarketplaceView({ onViewProfile }) {
           ) : (
             <div className="flex flex-col">
               {filteredListings.map((l, i) => (
-                <ListingRow key={l.id} listing={l} index={i} onBought={load} onViewProfile={onViewProfile} />
+                <ListingRow
+                  key={l.id}
+                  listing={l}
+                  index={i}
+                  isOwn={canManageListing(l)}
+                  onPreview={() => setPreviewListing(l)}
+                  onBought={load}
+                  onDelete={() => deleteListing(l)}
+                  onViewProfile={onViewProfile}
+                />
               ))}
             </div>
           )}
@@ -532,9 +575,13 @@ function MarketplaceView({ onViewProfile }) {
         <div className="flex flex-col gap-1">
           {MKT_SERVERS.map(s => {
             const active = serverFilter === s.id;
-            const count = s.id === "all" ? listings.length : listings.filter(l => l.server === s.id).length;
+            const count = s.cosmetic
+              ? listings.filter(l => isCosmeticId(l.itemId)).length
+              : s.id === "all"
+                ? listings.filter(l => !isCosmeticId(l.itemId)).length
+                : listings.filter(l => !isCosmeticId(l.itemId) && l.server === s.id).length;
             return (
-              <button key={s.id} onClick={() => setServerFilter(s.id)}
+              <button key={s.id} onClick={() => { setServerFilter(s.id); if (!s.cosmetic) setFilter("all"); }}
                 className="flex items-center gap-2.5 px-2 py-2 rounded-xl transition-all text-left"
                 style={{
                   background: active ? "rgba(255,255,255,0.06)" : "transparent",
@@ -569,8 +616,19 @@ function MarketplaceView({ onViewProfile }) {
           <SellModal
             owned={owned}
             catalog={catalog}
+            serverFilter={serverFilter}
             onClose={() => setSellOpen(false)}
             onCreated={() => { setSellOpen(false); load(); }}
+          />
+        )}
+        {previewListing && (
+          <ListingPreviewModal
+            listing={previewListing}
+            isOwn={canManageListing(previewListing)}
+            onClose={() => setPreviewListing(null)}
+            onBought={load}
+            onDelete={() => deleteListing(previewListing)}
+            onViewProfile={onViewProfile}
           />
         )}
       </AnimatePresence>
@@ -589,26 +647,43 @@ const CATALOG = {
   m_aurora_shard:   { type: "shard",    name: "Осколок Авроры",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
 };
 
-function ListingRow({ listing, index, onBought, onViewProfile }) {
+function ListingRow({ listing, index, isOwn, onPreview, onBought, onDelete, onViewProfile }) {
   const catItem = CATALOG_BY_ID[listing.itemId];
   const mktItem = CATALOG[listing.itemId];
   const item = mktItem || catItem || {};
   const name = mktItem?.name || catItem?.name || listing.name || "—";
   const accentColor = item.color || "#888";
-  const hasImage = !!(catItem?.image || catItem?.icon);
+  const imageSrc = catItem?.image || catItem?.icon || null;
+  const videoSrc = catItem?.video || null;
+  const hasImage = !!imageSrc;
+  const hasVideo = !!videoSrc;
   const hasGradient = !!mktItem?.preview?.startsWith?.("linear");
   const [buying, setBuying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { push: pushNotif } = useNotifications() || {};
 
   const buy = async () => {
-    if (buying) return;
+    if (buying || isOwn) return;
     setBuying(true);
     try {
       await authedFetch(`/api/market/buy/${listing.id}`, { method: "POST" });
       pushNotif?.("Покупка", `${name} куплен`, "market");
+      // Уведомляем инвентарь/библиотеку, чтобы купленное появилось сразу без перезахода
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
       onBought?.();
     } catch (e) { pushNotif?.("Ошибка", e.message, "group"); }
     finally { setBuying(false); }
+  };
+
+  const remove = async () => {
+    if (deleting || !isOwn) return;
+    setDeleting(true);
+    try {
+      await onDelete?.();
+      pushNotif?.("Маркет", `${name} снят с продажи`, "market");
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
+    } catch (e) { pushNotif?.("Ошибка", e.message, "group"); }
+    finally { setDeleting(false); }
   };
 
   return (
@@ -620,18 +695,21 @@ function ListingRow({ listing, index, onBought, onViewProfile }) {
       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
       {/* Item */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center"
+        <button onClick={onPreview} className="w-10 h-10 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center cursor-pointer transition-transform hover:scale-105"
           style={{ background: hasGradient ? mktItem.preview : `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)` }}>
-          {hasImage ? (
-            <img src={catItem.image || catItem.icon} alt="" className="w-full h-full object-cover"
+          {hasVideo ? (
+            <video src={videoSrc} className="w-full h-full object-cover" preload="metadata" muted autoPlay loop playsInline
+              onError={e => { e.currentTarget.style.display = "none"; }} />
+          ) : hasImage ? (
+            <img src={imageSrc} alt="" className="w-full h-full object-cover"
               onError={e => { e.currentTarget.style.display = "none"; }} />
           ) : hasGradient ? (
             <div className="w-5 h-5 rounded" style={{ background: mktItem.preview, opacity: 0.8 }} />
           ) : null}
-        </div>
-        <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-white truncate">{name}</p>
-          <button onClick={() => onViewProfile?.(listing.sellerId)} className="text-[10px] truncate text-left hover:underline"
+        </button>
+        <div className="min-w-0 flex flex-col items-start">
+          <button onClick={onPreview} className="text-[12px] font-semibold text-white truncate text-left hover:underline max-w-full leading-tight">{name}</button>
+          <button onClick={() => onViewProfile?.(listing.sellerId)} className="text-[10px] truncate text-left hover:underline leading-tight mt-0.5"
             style={{ color: "rgba(255,255,255,0.35)" }}>
             @{listing.sellerName}
           </button>
@@ -644,19 +722,128 @@ function ListingRow({ listing, index, onBought, onViewProfile }) {
         <span className="text-[9px] ml-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>SBT</span>
       </div>
 
-      {/* Buy */}
+      {/* Action */}
       <div className="w-24 flex justify-end">
-        <button onClick={buy} disabled={buying}
-          className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all"
-          style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)" }}>
-          {buying ? "…" : "Купить"}
-        </button>
+        {isOwn ? (
+          <button onClick={remove} disabled={deleting}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #dc2626, #ef4444)" }}>
+            {deleting ? "…" : "Удалить"}
+          </button>
+        ) : (
+          <button onClick={buy} disabled={buying}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all"
+            style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)" }}>
+            {buying ? "…" : "Купить"}
+          </button>
+        )}
       </div>
     </motion.div>
   );
 }
 
-function SellModal({ owned, catalog, onClose, onCreated }) {
+function ListingPreviewModal({ listing, isOwn, onClose, onBought, onDelete, onViewProfile }) {
+  const catItem = CATALOG_BY_ID[listing.itemId];
+  const mktItem = CATALOG[listing.itemId];
+  const item = mktItem || catItem || {};
+  const name = mktItem?.name || catItem?.name || listing.name || "—";
+  const accentColor = item.color || "#888";
+  const imageSrc = catItem?.image || catItem?.icon || null;
+  const videoSrc = catItem?.video || null;
+  const hasGradient = !!mktItem?.preview?.startsWith?.("linear");
+  const [busy, setBusy] = useState(false);
+  const { push: pushNotif } = useNotifications() || {};
+
+  const buy = async () => {
+    if (busy || isOwn) return;
+    setBusy(true);
+    try {
+      await authedFetch(`/api/market/buy/${listing.id}`, { method: "POST" });
+      pushNotif?.("Покупка", `${name} куплен`, "market");
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
+      onClose?.();
+      onBought?.();
+    } catch (e) { pushNotif?.("Ошибка", e.message, "group"); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    if (busy || !isOwn) return;
+    setBusy(true);
+    try {
+      await onDelete?.();
+      pushNotif?.("Маркет", `${name} снят с продажи`, "market");
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
+    } catch (e) { pushNotif?.("Ошибка", e.message, "group"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="absolute inset-0 bg-black/65" onClick={onClose} />
+      <motion.div initial={{ scale: 0.94, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 8 }}
+        className="relative z-10 w-[520px] rounded-2xl overflow-hidden"
+        style={{ background: "rgba(12,12,18,0.96)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }}>
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[14px] font-black text-white truncate">{name}</p>
+            <button onClick={() => onViewProfile?.(listing.sellerId)} className="text-[10px] text-white/40 hover:text-white/70 hover:underline">
+              @{listing.sellerName}
+            </button>
+          </div>
+          <button onClick={onClose} aria-label="Закрыть" className="w-7 h-7 rounded-lg text-white/55 hover:text-white hover:bg-white/[0.07] flex items-center justify-center">
+            <X size={12} />
+          </button>
+        </div>
+
+        <div className="px-5 pb-5">
+          <div className="h-[260px] rounded-2xl overflow-hidden flex items-center justify-center"
+            style={{ background: hasGradient ? mktItem.preview : `linear-gradient(135deg, ${accentColor}30, ${accentColor}12)` }}>
+            {videoSrc ? (
+              <video src={videoSrc} className="w-full h-full object-cover" preload="metadata" muted autoPlay loop playsInline />
+            ) : imageSrc ? (
+              <img src={imageSrc} alt="" className="w-full h-full object-cover" />
+            ) : hasGradient ? (
+              <div className="w-full h-full" style={{ background: mktItem.preview }} />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl" style={{ background: accentColor, opacity: 0.55 }} />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between mt-4 gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-white/30 font-bold">Цена</p>
+              <p className="text-[22px] font-black text-white"><span style={{ color: "#60a5fa" }}>{listing.price}</span> <span className="text-[11px] text-white/35">SBT</span></p>
+            </div>
+            {isOwn ? (
+              <button onClick={remove} disabled={busy}
+                className="px-5 py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #dc2626, #ef4444)" }}>
+                {busy ? "Удаление…" : "Удалить товар"}
+              </button>
+            ) : (
+              <button onClick={buy} disabled={busy}
+                className="px-5 py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)" }}>
+                {busy ? "Покупка…" : "Купить"}
+              </button>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// Косметика — это предметы кастомизации профиля (рамки, фоны, бейджи).
+// Они не привязаны к игровому серверу и продаются только в разделе «Косметика».
+const isCosmeticId = (id) => {
+  const cat = CATALOG_BY_ID[id];
+  return !!cat && ["frame", "background", "badge"].includes(cat.type);
+};
+
+function SellModal({ owned, catalog, serverFilter = "all", onClose, onCreated }) {
   const [picked, setPicked] = useState(null);
   const [price, setPrice]   = useState(100);
   const [busy, setBusy]     = useState(false);
@@ -687,10 +874,20 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
     setBusy(true); setError(null);
     try {
       await authedFetch("/api/market/sell", { method: "POST", body: JSON.stringify({ itemId: picked, price }) });
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
       onCreated?.();
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
+
+  const visibleIds = useMemo(() => (
+    serverFilter === "cosmetic" ? owned.filter(isCosmeticId) : owned.filter(id => !isCosmeticId(id))
+  ), [owned, serverFilter]);
+
+  // Если выбранный предмет не входит в текущий раздел — сбрасываем выбор.
+  useEffect(() => {
+    if (picked && !visibleIds.includes(picked)) setPicked(null);
+  }, [visibleIds, picked]);
 
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -712,13 +909,13 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
           <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.75)" }}>
             Выбери предмет
           </p>
-          {owned.length === 0 ? (
+          {visibleIds.length === 0 ? (
             <p className="text-[11px] py-6 text-center" style={{ color: "rgba(255,255,255,0.75)" }}>
-              Нет предметов для продажи.
+              {serverFilter === "cosmetic" ? "Нет косметики для продажи." : "Нет предметов для продажи."}
             </p>
           ) : (
             <div className="sell-modal-grid grid grid-cols-4 gap-2 max-h-[280px] overflow-y-auto pr-1">
-              {owned.map(id => {
+              {visibleIds.map(id => {
                 const item = allItems[id];
                 if (!item) return null;
                 const hasImage = !!item.preview;
@@ -734,11 +931,11 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
                     }}>
                     <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center"
                       style={{ background: `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)` }}>
-                      {hasImage ? (
-                        <img src={item.preview} alt="" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = "none"; }} />
-                      ) : hasVideo ? (
-                        <video src={item.video} className="w-full h-full object-cover" preload="metadata" muted
+                      {hasVideo ? (
+                        <video src={item.video} className="w-full h-full object-cover" preload="metadata" muted autoPlay loop playsInline
                           onError={e => { e.currentTarget.style.display = "none"; }} />
+                      ) : hasImage ? (
+                        <img src={item.preview} alt="" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = "none"; }} />
                       ) : (
                         <div className="w-6 h-6 rounded" style={{ background: accentColor, opacity: 0.6 }} />
                       )}

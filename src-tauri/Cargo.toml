@@ -62,8 +62,8 @@ features = [
 
 [profile.release]
 opt-level = 3
-lto = "fat"          # агрессивный LTO — сложнее восстановить границы функций
-codegen-units = 1     # один codegen-unit — максимум инлайна, меньше структуры
+lto = "thin"         # thin LTO: ~95% оптимизации fat, но кратно быстрее и параллельно
+codegen-units = 1     # один codegen-unit для нашего кода — максимум инлайна/обфускации
 panic = "abort"       # без unwind-таблиц и panic-метаданных
 strip = "symbols"     # вырезать ВСЕ символы (имена функций/переменных)
 debug = false         # без debug-инфо
@@ -71,8 +71,9 @@ overflow-checks = false
 incremental = false
 rpath = false
 
-# Обфускация: даже зависимости собираются с агрессивной оптимизацией,
-# что размывает читаемые границы кода при реверсе.
+# Зависимости собираем с дефолтным параллелизмом (codegen-units не = 1).
+# Это резко ускоряет холодную сборку без потери защиты: наш собственный код
+# всё равно проходит через thin LTO + strip + единый codegen-unit выше.
 [profile.release.package."*"]
 opt-level = 3
-codegen-units = 1
+codegen-units = 16

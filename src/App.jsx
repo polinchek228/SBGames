@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { AnimatePresence } from "framer-motion";
 import LoginPage from "./pages/LoginPage.jsx";
 import MainLayout from "./pages/MainLayout.jsx";
 import CustomCursor from "./components/CustomCursor.jsx";
@@ -72,13 +71,17 @@ export default function App() {
       <NotificationProvider>
         <CustomCursor />
         <UpdateNotifier />
-        <AnimatePresence mode="wait">
-          {!user ? (
-            <LoginPage key="login" onLogin={handleLogin} />
-          ) : (
-            <MainLayout key="main" user={user} onLogout={handleLogout} />
-          )}
-        </AnimatePresence>
+        {/* Login и Main взаимоисключающие — оба одновременно не живут.
+            AnimatePresence mode="wait" здесь создавал гонку владения DOM между
+            framer-motion и React (exit-анимация контейнера пересекалась с
+            асинхронным первым рендером MainLayout), из-за чего React падал в
+            removeChild / commitDeletionEffects. Свитч без AnimatePresence
+            убирает гонку; анимации внутри самих страниц сохраняются. */}
+        {!user ? (
+          <LoginPage key="login" onLogin={handleLogin} />
+        ) : (
+          <MainLayout key="main" user={user} onLogout={handleLogout} />
+        )}
       </NotificationProvider>
     </ErrorBoundary>
   );

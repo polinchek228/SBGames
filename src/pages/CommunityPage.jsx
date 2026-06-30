@@ -70,6 +70,8 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   const pcRef        = useRef({});   // { [peerId]: RTCPeerConnection }
   const localStream  = useRef(null);
   const screenStream = useRef(null);
+  const remoteScreen = useRef(null); // удалённый видеопоток (демонстрация экрана собеседника)
+  const [remoteSharing, setRemoteSharing] = useState(false); // показывать ли удалённую демку в оверлее
 
   // Поглощаем входящий звонок из MainLayout (когда сайдбар открывается по incoming_call)
   useEffect(() => {
@@ -351,7 +353,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     pcRef.current[peerId] = pc;
 
     if (localStream.current) {
-      const tracks = localStream.current.getTracks();
+      const tracks = localStream.current.getAudioTracks();
       if (tracks.length > 0) {
         tracks.forEach(t => pc.addTrack(t, localStream.current));
       } else {
@@ -361,7 +363,16 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     } else {
       pc.addTransceiver("audio", { direction: "sendrecv" });
     }
-    if (screenStream.current) screenStream.current.getTracks().forEach(t => pc.addTrack(t, screenStream.current));
+    // Заранее резервируем видео-трансивер (sendrecv), чтобы демонстрацию экрана
+    // можно было включить через replaceTrack без повторного согласования (renegotiation).
+    // Иначе сервер ретранслировал бы новый offer как входящий звонок.
+    if (screenStream.current) {
+      const vt = screenStream.current.getVideoTracks()[0];
+      if (vt) pc.addTrack(vt, screenStream.current);
+      else pc.addTransceiver("video", { direction: "sendrecv" });
+    } else {
+      pc.addTransceiver("video", { direction: "sendrecv" });
+    }
 
     pc.onicecandidate = e => {
       if (!e.candidate) return;
@@ -370,7 +381,19 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     };
 
     pc.ontrack = e => {
-      // Создаём <audio> динамически, т.к. pcRef — ref и React не перерендеривает компонент
+      const track = e.track;
+      if (track.kind === "video") {
+        // Удалённая демонстрация экрана собеседника
+        const stream = e.streams[0] || new MediaStream([track]);
+        remoteScreen.current = stream;
+        const showHide = () => setRemoteSharing(track.readyState === "live" && !track.muted);
+        setRemoteSharing(true);
+        track.onmute   = showHide;
+        track.onunmute = showHide;
+        track.onended  = () => { remoteScreen.current = null; setRemoteSharing(false); };
+        return;
+      }
+      // Аудио: создаём <audio> динамически, т.к. pcRef — ref и React не перерендеривает компонент
       let audio = document.getElementById(`audio-${peerId}`);
       if (!audio) {
         audio = document.createElement("audio");
@@ -380,7 +403,12 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         audio.style.display = "none";
         document.body.appendChild(audio);
       }
-      if (e.streams[0]) { audio.srcObject = e.streams[0]; audio.play().catch(() => {}); }
+      const stream = e.streams[0] || new MediaStream([track]);
+      audio.srcObject = stream;
+      // Autoplay в Tauri/Chromium может быть заблокирован — повторяем попытку
+      const tryPlay = () => audio.play().catch(() => {});
+      tryPlay();
+      audio.onloadedmetadata = tryPlay;
     };
 
     pc.onconnectionstatechange = () => {
@@ -404,6 +432,8 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     pcRef.current = {};
     if (localStream.current) { localStream.current.getTracks().forEach(t => t.stop()); localStream.current = null; }
     if (screenStream.current) { screenStream.current.getTracks().forEach(t => t.stop()); screenStream.current = null; }
+    remoteScreen.current = null;
+    setRemoteSharing(false);
     // Удаляем динамически созданные audio-элементы
     document.querySelectorAll("audio[id^='audio-']").forEach(el => el.remove());
     setActiveCall(null);
@@ -496,9 +526,16 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     try {
       screenStream.current = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       const videoTrack = screenStream.current.getVideoTracks()[0];
+      // Видео-трансивер уже зарезервирован при создании соединения, поэтому
+      // достаточно replaceTrack — демка идёт собеседнику без renegotiation.
       for (const pc of Object.values(pcRef.current)) {
-        const sender = pc.getSenders().find(s => s.track?.kind === "video");
-        if (sender) sender.replaceTrack(videoTrack);
+        let sender = pc.getSenders().find(s => s.track?.kind === "video");
+        if (!sender) {
+          // На случай старого соединения без видео-трансивера
+          const tr = pc.getTransceivers().find(t => t.sender && (!t.sender.track || t.sender.track.kind === "video"));
+          sender = tr?.sender || pc.getSenders().find(s => !s.track);
+        }
+        if (sender) { try { sender.replaceTrack(videoTrack); } catch {} }
         else pc.addTrack(videoTrack, screenStream.current);
       }
       videoTrack.onended = stopScreenShare;
@@ -507,6 +544,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
   };
 
   const stopScreenShare = () => {
+    // Убираем видео-трек у всех соединений, но трансивер оставляем для будущих демок
+    for (const pc of Object.values(pcRef.current)) {
+      const sender = pc.getSenders().find(s => s.track?.kind === "video");
+      if (sender) { try { sender.replaceTrack(null); } catch {} }
+    }
     if (screenStream.current) { screenStream.current.getTracks().forEach(t => t.stop()); screenStream.current = null; }
     setActiveCall(prev => prev ? { ...prev, sharing: false } : prev);
   };
@@ -555,6 +597,8 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
             groupVoiceIds={groupVoiceIds}
             friends={friends}
             localStream={localStream}
+            remoteScreen={remoteScreen}
+            remoteSharing={remoteSharing}
             onMute={toggleMute}
             onShare={activeCall.sharing ? stopScreenShare : startScreenShare}
             onHangUp={hangUp}
@@ -1684,21 +1728,41 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          {/* Channels */}
+          <div className="px-3 pb-3 pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-[9px] uppercase tracking-widest font-semibold px-1 py-2" style={{ color: "rgba(255,255,255,0.28)" }}>
+              Каналы
+            </p>
             <button onClick={() => onOpenGroup(g)}
-              className="flex-1 py-3 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all"
-              style={{ color: "rgba(168,85,247,0.8)", borderRight: "1px solid rgba(255,255,255,0.06)" }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.08)"}
-              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-              <ChatCircle size={13} /> Чат
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all"
+              style={{ color: "rgba(255,255,255,0.62)" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.62)"; }}>
+              <span className="text-[15px] font-black" style={{ color: "rgba(255,255,255,0.28)" }}>#</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-bold truncate">общий</p>
+                <p className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.28)" }}>чат клана</p>
+              </div>
+            </button>
+            <button onClick={() => onOpenGroup(g)}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all"
+              style={{ color: "rgba(255,255,255,0.58)" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(34,197,94,0.08)"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.58)"; }}>
+              <Phone size={14} weight="fill" style={{ color: "rgba(74,222,128,0.7)" }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-bold truncate">общий войс</p>
+                <p className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.28)" }}>голосовой канал внутри чата</p>
+              </div>
+              {onlineCount > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-md" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>{onlineCount}</span>}
             </button>
             <button onClick={() => setConfirmLeave(true)}
-              className="py-3 px-4 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all"
-              style={{ color: "rgba(239,68,68,0.6)" }}
+              className="w-full mt-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all"
+              style={{ color: "rgba(239,68,68,0.55)" }}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "rgba(239,68,68,0.9)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(239,68,68,0.6)"; }}>
-              <SignOut size={13} /> Выйти
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(239,68,68,0.55)"; }}>
+              <SignOut size={13} />
+              <span className="text-[11px] font-semibold">Покинуть клан</span>
             </button>
           </div>
         </div>
@@ -1815,52 +1879,78 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           const onlineCount = (g.members || []).filter(m => onlineIds.has(m)).length;
           return (
             <motion.div key={g.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.03 }} className="mb-2">
-              <button onClick={() => setViewingGroup(g)}
-                className="w-full text-left px-3 py-3 rounded-xl transition-all"
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-shrink-0">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center"
-                      style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 16 }}>
-                      {g.name.slice(0, 1).toUpperCase()}
+              transition={{ delay: idx * 0.03 }} className="mb-3">
+              <div className="rounded-2xl overflow-hidden"
+                style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.075)", boxShadow: "0 10px 30px rgba(0,0,0,0.18)" }}>
+                <button onClick={() => setViewingGroup(g)}
+                  className="w-full text-left px-3.5 py-3.5 transition-all"
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.035)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-shrink-0">
+                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                        style={{ background: "linear-gradient(135deg, #2563eb, #7c3aed)", color: "#fff", fontWeight: 900, fontSize: 17, boxShadow: "0 8px 24px rgba(37,99,235,0.22)" }}>
+                        {g.name.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-lg flex items-center justify-center text-[8px] font-black"
+                        style={{ background: "#111827", border: "1px solid rgba(96,165,250,0.55)", color: "#93c5fd" }}>
+                        {lvl}
+                      </div>
                     </div>
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black"
-                      style={{ background: "#1e3a8a", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
-                      {lvl}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-[14px] font-black text-white truncate">{g.name}</p>
+                        {g.closed && (
+                          <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
+                            style={{ background: "rgba(239,68,68,0.12)", color: "rgba(239,68,68,0.75)" }}>ЗАКРЫТ</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.38)" }}>
+                        {g.description || (g.ownerName ? `владелец @${g.ownerName}` : "клан игроков")}
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[9px] px-2 py-1 rounded-lg" style={{ background: "rgba(255,255,255,0.055)", color: "rgba(255,255,255,0.5)" }}>
+                          {g.memberCount || (g.members || []).length} участников
+                        </span>
+                        <span className="text-[9px] px-2 py-1 rounded-lg" style={{ background: onlineCount > 0 ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.045)", color: onlineCount > 0 ? "#4ade80" : "rgba(255,255,255,0.32)" }}>
+                          {onlineCount > 0 ? `${onlineCount} онлайн` : "оффлайн"}
+                        </span>
+                      </div>
                     </div>
+                    {isApplied ? (
+                      <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
+                        style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.8)" }}>Заявка</span>
+                    ) : !g.closed ? (
+                      <button onClick={(e) => { e.stopPropagation(); apply(g.id); }}
+                        disabled={applyingId === g.id}
+                        className="text-[9px] px-3 py-1.5 rounded-lg font-bold flex-shrink-0 transition-all disabled:opacity-40"
+                        style={{ background: "rgba(168,85,247,0.35)", color: "#fff" }}>
+                        {applyingId === g.id ? "..." : isMember ? "Открыть" : "Вступить"}
+                      </button>
+                    ) : (
+                      <span className="text-[9px] px-2 py-1 rounded-lg font-semibold flex-shrink-0"
+                        style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>Закрыт</span>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[13px] font-semibold text-white truncate">{g.name}</p>
-                      {g.closed && (
-                        <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
-                          style={{ background: "rgba(239,68,68,0.12)", color: "rgba(239,68,68,0.7)" }}>ЗАКРЫТ</span>
-                      )}
-                    </div>
-                    <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {g.memberCount || (g.members || []).length} чел &middot; {onlineCount > 0 ? `${onlineCount} онлайн` : ""} &middot; {g.ownerName ? `@${g.ownerName}` : ""}
-                    </p>
-                  </div>
-                  {isApplied ? (
-                    <span className="text-[9px] px-2 py-1 rounded-lg font-bold flex-shrink-0"
-                      style={{ background: "rgba(34,197,94,0.15)", color: "rgba(34,197,94,0.8)" }}>Заявка</span>
-                  ) : !g.closed ? (
-                    <button onClick={(e) => { e.stopPropagation(); apply(g.id); }}
-                      disabled={applyingId === g.id}
-                      className="text-[9px] px-3 py-1.5 rounded-lg font-bold flex-shrink-0 transition-all disabled:opacity-40"
-                      style={{ background: "rgba(168,85,247,0.35)", color: "#fff" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.55)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.35)"}>
-                      {applyingId === g.id ? "..." : "Вступить"}
-                    </button>
-                  ) : (
-                    <span className="text-[9px] px-2 py-1 rounded-lg font-semibold flex-shrink-0"
-                      style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>Закрыт</span>
-                  )}
+                </button>
+
+                <div className="px-3.5 pb-3 flex flex-col gap-1.5">
+                  <button onClick={() => setViewingGroup(g)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all"
+                    style={{ background: "rgba(255,255,255,0.035)", color: "rgba(255,255,255,0.58)" }}>
+                    <span className="text-[14px] font-black text-white/25">#</span>
+                    <span className="text-[11px] font-bold">общий</span>
+                    <span className="ml-auto text-[9px] text-white/25">чат</span>
+                  </button>
+                  <button onClick={() => setViewingGroup(g)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all"
+                    style={{ background: "rgba(34,197,94,0.055)", color: "rgba(255,255,255,0.58)" }}>
+                    <Phone size={13} weight="fill" style={{ color: "rgba(74,222,128,0.75)" }} />
+                    <span className="text-[11px] font-bold">общий войс</span>
+                    <span className="ml-auto text-[9px]" style={{ color: onlineCount > 0 ? "#4ade80" : "rgba(255,255,255,0.25)" }}>
+                      {onlineCount > 0 ? `${onlineCount} доступны` : "пусто"}
+                    </span>
+                  </button>
                 </div>
-              </button>
+              </div>
             </motion.div>
           );
         });
@@ -1908,15 +1998,35 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
 // ─── PartiesPanel (временные пати для игры) ──────────────────────────────────
 function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreate, onInvite, onLeave, onKick, onAcceptInvite, onDeclineInvite }) {
   const [creating, setCreating] = useState(false);
-  const [newName,  setNewName]  = useState("");
-  const [activeParty, setActiveParty] = useState(null); // открытая партия
+  const [newName, setNewName] = useState("");
+  const [activeParty, setActiveParty] = useState(null);
+  const [inviteFilter, setInviteFilter] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
+  const MAX_SLOTS = 5;
   const openParty = parties.find(p => p.id === activeParty);
 
   // если открытая партия пропала (удалили/вышли) — сбросим
   React.useEffect(() => {
     if (activeParty && !parties.find(p => p.id === activeParty)) setActiveParty(null);
   }, [parties, activeParty]);
+
+  const createParty = () => {
+    const title = newName.trim();
+    if (!title) return;
+    onCreate(title);
+    setNewName("");
+    setCreating(false);
+  };
+
+  const copyPartyName = async (party) => {
+    try {
+      await navigator.clipboard?.writeText(`SBGames группа: ${party.name}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
 
   /* ── Экран конкретной партии ── */
   if (openParty) {
@@ -2007,12 +2117,47 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
     );
   }
 
-  /* ── Главный экран: лобби-стиль ── */
-  const MAX_SLOTS = 5;
-  const activePartyData = parties[0] || null;
+  /* ── Главный экран групп ── */
+  const activePartyData = openParty || parties[0] || null;
+  const activeOnlineCount = (activePartyData?.members || []).filter(m => onlineIds.has(m.id)).length;
+  const isActiveLeader = activePartyData?.leaderId === user?.id;
 
   return (
     <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="relative overflow-hidden rounded-3xl mb-3" style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.24), rgba(99,102,241,0.13) 45%, rgba(14,165,233,0.10))", border: "1px solid rgba(96,165,250,0.18)", boxShadow: "0 24px 70px rgba(0,0,0,0.28)" }}>
+        <div className="absolute -top-16 -right-12 w-40 h-40 rounded-full blur-3xl" style={{ background: "rgba(59,130,246,0.28)" }} />
+        <div className="absolute -bottom-20 -left-12 w-36 h-36 rounded-full blur-3xl" style={{ background: "rgba(34,197,94,0.16)" }} />
+        <div className="relative px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] font-black" style={{ color: "rgba(147,197,253,0.85)" }}>Игровые группы</p>
+              <h2 className="text-[20px] font-black text-white mt-1 leading-tight">Собери отряд</h2>
+              <p className="text-[11px] mt-1 max-w-[320px]" style={{ color: "rgba(255,255,255,0.48)" }}>Быстрые лобби до {MAX_SLOTS} игроков: роли, инвайты, онлайн-статусы и контроль состава.</p>
+            </div>
+            <button onClick={() => setCreating(v => !v)} className="px-3 py-2 rounded-2xl text-[11px] font-black text-white flex items-center gap-1.5 transition-all" style={{ background: creating ? "rgba(255,255,255,0.10)" : "linear-gradient(135deg, #2563eb, #38bdf8)", boxShadow: creating ? "none" : "0 12px 30px rgba(37,99,235,0.35)" }}>
+              <Plus size={13} /> {creating ? "Скрыть" : "Создать"}
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            {[[parties.length, "активных"], [partyInvites.length, "инвайтов"], [friends.filter(f => onlineIds.has(f.id)).length, "друзей онлайн"]].map(([value, label]) => (
+              <div key={label} className="rounded-2xl px-3 py-2" style={{ background: "rgba(0,0,0,0.20)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <p className="text-[16px] font-black text-white">{value}</p>
+                <p className="text-[9px] uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {creating && (
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl p-3 mb-3" style={{ background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <p className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{ color: "rgba(96,165,250,0.75)" }}>Новая группа</p>
+          <div className="flex gap-2">
+            <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={40} autoFocus placeholder="Например: Рейд, Дуо, Выживание..." onKeyDown={e => { if (e.key === "Enter") createParty(); if (e.key === "Escape") { setCreating(false); setNewName(""); } }} className="flex-1 rounded-xl px-4 py-3 text-[12px] outline-none" style={{ background: "rgba(0,0,0,0.22)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+            <button onClick={createParty} disabled={!newName.trim()} className="px-4 rounded-xl text-[11px] font-black text-white disabled:opacity-35" style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)" }}>Создать</button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Приглашения */}
       {partyInvites.length > 0 && (
@@ -2054,22 +2199,29 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
       {/* Active lobby or empty state */}
       {activePartyData ? (
         /* ── Lobby view ── */
-        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="px-4 pt-4 pb-3">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-[15px] font-black text-white">{activePartyData.name}</p>
-                <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                  {activePartyData.members.length} / {MAX_SLOTS} игроков
-                </p>
+        <div className="rounded-3xl overflow-hidden mb-4" style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="px-4 pt-4 pb-3" style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.16), rgba(0,0,0,0))" }}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-[20px] font-black flex-shrink-0" style={{ background: "linear-gradient(135deg, #2563eb, #38bdf8)", color: "#fff", boxShadow: "0 14px 34px rgba(37,99,235,0.30)" }}>
+                {activePartyData.name?.slice(0, 1).toUpperCase()}
               </div>
-              <button onClick={() => onLeave(activePartyData.id)}
-                className="px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
-                style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.7)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
-                onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
-                Покинуть
-              </button>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-[17px] font-black text-white truncate">{activePartyData.name}</p>
+                  {isActiveLeader && <span className="text-[8px] px-2 py-1 rounded-lg font-black" style={{ background: "rgba(251,191,36,0.16)", color: "#fbbf24" }}>ЛИДЕР</span>}
+                </div>
+                <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.42)" }}>
+                  {activePartyData.members.length}/{MAX_SLOTS} игроков · {activeOnlineCount} онлайн
+                </p>
+                <div className="h-1.5 rounded-full overflow-hidden mt-3" style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, activePartyData.members.length / MAX_SLOTS * 100)}%`, background: "linear-gradient(90deg, #2563eb, #22c55e)" }} />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <button onClick={() => setInviteOpen(v => !v)} disabled={!isActiveLeader} className="rounded-2xl py-2.5 text-[10px] font-black transition-all disabled:opacity-35" style={{ background: "rgba(37,99,235,0.18)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.18)" }}>Позвать</button>
+              <button onClick={() => copyPartyName(activePartyData)} className="rounded-2xl py-2.5 text-[10px] font-black transition-all" style={{ background: "rgba(255,255,255,0.055)", color: copied ? "#4ade80" : "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.07)" }}>{copied ? "Скопировано" : "Копировать"}</button>
+              <button onClick={() => onLeave(activePartyData.id)} className="rounded-2xl py-2.5 text-[10px] font-black transition-all" style={{ background: "rgba(239,68,68,0.10)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>Выйти</button>
             </div>
 
             {/* Player slots — horizontal grid */}
@@ -2117,36 +2269,35 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
             </div>
           </div>
 
-          {/* Invite friends */}
-          {activePartyData.leaderId === user?.id && (() => {
+          {inviteOpen && isActiveLeader && (() => {
             const memberIds = new Set(activePartyData.members.map(m => m.id));
-            const invitable = friends.filter(f => !memberIds.has(f.id) && onlineIds.has(f.id));
-            if (invitable.length === 0) return null;
+            const invitable = friends
+              .filter(f => !memberIds.has(f.id))
+              .filter(f => !inviteFilter.trim() || f.username?.toLowerCase().includes(inviteFilter.trim().toLowerCase()))
+              .sort((a, b) => Number(onlineIds.has(b.id)) - Number(onlineIds.has(a.id)) || (a.username || "").localeCompare(b.username || ""));
             return (
-              <div className="border-t px-4 py-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                <p className="text-[9px] uppercase tracking-widest font-semibold mb-2" style={{ color: "rgba(255,255,255,0.25)" }}>
-                  Позвать друга
-                </p>
-                <div className="flex flex-col gap-1">
-                  {invitable.slice(0, 5).map(f => (
-                    <button key={f.id} onClick={() => onInvite(activePartyData.id, f.id)}
-                      className="flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-all"
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.08)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold flex-shrink-0"
-                        style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}>
-                        {f.username?.slice(0, 2).toUpperCase()}
-                      </div>
-                      <span className="text-[11px] flex-1" style={{ color: "rgba(255,255,255,0.6)" }}>{f.username}</span>
-                      <UserPlus size={11} style={{ color: "rgba(96,165,250,0.4)" }} />
-                    </button>
-                  ))}
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="overflow-hidden border-t px-4 py-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                <input value={inviteFilter} onChange={e => setInviteFilter(e.target.value)} placeholder="Найти друга для приглашения..." className="w-full rounded-xl px-3 py-2.5 text-[11px] outline-none mb-2" style={{ background: "rgba(0,0,0,0.20)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+                <div className="flex flex-col gap-1 max-h-44 overflow-y-auto">
+                  {invitable.length === 0 ? (
+                    <p className="text-[10px] py-3 text-center" style={{ color: "rgba(255,255,255,0.30)" }}>Некого позвать: добавь друзей или дождись онлайна.</p>
+                  ) : invitable.map(f => {
+                    const online = onlineIds.has(f.id);
+                    return (
+                      <button key={f.id} onClick={() => onInvite(activePartyData.id, f.id)} className="flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-all" style={{ background: online ? "rgba(34,197,94,0.055)" : "rgba(255,255,255,0.025)" }}>
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)", color: online ? "#4ade80" : "rgba(255,255,255,0.4)" }}>{f.username?.slice(0, 2).toUpperCase()}</div>
+                        <span className="text-[11px] flex-1 font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>{f.username}</span>
+                        <span className="text-[9px]" style={{ color: online ? "#4ade80" : "rgba(255,255,255,0.28)" }}>{online ? "онлайн" : "оффлайн"}</span>
+                        <UserPlus size={11} style={{ color: "rgba(96,165,250,0.55)" }} />
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              </motion.div>
             );
           })()}
         </div>
-      ) : !creating ? (
+      ) : (
         /* ── Empty state + Create ── */
         <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="px-4 py-5 flex flex-col items-center gap-3">
@@ -2166,32 +2317,6 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
               onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.55)"}
               onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.35)"}>
               <Plus size={14} /> Создать лобби
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* ── Create form ── */
-        <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-[10px] uppercase tracking-widest font-semibold mb-3" style={{ color: "rgba(37,99,235,0.7)" }}>Новое лобби</p>
-          <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={40} autoFocus
-            placeholder="Название группы..."
-            onKeyDown={e => {
-              if (e.key === "Enter" && newName.trim()) { onCreate(newName.trim()); setNewName(""); setCreating(false); }
-              if (e.key === "Escape") { setCreating(false); setNewName(""); }
-            }}
-            className="w-full rounded-xl px-4 py-3 text-[12px] outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
-          <div className="flex gap-2 mt-3">
-            <button onClick={() => { setCreating(false); setNewName(""); }}
-              className="flex-1 py-2.5 rounded-xl text-[11px] font-semibold"
-              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>
-              Отмена
-            </button>
-            <button onClick={() => { if (newName.trim()) { onCreate(newName.trim()); setNewName(""); setCreating(false); } }}
-              disabled={!newName.trim()}
-              className="flex-1 py-2.5 rounded-xl text-[11px] font-bold text-white disabled:opacity-40 transition-all"
-              style={{ background: "rgba(37,99,235,0.6)" }}>
-              Создать
             </button>
           </div>
         </div>
@@ -2313,85 +2438,52 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
         </button>
       </div>
 
-      {/* ─── Voice call card ─── */}
-      {(groupVoiceIds.length > 0 || inThisCall) && (
-        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-          className="flex-shrink-0 px-5 pt-3 pb-0">
-          <div className="rounded-2xl p-3.5"
-            style={{
-              background: inThisCall
-                ? "linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(37,99,235,0.08) 100%)"
-                : "rgba(37,99,235,0.06)",
-              border: inThisCall
-                ? "1px solid rgba(34,197,94,0.2)"
-                : "1px solid rgba(59,130,246,0.15)",
-            }}>
-            <div className="flex items-center gap-2.5 mb-2.5">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{
-                  background: inThisCall ? "rgba(34,197,94,0.15)" : "rgba(37,99,235,0.15)",
-                  border: inThisCall ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(59,130,246,0.2)",
-                }}>
-                <Phone size={14} weight="fill" style={{ color: inThisCall ? "#4ade80" : "#60a5fa" }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold" style={{ color: inThisCall ? "#4ade80" : "#93c5fd" }}>
-                  {inThisCall ? "Голосовой чат" : groupVoiceIds.length > 0 ? "Идёт голосовой чат" : "Голосовой чат"}
-                </p>
-                <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  {groupVoiceIds.length > 0
-                    ? `${groupVoiceIds.length} ${groupVoiceIds.length === 1 ? "участник" : groupVoiceIds.length < 5 ? "участника" : "участников"}`
-                    : "Никто не в голосе"}
-                </p>
-              </div>
-              {!inThisCall && groupVoiceIds.length > 0 && (
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                  onClick={onJoinCall}
-                  className="px-4 py-2 rounded-xl text-[11px] font-bold text-white flex-shrink-0"
-                  style={{ background: "rgba(34,197,94,0.4)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(34,197,94,0.55)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(34,197,94,0.4)"}>
-                  Присоединиться
-                </motion.button>
-              )}
-              {inThisCall && (
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                  onClick={onHangCall}
-                  className="px-4 py-2 rounded-xl text-[11px] font-bold flex-shrink-0"
-                  style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.25)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.15)"}>
-                  Покинуть
-                </motion.button>
-              )}
+      {/* ─── Channels ─── */}
+      <div className="flex-shrink-0 px-5 pt-3 pb-0">
+        <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="px-3 py-2.5 flex items-center gap-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <span className="text-[15px] font-black" style={{ color: "rgba(255,255,255,0.25)" }}>#</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-white/70">общий</p>
+              <p className="text-[9px] text-white/25">текстовый канал</p>
             </div>
-            {groupVoiceIds.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {groupVoiceIds.map(uid => (
-                  <div key={uid} className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80" }} />
-                    <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>
+          </div>
+          <button onClick={inThisCall ? undefined : onJoinCall}
+            className="w-full px-3 py-2.5 flex items-start gap-2.5 text-left transition-all"
+            style={{ background: inThisCall ? "rgba(34,197,94,0.07)" : "transparent" }}
+            onMouseEnter={e => { if (!inThisCall) e.currentTarget.style.background = "rgba(34,197,94,0.06)"; }}
+            onMouseLeave={e => { if (!inThisCall) e.currentTarget.style.background = "transparent"; }}>
+            <Phone size={14} weight="fill" className="mt-0.5 flex-shrink-0" style={{ color: inThisCall ? "#4ade80" : "rgba(74,222,128,0.65)" }} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] font-bold" style={{ color: inThisCall ? "#4ade80" : "rgba(255,255,255,0.68)" }}>общий войс</p>
+                {inThisCall && <span className="text-[8px] px-1.5 py-0.5 rounded font-black" style={{ background: "rgba(34,197,94,0.14)", color: "#4ade80" }}>ПОДКЛЮЧЕН</span>}
+              </div>
+              <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                {groupVoiceIds.length > 0 ? `${groupVoiceIds.length} в канале` : "кликни, чтобы войти в голос"}
+              </p>
+              {groupVoiceIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {groupVoiceIds.map(uid => (
+                    <span key={uid} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-semibold"
+                      style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.62)" }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80" }} />
                       {uid === user?.id ? "Ты" : (memberNames[uid] || uid)}
                     </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {inThisCall && (
+              <span onClick={(e) => { e.stopPropagation(); onHangCall?.(); }}
+                className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer flex-shrink-0"
+                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}>
+                выйти
+              </span>
             )}
-          </div>
-        </motion.div>
-      )}
-      {!inThisCall && groupVoiceIds.length === 0 && (
-        <div className="flex-shrink-0 px-5 pt-3 pb-0">
-          <button onClick={onJoinCall}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all"
-            style={{ background: "rgba(37,99,235,0.08)", color: "rgba(96,165,250,0.7)", border: "1px dashed rgba(59,130,246,0.2)" }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(37,99,235,0.15)"; e.currentTarget.style.color = "rgba(96,165,250,1)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(37,99,235,0.08)"; e.currentTarget.style.color = "rgba(96,165,250,0.7)"; }}>
-            <Phone size={12} weight="fill" /> Начать голосовой чат
           </button>
         </div>
-      )}
+      </div>
 
       <AnimatePresence>
         {showMembers && (
@@ -2674,8 +2766,9 @@ function IncomingCallModal({ call, onAccept, onReject }) {
 }
 
 // ─── CallOverlay ──────────────────────────────────────────────────────────────
-function CallOverlay({ call, groupVoiceIds, friends, localStream, onMute, onShare, onHangUp }) {
+function CallOverlay({ call, groupVoiceIds, friends, localStream, remoteScreen, remoteSharing, onMute, onShare, onHangUp }) {
   const selfVideoRef = React.useRef(null);
+  const remoteVideoRef = React.useRef(null);
   const [elapsed, setElapsed] = React.useState(0);
   const startRef = React.useRef(Date.now());
 
@@ -2684,17 +2777,28 @@ function CallOverlay({ call, groupVoiceIds, friends, localStream, onMute, onShar
     return () => clearInterval(t);
   }, []);
 
-  // Привязываем локальный стрим к video-элементу
+  // Привязываем локальный стрим к video-элементу (только если сами шарим экран)
   React.useEffect(() => {
     const video = selfVideoRef.current;
-    if (!video || !localStream?.current) return;
-    // Останавливаем предыдущий srcObject чтобы не дублировать
+    if (!video) return;
     video.srcObject = null;
-    const tracks = localStream.current.getTracks();
-    if (tracks.length > 0) {
-      video.srcObject = localStream.current;
+    if (call.sharing && localStream?.current) {
+      const tracks = localStream.current.getVideoTracks?.() || [];
+      if (tracks.length > 0) video.srcObject = localStream.current;
     }
   }, [call]);
+
+  // Привязываем удалённую демонстрацию экрана собеседника
+  React.useEffect(() => {
+    const video = remoteVideoRef.current;
+    if (!video) return;
+    if (remoteSharing && remoteScreen?.current) {
+      video.srcObject = remoteScreen.current;
+      video.play?.().catch(() => {});
+    } else {
+      video.srcObject = null;
+    }
+  }, [remoteSharing, call]);
 
   const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const label = call.type === "dm"
@@ -2720,11 +2824,24 @@ function CallOverlay({ call, groupVoiceIds, friends, localStream, onMute, onShar
       <div style={{ height: 2, background: "linear-gradient(90deg, transparent, #2563eb, transparent)" }} />
 
       {/* Self-video preview */}
-      <div style={{ padding: "12px 12px 0" }}>
+      <div style={{ padding: (remoteSharing || call.sharing) ? "12px 12px 0" : 0 }}>
+        {/* Удалённая демонстрация экрана собеседника */}
+        <video
+          ref={remoteVideoRef}
+          autoPlay playsInline
+          style={{
+            display: remoteSharing ? "block" : "none",
+            width: "100%", height: 160, borderRadius: 14, objectFit: "contain",
+            background: "#0a0a12",
+            border: "1px solid rgba(37,99,235,0.25)",
+          }}
+        />
+        {/* Локальное превью своей демонстрации */}
         <video
           ref={selfVideoRef}
           autoPlay muted playsInline
           style={{
+            display: (call.sharing && !remoteSharing) ? "block" : "none",
             width: "100%", height: 100, borderRadius: 14, objectFit: "cover",
             background: "#0a0a12",
             border: "1px solid rgba(255,255,255,0.06)",

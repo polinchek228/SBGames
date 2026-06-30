@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, Sword, PawPrint, Sparkle, Star,
-  Loader2, Package, Check, X, Search, Filter, Palette,
+  Loader2, Package, Check, X, Search, Filter, Palette, Image,
 } from "lucide-react";
 import { authedFetch } from "../lib/api.js";
 import { CATALOG_BY_ID, RARITIES, LIBRARY_CATALOG } from "./catalog.js";
@@ -21,6 +21,7 @@ const CATEGORY_META = {
   pet:        { label: "Питомцы",       icon: PawPrint,   color: "#a855f7" },
   effect:     { label: "Эффекты",       icon: Sparkle,    color: "#f59e0b" },
   cosmetic:   { label: "Кастомизация",  icon: Palette,    color: "#14b8a6" },
+  background:  { label: "Фоны",          icon: Image,      color: "#6366f1" },
 };
 
 const RARITY = {
@@ -326,6 +327,20 @@ export default function InventoryTab({ user }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Синхронизация между вкладками: после покупки/экипировки в LibraryTab
+  // (или возврата на вкладку) перечитываем инвентарь, чтобы купленное и
+  // экипированное появлялось сразу, без перезахода.
+  useEffect(() => {
+    const onChanged = () => { load(); };
+    window.addEventListener("sbgames_inventory_changed", onChanged);
+    const onVisible = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("sbgames_inventory_changed", onChanged);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load]);
+
   const handleEquip = async (item) => {
     if (busy) return;
     setBusy(item.id);
@@ -367,11 +382,16 @@ export default function InventoryTab({ user }) {
     if (busy) return;
     setBusy(item.id);
     try {
-      await authedFetch("/api/inventory/equip", {
+      const r = await authedFetch("/api/inventory/equip", {
         method: "POST",
         body: JSON.stringify({ itemId: item.id }),
       });
-      setCosmeticEquip(prev => ({ ...prev, [item.type]: item.id }));
+      // Сервер возвращает актуальный equip — используем как источник правды.
+      const nextEquip = (r && typeof r.equip === "object" && r.equip)
+        ? r.equip
+        : { ...cosmeticEquip, [item.type]: item.id };
+      setCosmeticEquip(nextEquip);
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -383,15 +403,13 @@ export default function InventoryTab({ user }) {
     if (busy) return;
     setBusy(item.id);
     try {
-      await authedFetch("/api/inventory/unequip", {
+      const r = await authedFetch("/api/inventory/unequip", {
         method: "POST",
         body: JSON.stringify({ type: item.type }),
       });
-      setCosmeticEquip(prev => {
-        const next = { ...prev };
-        delete next[item.type];
-        return next;
-      });
+      const nextEquip = (r && typeof r.equip === "object" && r.equip) ? r.equip : {};
+      setCosmeticEquip(nextEquip);
+      window.dispatchEvent(new Event("sbgames_inventory_changed"));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -399,19 +417,28 @@ export default function InventoryTab({ user }) {
     }
   };
 
-  // Filter — game items only (cosmetic handled by its own category)
+  // Категории, которые относятся к косметике (не игровые предметы).
+  const isCosmeticCategory = activeCategory === "cosmetic" || activeCategory === "background";
+
+  // Filter — косметика. На вкладке "Фоны" показываем только фоны; на вкладке
+  // "Кастомизация" — всю косметику КРОМЕ фонов (чтобы не дублировать); на "Все" — всё.
   let cosmeticFiltered = cosmeticItems;
+  if (activeCategory === "background") {
+    cosmeticFiltered = cosmeticFiltered.filter(i => i.type === "background");
+  } else if (activeCategory === "cosmetic") {
+    cosmeticFiltered = cosmeticFiltered.filter(i => i.type !== "background");
+  }
   if (search.trim()) {
     const q = search.toLowerCase();
     cosmeticFiltered = cosmeticFiltered.filter(i => (i.name || "").toLowerCase().includes(q) || (i.type || "").toLowerCase().includes(q));
   }
 
   let filtered = items;
-  if (activeCategory !== "all" && activeCategory !== "cosmetic") {
+  if (activeCategory !== "all" && !isCosmeticCategory) {
     const catMap = { armor: "Броня", weapon: "Оружие", pet: "Питомцы", effect: "Эффекты" };
     filtered = filtered.filter(i => i.category === catMap[activeCategory]);
   }
-  if (activeServer !== "all" && activeCategory !== "cosmetic") {
+  if (activeServer !== "all" && !isCosmeticCategory) {
     filtered = filtered.filter(i => i.server === activeServer);
   }
   if (search.trim()) {
@@ -420,16 +447,18 @@ export default function InventoryTab({ user }) {
   }
 
   const counts = {
-    all:      items.length + cosmeticItems.length,
-    armor:    items.filter(i => i.category === "Броня").length,
-    weapon:   items.filter(i => i.category === "Оружие").length,
-    pet:      items.filter(i => i.category === "Питомцы").length,
-    effect:   items.filter(i => i.category === "Эффекты").length,
-    cosmetic: cosmeticItems.length,
+    all:        items.length + cosmeticItems.length,
+    armor:      items.filter(i => i.category === "Броня").length,
+    weapon:     items.filter(i => i.category === "Оружие").length,
+    pet:        items.filter(i => i.category === "Питомцы").length,
+    effect:     items.filter(i => i.category === "Эффекты").length,
+    // "Кастомизация" — без фонов, фоны вынесены в свою вкладку.
+    cosmetic:   cosmeticItems.filter(i => i.type !== "background").length,
+    background: cosmeticItems.filter(i => i.type === "background").length,
   };
 
-  const showCosmetic = activeCategory === "all" || activeCategory === "cosmetic";
-  const showGame = activeCategory === "all" || activeCategory !== "cosmetic";
+  const showCosmetic = activeCategory === "all" || isCosmeticCategory;
+  const showGame = activeCategory === "all" || !isCosmeticCategory;
 
   return (
     <div className="flex h-full">
@@ -549,16 +578,20 @@ export default function InventoryTab({ user }) {
               {showCosmetic && (
                 cosmeticFiltered.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3">
-                    <Palette size={32} style={{ color: "rgba(255,255,255,0.2)" }} />
+                    {activeCategory === "background"
+                      ? <Image size={32} style={{ color: "rgba(255,255,255,0.2)" }} />
+                      : <Palette size={32} style={{ color: "rgba(255,255,255,0.2)" }} />}
                     <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
-                      {cosmeticItems.length === 0 ? "Нет купленной кастомизации" : "Ничего не найдено"}
+                      {activeCategory === "background"
+                        ? (cosmeticItems.some(i => i.type === "background") ? "Ничего не найдено" : "Нет купленных фонов")
+                        : (cosmeticItems.length === 0 ? "Нет купленной кастомизации" : "Ничего не найдено")}
                     </p>
                   </div>
                 ) : (
                   <div className={showGame ? "mt-6" : ""}>
                     {showGame && (
                       <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>
-                        Элементы кастомизации · {cosmeticFiltered.length}
+                        {activeCategory === "background" ? "Фоны" : "Элементы кастомизации"} · {cosmeticFiltered.length}
                       </p>
                     )}
                     <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">

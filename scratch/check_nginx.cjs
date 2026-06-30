@@ -1,8 +1,10 @@
-const { Client } = require('ssh2');
-const conn = new Client();
-conn.on('ready', () => {
-  conn.exec('ls /etc/nginx/sites-available/ && echo "---" && ls /etc/nginx/sites-enabled/ && echo "---" && cat /etc/nginx/sites-available/games.sb-capital.group 2>/dev/null || echo "NOT FOUND"', { pty: true }, (err, stream) => {
-    stream.on('data', d => process.stdout.write(d));
-    stream.on('close', () => conn.end());
+const {Client}=require('ssh2');
+const c=new Client();
+c.on('ready',()=>{
+  c.exec('cat /etc/nginx/sites-enabled/default 2>/dev/null || cat /etc/nginx/conf.d/sbgames.conf 2>/dev/null || cat /etc/nginx/sites-available/games.sb-capital.group 2>/dev/null || echo "NOT FOUND"', (e,s)=>{
+    let o='';
+    s.stdout.on('data',d=>o+=d);
+    s.stderr.on('data',d=>o+=d);
+    s.on('close',()=>{console.log(o);c.end();});
   });
-}).connect({ host: '62.77.154.84', port: 22, username: 'mnntn', password: 'tcfgd12' });
+}).connect({host:'62.77.154.84',username:'mnntn',password:'tcfgd12'});

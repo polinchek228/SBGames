@@ -1,10 +1,16 @@
-const { Client } = require('ssh2');
-const c = new Client();
-c.on('ready', () => {
-  c.exec("echo tcfgd12 | sudo -S ls -la /etc/nginx/sites-enabled/ && echo '=== sites-available ===' && echo tcfgd12 | sudo -S ls -la /etc/nginx/sites-available/", (e, s) => {
-    s.on('data', c => process.stdout.write(c));
-    s.stderr.on('data', c => process.stderr.write(c));
-    s.on('close', () => c.end());
+const {Client}=require('ssh2');
+const c=new Client();
+c.on('ready',()=>{
+  c.sftp((err,sftp)=>{
+    sftp.readdir('/etc/nginx/sites-enabled/', (err, list)=>{
+      console.log('All files:', list.map(f=>f.filename));
+      // The backup from earlier might be somewhere else
+      c.exec('ls -la /etc/nginx/sites-enabled/ 2>&1', (e,s)=>{
+        let o='';
+        s.stdout.on('data',d=>o+=d);
+        s.stderr.on('data',d=>o+=d);
+        s.on('close',()=>{console.log(o);c.end();});
+      });
+    });
   });
-}).on('error', e => console.error(e.message))
-  .connect({ host: '62.77.154.84', port: 22, username: 'mnntn', password: 'tcfgd12' });
+}).connect({host:'62.77.154.84',username:'mnntn',password:'tcfgd12'});

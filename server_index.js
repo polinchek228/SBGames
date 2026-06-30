@@ -752,7 +752,10 @@ app.get("/auth/me", async (req, res) => {
 app.put("/api/user/avatar", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
-  acc.avatar = sanitize(req.body.avatar || "", 500);
+  // Аватар — это base64 dataURL (десятки тысяч символов). sanitize с лимитом
+  // 500 обрезал dataURL до мусора, из-за чего картинка не грузилась после
+  // перезахода. Поднимаем лимит до ~3 МБ символов (небольшой PNG в base64).
+  acc.avatar = sanitize(req.body.avatar || "", 3_000_000);
   await redisAccounts.set(req.userId, acc);
   res.json({ ok: true, avatar: acc.avatar });
 });
@@ -1667,19 +1670,35 @@ app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
   res.json({ ok: true, balance: rb.value.balance, market: rb.value.market_inventory });
 });
 
-app.delete("/api/market/:id", requireAuth, async (req, res) => {
+async function cancelMarketListing(req, res) {
   const id = sanitize(req.params.id, 32);
   const listing = listings.get(id);
   if (!listing) return res.status(404).json({ message: "Листинг не найден" });
-  if (listing.sellerId !== req.userId) return res.status(403).json({ message: "Не твой" });
+  if (listing.sellerId !== req.userId) return res.status(403).json({ message: "Не твой товар" });
   if (listing.status !== "active") return res.status(400).json({ message: "Уже завершён" });
-  const acc = await redisAccounts.get(req.userId);
-  if (acc) { acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId]; await redisAccounts.set(req.userId, acc); }
+
+  const cosmeticTypes = ["frame", "background", "badge", "avatar_animated"];
+  const isCosmetic = cosmeticTypes.includes(listing.itemType);
+  const result = await redisAccounts.mutate(req.userId, (acc) => {
+    if (!acc) return { ok: false, error: "Игрок не найден" };
+    if (isCosmetic) {
+      acc.inventory = Array.isArray(acc.inventory) ? [...new Set([...acc.inventory, listing.itemId])] : [listing.itemId];
+    } else {
+      acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId];
+    }
+    return { ok: true, value: acc };
+  });
+  if (!result.ok) return res.status(404).json({ message: result.error });
+
   listing.status = "cancelled";
+  listing.cancelledAt = Date.now();
   listings.set(id, listing);
   saveListing(listing);
-  res.json({ ok: true });
-});
+  res.json({ ok: true, inventory: result.value.inventory || [], market: result.value.market_inventory || [] });
+}
+
+app.delete("/api/market/:id", requireAuth, cancelMarketListing);
+app.delete("/api/market/listings/:id", requireAuth, cancelMarketListing);
 
 // ─── Groups ───────────────────────────────────────────────────────────────────
 const groups = new Map(), groupMessages = new Map(), groupInvites = new Map();
@@ -2242,7 +2261,8 @@ app.put("/api/groups/:id/avatar", requireAuth, async (req, res) => {
   const g = groups.get(gid);
   if (!g) return res.status(404).json({ message: "Группа не найдена" });
   if (!canEditGroup(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
-  g.avatar = sanitize(req.body.avatar || "", 500);
+  // base64 dataURL — нельзя резать до 500 символов (см. /api/user/avatar).
+  g.avatar = sanitize(req.body.avatar || "", 3_000_000);
   saveGroup(g);
   const pub = await publicGroup(g);
   for (const m of g.members) sendToUser(m, { type: "group_update", group: pub });

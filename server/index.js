@@ -2147,8 +2147,8 @@ app.post("/api/groups/:id/apply", requireAuth, (req, res) => {
 app.get("/api/groups/:id/requests", requireAuth, (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
-  if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
+  if (!g) return res.status(404).json({ message: "Клан не найден" });
+  if (!canManageRequests(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
   res.json({ requests: groupJoinRequests.get(gid) || [] });
 });
 
@@ -2157,8 +2157,8 @@ app.post("/api/groups/:id/requests/:userId", requireAuth, async (req, res) => {
   const gid = sanitize(req.params.id, 32);
   const applicantId = sanitize(req.params.userId, 64);
   const g = groups.get(gid);
-  if (!g) return res.status(404).json({ message: "Группа не найдена" });
-  if (!state || !username) return res.status(400).json({ message: "Обязательные поля отсутствуют" });
+  if (!g) return res.status(404).json({ message: "Клан не найден" });
+  if (!canManageRequests(g, req.userId)) return res.status(403).json({ message: "Нет прав" });
   const accept = !!req.body.accept;
   const list = groupJoinRequests.get(gid) || [];
   if (!list.find(r => r.userId === applicantId)) return res.status(404).json({ message: "Заявка не найдена" });
@@ -2502,6 +2502,10 @@ wss.on("connection", (ws, req) => {
           }
           send(ws, { type: "friends_list", friends: myFriends });
           send(ws, { type: "friend_requests", requests: getPendingRequests(client.userId) });
+          send(ws, { type: "groups_list", groups: await Promise.all([...groups.values()].filter(g => g.members.has(client.userId)).map(publicGroup)) });
+          const myGroupInvites = [];
+          for (const [gid, list] of groupInvites.entries()) for (const inv of list) if (inv.toId === client.userId) myGroupInvites.push({ ...inv, groupId: gid });
+          send(ws, { type: "group_invites_list", invites: myGroupInvites });
           send(ws, { type: "parties_list", parties: await userPartiesList(client.userId) });
           send(ws, { type: "party_invites_list", invites: partyInvites.get(client.userId) || [] });
           if (client.role === "admin") { const openCount = [...tickets.values()].filter(t => t.status !== "closed").length; send(ws, { type: "admin_ready", openTickets: openCount }); }
