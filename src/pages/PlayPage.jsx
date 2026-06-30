@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Settings, X, Cpu, HardDrive, AlertTriangle, ShieldAlert, Info, Plus, Package, FileImage, Sparkles, Trash2, Search, Download, Check, ExternalLink, ChevronDown, ArrowLeft, MoreHorizontal, Grid3X3, List, Folder, FolderOpen, Settings2, RefreshCw, Camera, ArrowUpDown, Save, Link2, ShieldCheck, Gear, Wrench, Upload } from "lucide-react";
+import { Play, Settings, X, Cpu, HardDrive, AlertTriangle, ShieldAlert, Info, Plus, Package, FileImage, Sparkles, Trash2, Search, Download, Check, ExternalLink, ChevronDown, ArrowLeft, MoreHorizontal, Grid3X3, List, Folder, FolderOpen, Settings2, RefreshCw, Camera, ArrowUpDown, Save, Link2, ShieldCheck } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
 import { invoke, notifyDesktop, setDiscordPresence, getMinecraftStatus, killMinecraft, launchInstance, instanceCreate, instanceDelete, instanceOpenFolder, importMrpack } from "../lib/tauri.js";
 import { pushLocalActivity } from "../components/RecentActivityCard.jsx";
@@ -89,7 +89,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     try { return JSON.parse(localStorage.getItem("sbg_custom_modpacks") || "[]"); } catch { return []; }
   });
   const [showBuilder, setShowBuilder] = useState(false);
-  const [builderTab, setBuilderTab] = useState("settings"); // settings | import | actions
+  const [builderTab, setBuilderTab] = useState("settings");
   const [draft, setDraft] = useState({ name: "", mcVersion: "1.20.1", loader: "forge", mods: [], resourcePacks: [], shaders: [], screenshots: [] });
 
   // Dynamic versions & loaders from API
@@ -1015,281 +1015,14 @@ export default function PlayPage({ user, onOpenCommunity }) {
       {showBuilder ? (
         /* ═══ BUILDER ═══ */
         <div className="absolute inset-0 flex" style={{ paddingLeft: 252 }}>
-          {/* Left panel — opaque, tabbed */}
-          <div className="w-[320px] flex flex-col border-r" style={{ background: "rgba(10,10,14,0.95)", borderColor: "rgba(255,255,255,0.06)" }}>
-            {/* Header */}
-            <div className="p-4 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div>
-                <p className="text-[14px] font-black text-white">{draft.name || "Новая сборка"}</p>
-              </div>
-              <button onClick={() => openBuilder(null)} className="h-7 px-2.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all"
-                style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.2)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.12)"}>
-                <Plus size={10} /> Новая
-              </button>
-            </div>
-
-            {/* Tab bar */}
-            <div className="flex px-3 pt-2 gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              {[
-                { id: "settings", label: "Настройки", icon: Gear },
-                { id: "installed", label: "Установлено", icon: Package, badge: (draft.mods.length || 0) + (draft.resourcePacks.length || 0) + (draft.shaders.length || 0) },
-                { id: "actions", label: "Инструменты", icon: Wrench },
-              ].map(t => (
-                <button key={t.id} onClick={() => setBuilderTab(t.id)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-semibold rounded-t-lg transition-all relative"
-                  style={{
-                    background: builderTab === t.id ? "rgba(255,255,255,0.06)" : "transparent",
-                    color: builderTab === t.id ? "#fff" : "rgba(255,255,255,0.35)",
-                    borderBottom: builderTab === t.id ? "2px solid #3b82f6" : "2px solid transparent",
-                  }}>
-                  <t.icon size={11} />
-                  {t.label}
-                  {t.badge > 0 && (
-                    <span className="ml-0.5 px-1.5 py-0 rounded-full text-[8px] font-bold"
-                      style={{ background: "rgba(59,130,246,0.2)", color: "#60a5fa" }}>{t.badge}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* Tab content */}
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-              {/* ═══ SETTINGS TAB ═══ */}
-              {builderTab === "settings" && (
-                <>
-                  {/* Name */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Название</span>
-                    <input value={draft.name} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))} placeholder="Моя сборка"
-                      className="w-full rounded-xl text-[13px] px-3 py-2.5 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
-                  </div>
-                  {/* MC Version + Loader */}
-                  <div className="flex gap-2">
-                    <div className="flex flex-col gap-1.5 flex-1">
-                      <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Версия</span>
-                      <CustomDropdown ariaLabel="Версия Minecraft" value={draft.mcVersion}
-                        onChange={v => setDraft(p => ({ ...p, mcVersion: v }))}
-                        options={mcVersions.map(v => ({ value: v.id, label: v.id + (v.type === "snapshot" ? " (snapshot)" : "") }))} />
-                    </div>
-                    <div className="flex flex-col gap-1.5 flex-1">
-                      <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузчик</span>
-                      <CustomDropdown ariaLabel="Загрузчик" value={draft.loader}
-                        onChange={v => setDraft(p => ({ ...p, loader: v }))}
-                        options={loaders.map(l => ({ value: l.id, label: l.label }))} />
-                    </div>
-                  </div>
-                  {/* Profiles */}
-                  {profiles.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                        <Folder size={10} /> Профили
-                      </span>
-                      <div className="relative" ref={profileMenuRef}>
-                        <button onClick={() => setShowProfileMenu(!showProfileMenu)}
-                          className="w-full rounded-xl text-[12px] px-3 py-2.5 flex items-center justify-between outline-none transition-all"
-                          style={{ background: "rgba(255,255,255,0.05)", color: activeProfile ? "#e5e7eb" : "rgba(255,255,255,0.4)" }}>
-                          <span className="truncate">{activeProfile || "Выбрать профиль"}</span>
-                          <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                        </button>
-                        {showProfileMenu && (
-                          <div className="absolute top-full left-0 right-0 mt-1 rounded-xl z-50 overflow-hidden"
-                            style={{ background: "rgba(18,18,24,0.98)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 12px 40px rgba(0,0,0,0.6)" }}>
-                            {profiles.map(p => (
-                              <div key={p.name} className="flex items-center px-2 py-1.5 group/pro" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                                <button onClick={() => loadProfile(p.name)} className="flex-1 text-left px-2 py-1 rounded-lg text-[11px] transition-colors"
-                                  style={{ color: activeProfile === p.name ? "#60a5fa" : "rgba(255,255,255,0.6)" }}>
-                                  {p.name}
-                                </button>
-                                <button onClick={() => deleteProfile(p.name)} className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover/pro:opacity-100 transition-opacity hover:bg-red-500/15">
-                                  <Trash2 size={9} style={{ color: "rgba(239,68,68,0.7)" }} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {/* Info */}
-                  <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                    <Info size={13} style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0, marginTop: 1 }} />
-                    <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-                      Античит не распространяется на пользовательские сборки. Fabric API добавляется автоматически.
-                    </p>
-                  </div>
-                  {/* Launch history */}
-                  {(draft.launchCount > 0 || draft.lastLaunchedAt) && (
-                    <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)" }}>
-                      <Play size={13} style={{ color: "#22c55e", flexShrink: 0, marginTop: 1 }} />
-                      <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-                        Запусков: {draft.launchCount || 0}{draft.lastLaunchedAt ? ` · Последний: ${new Date(draft.lastLaunchedAt).toLocaleDateString("ru-RU")}` : ""}
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* ═══ INSTALLED TAB ═══ */}
-              {builderTab === "installed" && (
-                <>
-                  {TABS.map(tab => {
-                    const items = tab.id === "mods" ? draft.mods : tab.id === "resourcepacks" ? draft.resourcePacks : draft.shaders;
-                    const key = tab.id === "mods" ? "mods" : tab.id === "resourcepacks" ? "resourcePacks" : "shaders";
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={tab.id} className="flex flex-col gap-1.5">
-                        <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                          <tab.icon size={10} /> {tab.label} ({items.filter(m => !m.disabled).length}/{items.length})
-                        </span>
-                        <div className="rounded-xl p-1.5 space-y-1" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                          {items.map((item, i) => {
-                            const latest = modLatestVersions[item.projectId];
-                            const isOutdated = latest && item.version !== "?" && item.version !== latest;
-                            const isUpToDate = latest && item.version === latest;
-                            return (
-                              <div key={i} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 group/item"
-                                style={{
-                                  background: item.disabled ? "rgba(255,255,255,0.01)" : `${tab.accent}08`,
-                                  border: `1px solid ${item.disabled ? "rgba(255,255,255,0.02)" : `${tab.accent}15`}`,
-                                  opacity: item.disabled ? 0.4 : 1,
-                                }}>
-                                {item.icon_url ? <img src={item.icon_url} alt={item.title || "Мод"} className="w-5 h-5 rounded flex-shrink-0" /> : <tab.icon size={10} style={{ color: tab.accent, flexShrink: 0 }} />}
-                                <span className="text-[11px] text-white truncate flex-1">{item.title}{item.auto ? " (auto)" : ""}{item.local ? " (local)" : ""}</span>
-                                {!item.auto && !item.local && latest && (
-                                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" title={isOutdated ? `Обновление: ${latest}` : isUpToDate ? "Последняя версия" : ""}
-                                    style={{ background: isOutdated ? "#f59e0b" : isUpToDate ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
-                                )}
-                                <span className="text-[9px] flex-shrink-0" style={{ color: isOutdated ? "#fbbf24" : "rgba(255,255,255,0.3)" }}>{item.version}</span>
-                                {!item.auto && !item.local && (
-                                  <button onClick={() => toggleDisabled(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 transition-all" title={item.disabled ? "Включить" : "Отключить"}>
-                                    <div className="w-3.5 h-2 rounded-full transition-all" style={{ background: item.disabled ? "rgba(255,255,255,0.15)" : "rgba(74,222,128,0.5)", position: "relative" }}>
-                                      <div className="w-1.5 h-1.5 rounded-full absolute top-[1px] transition-all" style={{ background: "#fff", left: item.disabled ? "1px" : "11px" }} />
-                                    </div>
-                                  </button>
-                                )}
-                                {!item.auto && <button onClick={() => removeItem(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 hover:bg-white/10 transition-all">
-                                  <Trash2 size={10} style={{ color: "rgba(239,68,68,0.7)" }} />
-                                </button>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {/* Category tags */}
-                        {tab.id === "mods" && items.length > 0 && (() => {
-                          const allCats = [...new Set(items.flatMap(m => m.categories || []).filter(Boolean))];
-                          if (allCats.length === 0) return null;
-                          return (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {allCats.slice(0, 8).map(cat => (
-                                <button key={cat} onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
-                                  className="text-[8px] px-1.5 py-0.5 rounded-full font-semibold transition-all"
-                                  style={{
-                                    background: categoryFilter === cat ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.05)",
-                                    color: categoryFilter === cat ? "#93c5fd" : "rgba(255,255,255,0.35)",
-                                    border: `1px solid ${categoryFilter === cat ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.06)"}`,
-                                  }}>
-                                  {cat}
-                                </button>
-                              ))}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    );
-                  })}
-                  {draft.mods.length === 0 && draft.resourcePacks.length === 0 && draft.shaders.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-12 gap-3">
-                      <Package size={28} style={{ color: "rgba(255,255,255,0.12)" }} />
-                      <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>Пока ничего не установлено</p>
-                      <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.2)" }}>Добавьте моды через каталог справа</p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* ═══ ACTIONS TAB ═══ */}
-              {builderTab === "actions" && (
-                <>
-                  {/* Import from archive */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Импорт из архива</span>
-                    <label className="flex items-center justify-center gap-2 h-11 rounded-xl cursor-pointer transition-all"
-                      style={{ background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.45)" }}
-                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.45)"; }}>
-                      <input type="file" accept=".zip,.jar" multiple className="hidden" onChange={e => {
-                        const files = Array.from(e.target.files || []);
-                        files.forEach(f => {
-                          const name = f.name.replace(/\.(zip|jar)$/i, "");
-                          const isJar = f.name.endsWith(".jar");
-                          const item = { projectId: `local_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, slug: name.toLowerCase(), title: name, icon_url: null, version: "local", downloads: 0, downloadUrl: null, filename: f.name, local: true };
-                          if (isJar) setDraft(prev => ({ ...prev, mods: [...prev.mods, item] }));
-                          else setDraft(prev => ({ ...prev, resourcePacks: [...prev.resourcePacks, item] }));
-                        });
-                        e.target.value = "";
-                      }} />
-                      <Upload size={14} /> Перетащите .zip / .jar или нажмите
-                    </label>
-                  </div>
-
-                  {/* Import from Modrinth URL */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Импорт по ссылке Modrinth</span>
-                    <div className="flex gap-1.5">
-                      <input value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="modrinth.com/mod/sodium"
-                        onKeyDown={e => { if (e.key === "Enter") importFromUrl(); }}
-                        className="flex-1 rounded-xl text-[11px] px-3 py-2 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
-                      <button onClick={importFromUrl} disabled={!importUrl.trim() || importingUrl}
-                        className="h-8 px-3 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all disabled:opacity-40"
-                        style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}>
-                        {importingUrl ? <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" /> : <Link2 size={10} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
-
-                  {/* Update All */}
-                  <button onClick={updateAllMods} disabled={updatingAll || (!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length)}
-                    className="w-full h-9 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    {updatingAll ? <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" /> : <RefreshCw size={11} />}
-                    Обновить все моды
-                  </button>
-
-                  {/* Backup */}
-                  <button onClick={backupCurrentMods} disabled={!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length}
-                    className="w-full h-9 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <Save size={11} /> Создать бэкап
-                  </button>
-
-                  {/* Export */}
-                  <button onClick={exportModpack}
-                    className="w-full h-9 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-2 transition-all"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <Download size={11} /> Экспорт сборки
-                  </button>
-
-                  {/* Save as profile */}
-                  <button onClick={saveProfile} disabled={!draft.name.trim()}
-                    className="w-full h-9 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <Folder size={11} /> Сохранить как профиль
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-              <button onClick={() => setShowBuilder(false)} className="flex-1 h-9 rounded-xl text-[11px] font-semibold transition-all"
-                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>Отмена</button>
-              <button onClick={saveModpack} disabled={!draft.name.trim()}
-                className="flex-1 h-9 rounded-xl text-[11px] font-bold text-white transition-all disabled:opacity-30"
-                style={{ background: draft.name.trim() ? "#2563eb" : "rgba(37,99,235,0.25)" }}>Сохранить</button>
-            </div>
+          {/* Left panel — opaque */}
+          <div className="w-[320px] flex flex-col border-r" style={{ background: "rgba(10,10,14,0.95)", borderColor: "rgba(255,255,255,0.06)", backdropFilter: "blur(12px)" }}>
+            <div className="p-5 flex flex-col gap-4 flex-1 overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[15px] font-black text-white mb-1">{draft.name || "Новая сборка"}</p>
+                  <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Настрой свою сборку модов</p>
+                </div>
                 <button onClick={() => openBuilder(null)} className="h-7 px-2.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all"
                   style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.2)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.12)"}>
@@ -1297,7 +1030,29 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 </button>
               </div>
 
-              {/* Profiles */}
+              
+              {/* Tab bar */}
+              <div className="flex gap-1 mb-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 8 }}>
+                {[{ id: "settings", label: "Настройки", icon: Settings2 },
+                  { id: "installed", label: "Установлено", icon: Package, badge: (draft.mods.length || 0) + (draft.resourcePacks.length || 0) + (draft.shaders.length || 0) },
+                  { id: "actions", label: "Инструменты", icon: Wrench }
+                ].map(t => (
+                  <button key={t.id} onClick={() => setBuilderTab(t.id)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-semibold rounded-lg transition-all"
+                    style={{
+                      background: builderTab === t.id ? "rgba(59,130,246,0.15)" : "transparent",
+                      color: builderTab === t.id ? "#93c5fd" : "rgba(255,255,255,0.35)",
+                      border: "1px solid " + (builderTab === t.id ? "rgba(59,130,246,0.3)" : "transparent")
+                    }}>
+                    <t.icon size={11} /> {t.label}
+                    {t.badge > 0 && <span className="ml-0.5 px-1.5 py-0 rounded-full text-[8px] font-bold"
+                      style={{ background: "rgba(59,130,246,0.2)", color: "#60a5fa" }}>{t.badge}</span>}
+                  </button>
+                ))}
+              </div>
+
+              {builderTab === "settings" && (<>
+{/* Profiles */}
               {profiles.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
@@ -1354,7 +1109,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 </div>
               </div>
 
-              {/* Installed items */}
+              
+</>)}
+
+{builderTab === "installed" && (<>
+{/* Installed items */}
               {TABS.map(tab => {
                 const items = tab.id === "mods" ? draft.mods : tab.id === "resourcepacks" ? draft.resourcePacks : draft.shaders;
                 const key = tab.id === "mods" ? "mods" : tab.id === "resourcepacks" ? "resourcePacks" : "shaders";
@@ -1422,7 +1181,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 );
               })}
 
-              {/* Info */}
+              
+</>)}
+
+{/* Info */}
               <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
                 <Info size={13} style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0, marginTop: 1 }} />
                 <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
