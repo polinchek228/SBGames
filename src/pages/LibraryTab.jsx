@@ -272,34 +272,19 @@ function ItemVisualLarge({ type, color, name, item }) {
 
 /* ── Equip slot (drop target) ─────────────────────────────────────────────── */
 
-function EquipSlot({ type, meta, equippedItem, onDrop, onClear }) {
-  const [over, setOver] = useState(false);
-
-  const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver(true); };
-  const handleDragLeave = () => setOver(false);
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setOver(false);
-    const itemId = e.dataTransfer.getData("text/plain");
-    if (itemId) onDrop(itemId, type);
-  };
-
+function EquipSlot({ type, meta, equippedItem, onClear }) {
   return (
     <div
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      className="relative flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-150 cursor-pointer group"
+      className="relative flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-150"
       style={{
-        background: over ? `${meta.color}18` : equippedItem ? `${equippedItem.color}0a` : "rgba(255,255,255,0.06)",
-        border: over ? `1.5px dashed ${meta.color}50` : equippedItem ? `1px solid ${equippedItem.color}20` : "1px solid rgba(255,255,255,0.12)",
+        background: equippedItem ? `${equippedItem.color}12` : "rgba(255,255,255,0.04)",
       }}
     >
-      <meta.icon size={13} style={{ color: over ? meta.color : equippedItem ? equippedItem.color : "rgba(255,255,255,0.4)" }} />
+      <meta.icon size={13} style={{ color: equippedItem ? equippedItem.color : "rgba(255,255,255,0.3)" }} />
       {equippedItem ? (
         <>
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: equippedItem.color, boxShadow: `0 0 6px ${equippedItem.color}60` }} />
-          {equippedItem.name && <span className="text-[10px] font-semibold truncate" style={{ color: equippedItem.color }}>{equippedItem.name}</span>}
+          <span className="text-[10px] font-semibold truncate" style={{ color: equippedItem.color }}>{equippedItem.name || meta.label}</span>
           <button
             onClick={() => onClear(type)}
             className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded"
@@ -309,8 +294,8 @@ function EquipSlot({ type, meta, equippedItem, onDrop, onClear }) {
           </button>
         </>
       ) : (
-        <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-          {over ? "Отпусти сюда" : `Перетащи ${meta.label.toLowerCase()}`}
+        <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+          {meta.label}
         </span>
       )}
     </div>
@@ -349,7 +334,7 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
         className="relative w-full max-w-[340px] rounded-2xl overflow-hidden"
         style={{
           background: "linear-gradient(180deg, #111118 0%, #0d0d12 100%)",
-          boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 40px 80px rgba(0,0,0,0.85), 0 0 80px ${item.color}18`,
+          boxShadow: `0 40px 80px rgba(0,0,0,0.85), 0 0 80px ${item.color}18`,
         }}
         initial={{ scale: 0.92, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -443,7 +428,6 @@ function ItemModal({ item, isOwned, isEquipped, canAfford, isAdmin, busy, onBuy,
                 style={{
                   background: "rgba(255,255,255,0.04)",
                   color: "rgba(255,255,255,0.6)",
-                  border: "1px solid rgba(255,255,255,0.12)",
                 }}
               >
                 {busy ? "…" : "Снять"}
@@ -493,39 +477,24 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
   const meta = TYPE_META[item.type] || TYPE_META.all;
   const rarity = RARITIES[item.rarity];
 
-  const handleDragStart = (e) => {
-    if (!isOwned) { e.preventDefault(); return; }
-    e.dataTransfer.setData("text/plain", item.id);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
   return (
-    <motion.div
+    <div
       ref={ref}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="group relative rounded-xl overflow-hidden cursor-pointer flex flex-col"
-      draggable={isOwned}
-      onDragStart={handleDragStart}
-      onClick={() => onOpen(item)}
+      className="group relative rounded-xl cursor-pointer flex flex-col"
+      onClick={() => isOwned ? (isEquipped ? onUnequip() : onEquip()) : onOpen(item)}
       style={{
         background: "rgba(13,13,18,0.7)",
         backdropFilter: "blur(12px)",
-        border: isEquipped ? `1.5px solid ${item.color}80` : `1.5px solid ${(rarity?.color || "#ffffff")}28`,
-        boxShadow: isEquipped 
-          ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
+        boxShadow: isEquipped
+          ? `0 8px 24px -8px ${item.color}40`
           : "0 4px 20px rgba(0,0,0,0.4)",
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.borderColor = isEquipped ? `${item.color}` : "rgba(255,255,255,0.25)";
-        e.currentTarget.style.boxShadow = `0 12px 30px -8px ${item.color}45, 0 0 0 1px ${item.color}20`;
+        e.currentTarget.style.boxShadow = `0 12px 30px -8px ${item.color}45`;
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderColor = isEquipped ? `${item.color}80` : `${(rarity?.color || "#ffffff")}28`;
-        e.currentTarget.style.boxShadow = isEquipped 
-          ? `0 8px 24px -8px ${item.color}40, 0 0 0 1px ${item.color}15`
+        e.currentTarget.style.boxShadow = isEquipped
+          ? `0 8px 24px -8px ${item.color}40`
           : "0 4px 20px rgba(0,0,0,0.4)";
       }}
     >
@@ -544,7 +513,6 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
         style={{ 
           height: item.type === "background" ? 150 : 130,
           background: item.type === "background" ? "#000" : `linear-gradient(160deg, #0c0c14 0%, ${item.color}10 60%, #08080f 100%)`,
-          borderBottom: "1px solid rgba(255,255,255,0.08)"
         }}
       >
         <ItemVisual type={item.type} color={item.color} name={item.name} item={item} />
@@ -596,16 +564,15 @@ const LibraryCard = React.forwardRef(function LibraryCard({ item, isOwned, isEqu
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 });
 
 /* ── Equipped preview strip (with drop slots) ────────────────────────────── */
 
-function EquippedStrip({ equip, onDrop, onClear }) {
+function EquippedStrip({ equip, onClear }) {
   return (
-    <div className="flex items-center gap-2 px-5 py-2 flex-shrink-0 overflow-x-auto"
-      style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+    <div className="relative flex items-center gap-2 px-5 py-2 flex-shrink-0 overflow-x-auto" style={{ zIndex: 10 }}>
       <span className="text-[9px] uppercase tracking-widest font-semibold mr-1 flex-shrink-0"
         style={{ color: "rgba(255,255,255,0.55)" }}>
         Слоты
@@ -619,7 +586,6 @@ function EquippedStrip({ equip, onDrop, onClear }) {
             type={type}
             meta={meta}
             equippedItem={equippedItem}
-            onDrop={onDrop}
             onClear={onClear}
           />
         );
@@ -639,7 +605,7 @@ function PriceRange({ min, max, onChange }) {
         onChange={(e) => onChange(Number(e.target.value), max)}
         placeholder="от"
         className="w-16 h-7 px-2 rounded-lg text-[10px] text-white/60 placeholder:text-white/40 outline-none"
-        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+        style={{ background: "rgba(255,255,255,0.06)" }}
         min={0}
       />
       <span className="text-[10px] text-white/50">—</span>
@@ -649,7 +615,7 @@ function PriceRange({ min, max, onChange }) {
         onChange={(e) => onChange(min, Number(e.target.value))}
         placeholder="до"
         className="w-16 h-7 px-2 rounded-lg text-[10px] text-white/60 placeholder:text-white/40 outline-none"
-        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+        style={{ background: "rgba(255,255,255,0.06)" }}
         min={0}
       />
     </div>
@@ -773,12 +739,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
     }
   };
 
-  const handleDrop = async (itemId, slotType) => {
-    const item = LIBRARY_CATALOG.find(i => i.id === itemId);
-    if (!item || item.type !== slotType) return;
-    await equipItem(item);
-  };
-
   // filter + sort
   let items = LIBRARY_CATALOG;
   if (activeType !== "all") items = items.filter((i) => i.type === activeType);
@@ -806,8 +766,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar ── */}
-      <div className="flex items-center gap-3 px-5 pt-4 pb-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+      <div className="flex items-center gap-3 px-5 pt-4 pb-3 flex-shrink-0">
         {/* Search */}
         <div className="relative flex-1 max-w-[240px]">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50" />
@@ -816,7 +775,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Найти предмет…"
             className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] text-white/80 placeholder:text-white/40 outline-none"
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+            style={{ background: "rgba(255,255,255,0.06)" }}
           />
         </div>
 
@@ -827,7 +786,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
           style={{
             color: showFilters ? "#60a5fa" : "rgba(255,255,255,0.6)",
             background: showFilters ? "rgba(96,165,250,0.1)" : "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.12)",
           }}
         >
           <Filter size={12} />
@@ -841,7 +799,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
             className="h-8 pl-2.5 pr-7 rounded-lg text-[11px] cursor-pointer outline-none text-left"
             style={{
               background: showSort ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${showSort ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.12)"}`,
               color: "rgba(255,255,255,0.85)",
             }}
           >
@@ -916,8 +873,7 @@ export default function LibraryTab({ user, equip, setEquip }) {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden flex-shrink-0"
           >
-            <div className="flex items-center gap-3 px-5 py-2.5 flex-wrap"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+            <div className="flex items-center gap-3 px-5 py-2.5 flex-wrap">
               {/* Shop filter */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] uppercase tracking-widest font-semibold mr-0.5"
@@ -934,7 +890,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
                     style={{
                       color: shopFilter === o.id ? "#60a5fa" : "rgba(255,255,255,0.5)",
                       background: shopFilter === o.id ? "rgba(96,165,250,0.1)" : "transparent",
-                      border: `1px solid ${shopFilter === o.id ? "rgba(96,165,250,0.3)" : "rgba(255,255,255,0.1)"}`,
                     }}
                   >
                     {o.label}
@@ -955,7 +910,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
                     style={{
                       color: rarityFilter === key ? r.color : "rgba(255,255,255,0.5)",
                       background: rarityFilter === key ? `${r.color}15` : "transparent",
-                      border: `1px solid ${rarityFilter === key ? `${r.color}30` : "rgba(255,255,255,0.1)"}`,
                     }}
                   >
                     {r.label}
@@ -969,9 +923,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ── Equipped strip with drop slots ── */}
-      <EquippedStrip equip={equip} onDrop={handleDrop} onClear={(type) => unequip(type)} />
 
       {/* ── Type tabs ── */}
       <div className="flex items-center gap-1 px-5 pt-3 pb-2 flex-shrink-0 overflow-x-auto">
@@ -1001,6 +952,9 @@ export default function LibraryTab({ user, equip, setEquip }) {
 
       {/* ── Content ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-4">
+        {/* Equipped strip with drop slots — inside scroll area */}
+        <EquippedStrip equip={equip} onClear={(type) => unequip(type)} />
+
         {error && (
           <div className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-[11px] mb-3"
             style={{ background: "rgba(239,68,68,0.08)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.12)" }}>
@@ -1022,7 +976,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            <AnimatePresence mode="popLayout">
               {items.map((item) => {
                 const isOwned  = isAdmin || owned.includes(item.id);
                 const isEquip  = equip[item.type] === item.id;
@@ -1044,7 +997,6 @@ export default function LibraryTab({ user, equip, setEquip }) {
                   />
                 );
               })}
-            </AnimatePresence>
           </div>
         )}
       </div>

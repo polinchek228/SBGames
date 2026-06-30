@@ -44,7 +44,7 @@ function CustomDropdown({ value, onChange, options, ariaLabel }) {
     <div className="relative" ref={ref}>
       <button type="button" aria-label={ariaLabel} onClick={() => setOpen(o => !o)}
         className="w-full rounded-xl text-[12px] px-3 py-2.5 flex items-center justify-between gap-2 outline-none cursor-pointer transition-all"
-        style={{ background: "rgba(255,255,255,0.05)", color: "#e5e7eb", border: `1px solid ${open ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.08)"}` }}>
+        style={{ background: "rgba(255,255,255,0.05)", color: "#e5e7eb" }}>
         <span className="truncate">{selected ? selected.label : "—"}</span>
         <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.35)", flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </button>
@@ -52,7 +52,7 @@ function CustomDropdown({ value, onChange, options, ariaLabel }) {
         {open && (
           <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.12 }}
             className="absolute left-0 right-0 mt-1 rounded-xl overflow-hidden z-50 max-h-52 overflow-y-auto"
-            style={{ background: "rgba(20,20,28,0.98)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", backdropFilter: "blur(12px)" }}>
+            style={{ background: "rgba(20,20,28,0.98)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", backdropFilter: "blur(12px)" }}>
             {options.map(o => {
               const active = o.value === value;
               return (
@@ -89,7 +89,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     try { return JSON.parse(localStorage.getItem("sbg_custom_modpacks") || "[]"); } catch { return []; }
   });
   const [showBuilder, setShowBuilder] = useState(false);
-  const [builderTab, setBuilderTab] = useState("settings");
+  const [builderTab, setBuilderTab] = useState("overview");
   const [draft, setDraft] = useState({ name: "", mcVersion: "1.20.1", loader: "forge", mods: [], resourcePacks: [], shaders: [], screenshots: [] });
 
   // Dynamic versions & loaders from API
@@ -123,6 +123,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
   const [updatingAll, setUpdatingAll] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
+  const [saveFlash, setSaveFlash] = useState(false);
+  const [importFlash, setImportFlash] = useState(false);
 
   // Feature: Profiles
   const [profiles, setProfiles] = useState(() => {
@@ -405,6 +407,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       setSyncResult({ error: String(err) });
     }
     setSyncing(false);
+    setTimeout(() => setSyncResult(null), 4000);
   };
 
   // ── Compatibility check via Modrinth API ──
@@ -521,6 +524,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
         if (existing >= 0) { const copy = [...prev]; copy[existing] = mp; return copy; }
         return [...prev, mp];
       });
+      setSaveFlash(true);
+      setTimeout(() => setSaveFlash(false), 800);
       setShowBuilder(false);
     } catch (err) {
       console.error("[saveModpack]", err);
@@ -540,6 +545,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
     setSearchQuery("");
     setActiveTab("mods");
     setCategoryFilter(null);
+    setBuilderTab("overview");
     setShowBuilder(true);
     setSelected(null);
   };
@@ -633,6 +639,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
         return { ...prev, [tabType]: [...prev[tabType], item] };
       });
       setImportUrl("");
+      setImportFlash(true);
+      setTimeout(() => setImportFlash(false), 1200);
     } catch (err) { console.error("[importFromUrl]", err); }
     setImportingUrl(false);
   };
@@ -647,6 +655,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
       return [...prev, profile];
     });
     setActiveProfile(profile.name);
+    setSaveFlash(true);
+    setTimeout(() => setSaveFlash(false), 800);
   };
 
   const loadProfile = (name) => {
@@ -763,8 +773,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
       {/* ── Sidebar ── */}
       <div className="absolute left-0 top-0 bottom-0 z-20" style={{ width: 220, padding: "16px 0 16px 16px" }}>
         <div className="h-full rounded-2xl flex flex-col overflow-hidden"
-          style={{ background: "rgba(8,8,8,0.92)", border: "1px solid rgba(255,255,255,0.07)", boxShadow: "0 8px 48px rgba(0,0,0,0.8)", backdropFilter: "blur(24px)" }}>
-          <div className="px-4 pt-4 pb-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          style={{ background: "rgba(8,8,8,0.92)", boxShadow: "0 8px 48px rgba(0,0,0,0.8)", backdropFilter: "blur(24px)" }}>
+          <div className="px-4 pt-4 pb-3 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-6 h-6 rounded-md overflow-hidden flex-shrink-0"><img src="/logo.jpg" alt="SBGames" className="w-full h-full object-cover" /></div>
               <p className="text-[13px] font-black tracking-wide" style={{ background: "linear-gradient(135deg, #3b82f6, #60a5fa, #93c5fd)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>SBGames</p>
@@ -818,10 +828,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
                       <button onClick={() => selectCustom(mp)} className="w-full text-left focus:outline-none">
                         <motion.div animate={{ opacity: activeC ? 1 : 0.55 }} whileHover={{ opacity: activeC ? 1 : 0.8 }} transition={{ duration: 0.15 }}
                           className="relative rounded-xl overflow-hidden h-[52px] flex items-center gap-2.5 px-2.5"
-                          style={{ background: activeC ? "rgba(37,99,235,0.14)" : "rgba(255,255,255,0.03)", border: `1px solid ${activeC ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.06)"}`,
+                          style={{ background: activeC ? "rgba(37,99,235,0.14)" : "rgba(255,255,255,0.03)",
                             boxShadow: activeC ? "0 0 12px rgba(37,99,235,0.35), 0 4px 16px rgba(37,99,235,0.15)" : "none" }}>
                           <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center"
-                            style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.22), rgba(59,130,252,0.14))", border: "1px solid rgba(96,165,250,0.28)" }}>
+                            style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.22), rgba(59,130,252,0.14))" }}>
                             <FolderOpen size={15} style={{ color: "rgba(147,197,253,0.95)" }} />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -857,7 +867,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   background: showBuilder
                     ? "linear-gradient(135deg, rgba(29,78,216,0.95), rgba(37,99,235,0.9))"
                     : "rgba(255,255,255,0.05)",
-                  border: `1px solid ${showBuilder ? "rgba(96,165,250,0.5)" : "rgba(255,255,255,0.1)"}`,
                   boxShadow: showBuilder ? "0 0 16px rgba(37,99,235,0.4)" : "none",
                 }}>
                 <Plus size={14} style={{ color: showBuilder ? "#fff" : "rgba(255,255,255,0.7)" }} />
@@ -868,7 +877,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
               className="w-[38px] h-[38px] rounded-xl flex items-center justify-center transition-all flex-shrink-0"
               style={{
                 background: showSidebarMenu ? "rgba(37,99,235,0.22)" : "rgba(255,255,255,0.05)",
-                border: `1px solid ${showSidebarMenu ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.1)"}`,
                 color: showSidebarMenu ? "#93c5fd" : "rgba(255,255,255,0.55)",
               }}
               onMouseEnter={e => { if (!showSidebarMenu) { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.color = "#fff"; } }}
@@ -886,11 +894,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
             style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) setShowSidebarMenu(false); }}>
             <motion.div initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 12 }} transition={{ duration: 0.18 }}
               className="w-[460px] rounded-2xl p-5 flex flex-col gap-4"
-              style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
+              style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
               {/* Header */}
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  style={{ background: "rgba(255,255,255,0.05)" }}>
                   <MoreHorizontal size={16} style={{ color: "rgba(255,255,255,0.6)" }} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -903,7 +911,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.04)" }}>
+              <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(0,0,0,0.3)" }}>
                 {[
                   { id: "servers", label: "Серверы", icon: UsersThree },
                   { id: "modpacks", label: "Сборки", icon: FolderOpen },
@@ -930,8 +938,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     return (
                       <button key={srv.id} onClick={() => { setShowBuilder(false); setSelected(srv); setShowSidebarMenu(false); }}
                         className="group w-full rounded-xl overflow-hidden flex items-center gap-3 px-2.5 py-2 text-left transition-all"
-                        style={{ background: activeS ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)",
-                          border: `1px solid ${activeS ? "rgba(37,99,235,0.4)" : "rgba(255,255,255,0.05)"}` }}
+                        style={{ background: activeS ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)" }}
                         onMouseEnter={e => { if (!activeS) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
                         onMouseLeave={e => { if (!activeS) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}>
                         <div className="w-11 h-11 rounded-lg flex-shrink-0 overflow-hidden relative" style={{ background: srv.bg }}>
@@ -957,7 +964,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <>
                     {customModpacks.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
-                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: "rgba(255,255,255,0.04)" }}>
                           <FolderOpen size={22} style={{ color: "rgba(255,255,255,0.2)" }} />
                         </div>
                         <p className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>Пока нет сборок</p>
@@ -968,11 +975,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
                         const activeM = selected?.id === `custom_${mp.id}` && !showBuilder;
                         return (
                           <div key={mp.id} className="group/item rounded-xl flex items-center gap-2.5 px-2.5 py-2 transition-all"
-                            style={{ background: activeM ? "rgba(37,99,235,0.14)" : "rgba(255,255,255,0.03)",
-                              border: `1px solid ${activeM ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.05)"}` }}>
+                            style={{ background: activeM ? "rgba(37,99,235,0.14)" : "rgba(255,255,255,0.03)" }}>
                             <button onClick={() => { selectCustom(mp); setShowSidebarMenu(false); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                               <div className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center"
-                                style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.22), rgba(59,130,252,0.14))", border: "1px solid rgba(96,165,250,0.28)" }}>
+                                style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.22), rgba(59,130,252,0.14))" }}>
                                 <FolderOpen size={15} style={{ color: "rgba(147,197,253,0.95)" }} />
                               </div>
                               <div className="min-w-0 flex-1">
@@ -997,7 +1003,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                     {/* Создать сборку — внизу, акцентная кнопка */}
                     <button onClick={() => { openBuilder(null); setShowSidebarMenu(false); }}
                       className="w-full mt-2 rounded-xl flex items-center justify-center gap-2 px-3 h-11 transition-all"
-                      style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", border: "1px solid rgba(96,165,250,0.4)", boxShadow: "0 0 18px rgba(37,99,235,0.3)" }}
+                      style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", boxShadow: "0 0 18px rgba(37,99,235,0.3)" }}
                       onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 0 24px rgba(37,99,235,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 0 18px rgba(37,99,235,0.3)"; e.currentTarget.style.transform = "translateY(0)"; }}>
                       <Plus size={14} style={{ color: "#fff" }} />
@@ -1016,276 +1022,381 @@ export default function PlayPage({ user, onOpenCommunity }) {
         /* ═══ BUILDER ═══ */
         <div className="absolute inset-0 flex" style={{ paddingLeft: 252 }}>
           {/* Left panel — opaque */}
-          <div className="w-[320px] flex flex-col border-r" style={{ background: "rgba(10,10,14,0.95)", borderColor: "rgba(255,255,255,0.06)", backdropFilter: "blur(12px)" }}>
-            <div className="p-5 flex flex-col gap-4 flex-1 overflow-y-auto">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[15px] font-black text-white mb-1">{draft.name || "Новая сборка"}</p>
-                  <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Настрой свою сборку модов</p>
-                </div>
-                <button onClick={() => openBuilder(null)} className="h-7 px-2.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all"
-                  style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.2)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.12)"}>
-                  <Plus size={10} /> Новая
-                </button>
-              </div>
+          <div className="w-[320px] flex flex-col" style={{ background: "rgba(10,10,14,0.95)", backdropFilter: "blur(12px)" }}>
+            <div className="flex flex-col flex-1 overflow-hidden">
 
-              
-              {/* Tab bar */}
-              <div className="flex gap-1 mb-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 8 }}>
-                {[{ id: "settings", label: "Настройки", icon: Settings2 },
-                  { id: "installed", label: "Установлено", icon: Package, badge: (draft.mods.length || 0) + (draft.resourcePacks.length || 0) + (draft.shaders.length || 0) },
-                  { id: "actions", label: "Инструменты", icon: Wrench }
-                ].map(t => (
-                  <button key={t.id} onClick={() => setBuilderTab(t.id)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-semibold rounded-lg transition-all"
-                    style={{
-                      background: builderTab === t.id ? "rgba(59,130,246,0.15)" : "transparent",
-                      color: builderTab === t.id ? "#93c5fd" : "rgba(255,255,255,0.35)",
-                      border: "1px solid " + (builderTab === t.id ? "rgba(59,130,246,0.3)" : "transparent")
-                    }}>
-                    <t.icon size={11} /> {t.label}
-                    {t.badge > 0 && <span className="ml-0.5 px-1.5 py-0 rounded-full text-[8px] font-bold"
-                      style={{ background: "rgba(59,130,246,0.2)", color: "#60a5fa" }}>{t.badge}</span>}
-                  </button>
-                ))}
-              </div>
-
-              {builderTab === "settings" && (<>
-{/* Profiles */}
-              {profiles.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                    <Folder size={10} /> Профили
-                  </span>
-                  <div className="relative" ref={profileMenuRef}>
-                    <button onClick={() => setShowProfileMenu(!showProfileMenu)}
-                      className="w-full rounded-xl text-[12px] px-3 py-2.5 flex items-center justify-between outline-none transition-all"
-                      style={{ background: "rgba(255,255,255,0.05)", color: activeProfile ? "#e5e7eb" : "rgba(255,255,255,0.4)" }}>
-                      <span className="truncate">{activeProfile || "Выбрать профиль"}</span>
-                      <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                    </button>
-                    {showProfileMenu && (
-                      <div className="absolute top-full left-0 right-0 mt-1 rounded-xl z-50 overflow-hidden"
-                        style={{ background: "rgba(18,18,24,0.98)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 12px 40px rgba(0,0,0,0.6)" }}>
-                        {profiles.map(p => (
-                          <div key={p.name} className="flex items-center px-2 py-1.5 group/pro" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                            <button onClick={() => loadProfile(p.name)} className="flex-1 text-left px-2 py-1 rounded-lg text-[11px] transition-colors"
-                              style={{ color: activeProfile === p.name ? "#60a5fa" : "rgba(255,255,255,0.6)" }}
-                              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                              {p.name}
-                            </button>
-                            <button onClick={() => deleteProfile(p.name)} className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover/pro:opacity-100 transition-opacity hover:bg-red-500/15">
-                              <Trash2 size={9} style={{ color: "rgba(239,68,68,0.7)" }} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+              {/* ═══ Header (always visible) ═══ */}
+              <div className="px-5 pt-5 pb-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-[16px] font-black text-white leading-tight">{draft.name || "Новая сборка"}</p>
+                    <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Настрой свою сборку модов</p>
                   </div>
+                  <button onClick={() => openBuilder(null)} className="h-8 px-3 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all"
+                    style={{ background: "rgba(96,165,250,0.1)", color: "#93c5fd" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(96,165,250,0.18)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(96,165,250,0.1)"}>
+                    <Plus size={11} /> Новая
+                  </button>
                 </div>
-              )}
 
-              {/* Name */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Название</span>
-                <input value={draft.name} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))} placeholder="Моя сборка"
-                  className="w-full rounded-xl text-[13px] px-3 py-2.5 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
+                {/* Stats */}
+                <div className="flex gap-2 mb-4">
+                  {[
+                    { label: "Моды", icon: Package, count: draft.mods.filter(m => !m.disabled).length, total: draft.mods.length },
+                    { label: "Паки", icon: FileImage, count: draft.resourcePacks.filter(m => !m.disabled).length, total: draft.resourcePacks.length },
+                    { label: "Шейдеры", icon: Sparkles, count: draft.shaders.filter(m => !m.disabled).length, total: draft.shaders.length },
+                  ].map(s => (
+                    <div key={s.label} className="flex-1 rounded-lg px-3 py-2.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <s.icon size={10} style={{ color: "rgba(255,255,255,0.3)" }} />
+                        <span className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>{s.label}</span>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-[18px] font-black" style={{ color: "#60a5fa" }}>{s.count}</span>
+                        {s.total > s.count && <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>/ {s.total}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Tab bar */}
+                <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  {[
+                    { id: "overview", label: "Обзор", icon: Info },
+                    { id: "settings", label: "Настройки", icon: Settings2 },
+                    { id: "content", label: "Контент", icon: Package },
+                    { id: "import", label: "Импорт", icon: Download },
+                    { id: "actions", label: "Действия", icon: ShieldCheck },
+                  ].map(tab => {
+                    const active = builderTab === tab.id;
+                    return (
+                      <button key={tab.id} onClick={() => setBuilderTab(tab.id)}
+                        className="flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg text-[9px] font-semibold transition-all relative"
+                        style={{
+                          color: active ? "#fff" : "rgba(255,255,255,0.3)",
+                          background: active ? "rgba(255,255,255,0.08)" : "transparent",
+                        }}>
+                        <tab.icon size={13} style={{ color: active ? "#60a5fa" : "rgba(255,255,255,0.25)" }} />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* MC Version + Loader in row */}
-              <div className="flex gap-2">
-                <div className="flex flex-col gap-1.5 flex-1">
-                  <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Версия</span>
-                  <CustomDropdown ariaLabel="Версия Minecraft" value={draft.mcVersion}
-                    onChange={v => setDraft(p => ({ ...p, mcVersion: v }))}
-                    options={mcVersions.map(v => ({ value: v.id, label: v.id + (v.type === "snapshot" ? " (snapshot)" : "") }))} />
-                </div>
-                <div className="flex flex-col gap-1.5 flex-1">
-                  <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузчик</span>
-                  <CustomDropdown ariaLabel="Загрузчик" value={draft.loader}
-                    onChange={v => setDraft(p => ({ ...p, loader: v }))}
-                    options={loaders.map(l => ({ value: l.id, label: l.label }))} />
-                </div>
-              </div>
+              <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
 
-              
-</>)}
+              {/* ═══ Tab content (scrollable) ═══ */}
+              <div className="flex-1 overflow-y-auto px-5 py-4" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}>
 
-{builderTab === "installed" && (<>
-{/* Installed items */}
-              {TABS.map(tab => {
-                const items = tab.id === "mods" ? draft.mods : tab.id === "resourcepacks" ? draft.resourcePacks : draft.shaders;
-                const key = tab.id === "mods" ? "mods" : tab.id === "resourcepacks" ? "resourcePacks" : "shaders";
-                if (items.length === 0) return null;
-                return (
-                  <div key={tab.id} className="flex flex-col gap-1.5">
-                    <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                      <tab.icon size={10} /> {tab.label} ({items.filter(m => !m.disabled).length}/{items.length})
-                    </span>
-                    <div className="rounded-xl p-1.5 space-y-1" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                      {items.map((item, i) => {
-                        const latest = modLatestVersions[item.projectId];
-                        const isOutdated = latest && item.version !== "?" && item.version !== latest;
-                        const isUpToDate = latest && item.version === latest;
+                {/* ── Обзор ── */}
+                {builderTab === "overview" && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+                    <div className="flex flex-col gap-4">
+                      {/* Quick info */}
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between py-2">
+                          <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Версия MC</span>
+                          <span className="text-[12px] font-semibold text-white">{draft.mcVersion}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-2">
+                          <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Загрузчик</span>
+                          <span className="text-[12px] font-semibold text-white capitalize">{draft.loader}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-2">
+                          <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Всего элементов</span>
+                          <span className="text-[12px] font-semibold text-white">{draft.mods.length + draft.resourcePacks.length + draft.shaders.length}</span>
+                        </div>
+                      </div>
+
+                      {/* Launch history */}
+                      {(draft.launchCount > 0 || draft.lastLaunchedAt) && (
+                        <div className="rounded-xl p-3.5" style={{ background: "rgba(34,197,94,0.08)" }}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Play size={13} style={{ color: "#22c55e" }} />
+                            <span className="text-[11px] font-semibold" style={{ color: "#22c55e" }}>Статистика запусков</span>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex justify-between">
+                              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Запусков</span>
+                              <span className="text-[12px] font-semibold text-white">{draft.launchCount || 0}</span>
+                            </div>
+                            {draft.lastLaunchedAt && (
+                              <div className="flex justify-between">
+                                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Последний</span>
+                                <span className="text-[12px] text-white">{new Date(draft.lastLaunchedAt).toLocaleDateString("ru-RU")}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tips */}
+                      <div className="rounded-xl p-3.5" style={{ background: "rgba(96,165,250,0.06)" }}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Info size={12} style={{ color: "#60a5fa" }} />
+                          <span className="text-[11px] font-semibold" style={{ color: "#60a5fa" }}>Подсказка</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.4)" }}>
+                          Добавляй моды через вкладку «Контент» или «Импорт». Античит не распространяется на пользовательские сборки.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* ── Настройки ── */}
+                {builderTab === "settings" && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+                    <div className="flex flex-col gap-4">
+                      {profiles.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.25)" }}>Профиль</span>
+                          <div className="relative" ref={profileMenuRef}>
+                            <button onClick={() => setShowProfileMenu(!showProfileMenu)}
+                              className="w-full rounded-lg text-[12px] px-3 py-2.5 flex items-center justify-between outline-none transition-all"
+                              style={{ background: "rgba(255,255,255,0.06)", color: activeProfile ? "#e5e7eb" : "rgba(255,255,255,0.4)" }}>
+                              <span className="truncate">{activeProfile || "Выбрать профиль"}</span>
+                              <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+                            </button>
+                            {showProfileMenu && (
+                              <div className="absolute top-full left-0 right-0 mt-1 rounded-xl z-50 overflow-hidden"
+                                style={{ background: "rgba(18,18,24,0.98)", boxShadow: "0 12px 40px rgba(0,0,0,0.6)" }}>
+                                {profiles.map(p => (
+                                   <div key={p.name} className="flex items-center px-2 py-1.5 group/pro">
+                                    <button onClick={() => loadProfile(p.name)} className="flex-1 text-left px-2 py-1 rounded-lg text-[11px] transition-colors"
+                                      style={{ color: activeProfile === p.name ? "#60a5fa" : "rgba(255,255,255,0.6)" }}
+                                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                      {p.name}
+                                    </button>
+                                    <button onClick={() => deleteProfile(p.name)} className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover/pro:opacity-100 transition-opacity hover:bg-red-500/15">
+                                      <Trash2 size={9} style={{ color: "rgba(239,68,68,0.7)" }} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.25)" }}>Название</span>
+                        <input value={draft.name} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))} placeholder="Моя сборка"
+                          className="w-full rounded-lg text-[13px] px-3 py-2.5 outline-none" style={{ background: "rgba(255,255,255,0.06)", color: "#fff" }} />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.25)" }}>Версия и загрузчик</span>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <CustomDropdown ariaLabel="Версия Minecraft" value={draft.mcVersion}
+                              onChange={v => setDraft(p => ({ ...p, mcVersion: v }))}
+                              options={mcVersions.map(v => ({ value: v.id, label: v.id + (v.type === "snapshot" ? " (snapshot)" : "") }))} />
+                          </div>
+                          <div className="flex-1">
+                            <CustomDropdown ariaLabel="Загрузчик" value={draft.loader}
+                              onChange={v => setDraft(p => ({ ...p, loader: v }))}
+                              options={loaders.map(l => ({ value: l.id, label: l.label }))} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* ── Контент ── */}
+                {builderTab === "content" && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+                    <div className="flex flex-col gap-4">
+                      {TABS.map(tab => {
+                        const items = tab.id === "mods" ? draft.mods : tab.id === "resourcepacks" ? draft.resourcePacks : draft.shaders;
+                        const key = tab.id === "mods" ? "mods" : tab.id === "resourcepacks" ? "resourcePacks" : "shaders";
+                        if (items.length === 0) return null;
                         return (
-                          <div key={i} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 group/item"
-                            style={{
-                              background: item.disabled ? "rgba(255,255,255,0.01)" : `${tab.accent}08`,
-                              border: `1px solid ${item.disabled ? "rgba(255,255,255,0.02)" : `${tab.accent}15`}`,
-                              opacity: item.disabled ? 0.4 : 1,
-                            }}>
-                            {item.icon_url ? <img src={item.icon_url} alt={item.title || "Мод"} className="w-5 h-5 rounded flex-shrink-0" /> : <tab.icon size={10} style={{ color: tab.accent, flexShrink: 0 }} />}
-                            <span className="text-[11px] text-white truncate flex-1">{item.title}{item.auto ? " (auto)" : ""}{item.local ? " (local)" : ""}</span>
-                            {/* Version comparison indicator */}
-                            {!item.auto && !item.local && latest && (
-                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" title={isOutdated ? `Обновление: ${latest}` : isUpToDate ? "Последняя версия" : ""}
-                                style={{ background: isOutdated ? "#f59e0b" : isUpToDate ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
-                            )}
-                            <span className="text-[9px] flex-shrink-0" style={{ color: isOutdated ? "#fbbf24" : "rgba(255,255,255,0.3)" }}>{item.version}</span>
-                            {!item.auto && !item.local && (
-                              <button onClick={() => toggleDisabled(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 transition-all" title={item.disabled ? "Включить" : "Отключить"}>
-                                <div className="w-3.5 h-2 rounded-full transition-all" style={{ background: item.disabled ? "rgba(255,255,255,0.15)" : "rgba(74,222,128,0.5)", position: "relative" }}>
-                                  <div className="w-1.5 h-1.5 rounded-full absolute top-[1px] transition-all" style={{ background: "#fff", left: item.disabled ? "1px" : "11px" }} />
+                          <div key={tab.id} className="flex flex-col">
+                            <span className="text-[10px] uppercase tracking-widest font-bold flex items-center gap-1.5 mb-2" style={{ color: "rgba(255,255,255,0.3)" }}>
+                              <tab.icon size={10} /> {tab.label} ({items.filter(m => !m.disabled).length}/{items.length})
+                            </span>
+                            <div className="flex flex-col">
+                              {items.map((item, i) => {
+                                const latest = modLatestVersions[item.projectId];
+                                const isOutdated = latest && item.version !== "?" && item.version !== latest;
+                                const isUpToDate = latest && item.version === latest;
+                                return (
+                                  <div key={i} className="flex items-center gap-2.5 px-2 py-2 group/item transition-all -mx-2 rounded-lg"
+                                    style={{ opacity: item.disabled ? 0.35 : 1 }}
+                                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                    {item.icon_url ? <img src={item.icon_url} alt={item.title || "Мод"} className="w-6 h-6 rounded-md flex-shrink-0" /> : <tab.icon size={12} style={{ color: tab.accent, flexShrink: 0 }} />}
+                                    <span className="text-[12px] text-white truncate flex-1">{item.title}{item.auto ? " (auto)" : ""}{item.local ? " (local)" : ""}</span>
+                                    {!item.auto && !item.local && latest && (
+                                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" title={isOutdated ? `Обновление: ${latest}` : isUpToDate ? "Последняя версия" : ""}
+                                        style={{ background: isOutdated ? "#f59e0b" : isUpToDate ? "#22c55e" : "rgba(255,255,255,0.15)" }} />
+                                    )}
+                                    <span className="text-[10px] flex-shrink-0 tabular-nums" style={{ color: isOutdated ? "#fbbf24" : "rgba(255,255,255,0.25)" }}>{item.version}</span>
+                                    {!item.auto && !item.local && (
+                                      <button onClick={() => toggleDisabled(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 transition-all" title={item.disabled ? "Включить" : "Отключить"}>
+                                        <div className="w-4 h-2.5 rounded-full transition-all" style={{ background: item.disabled ? "rgba(255,255,255,0.12)" : "rgba(74,222,128,0.5)", position: "relative" }}>
+                                          <div className="w-2 h-2 rounded-full absolute top-[1px] transition-all" style={{ background: "#fff", left: item.disabled ? "1px" : "13px" }} />
+                                        </div>
+                                      </button>
+                                    )}
+                                    {!item.auto && <button onClick={() => removeItem(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 hover:bg-white/10 transition-all">
+                                      <Trash2 size={11} style={{ color: "rgba(239,68,68,0.6)" }} />
+                                    </button>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {tab.id === "mods" && items.length > 0 && (() => {
+                              const allCats = [...new Set(items.flatMap(m => m.categories || []).filter(Boolean))];
+                              if (allCats.length === 0) return null;
+                              return (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {allCats.slice(0, 8).map(cat => (
+                                    <button key={cat} onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
+                                      className="text-[9px] px-2 py-0.5 rounded-full font-semibold transition-all"
+                                      style={{
+                                        background: categoryFilter === cat ? "rgba(96,165,250,0.2)" : "rgba(255,255,255,0.06)",
+                                        color: categoryFilter === cat ? "#93c5fd" : "rgba(255,255,255,0.35)",
+                                      }}>
+                                      {cat}
+                                    </button>
+                                  ))}
                                 </div>
-                              </button>
-                            )}
-                            {!item.auto && <button onClick={() => removeItem(key, i)} className="p-0.5 rounded opacity-0 group-hover/item:opacity-100 hover:bg-white/10 transition-all">
-                              <Trash2 size={10} style={{ color: "rgba(239,68,68,0.7)" }} />
-                            </button>}
+                              );
+                            })()}
                           </div>
                         );
                       })}
-                    </div>
-                    {/* Category tags for this tab's items */}
-                    {tab.id === "mods" && items.length > 0 && (() => {
-                      const allCats = [...new Set(items.flatMap(m => m.categories || []).filter(Boolean))];
-                      if (allCats.length === 0) return null;
-                      return (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {allCats.slice(0, 8).map(cat => (
-                            <button key={cat} onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
-                              className="text-[8px] px-1.5 py-0.5 rounded-full font-semibold transition-all"
-                              style={{
-                                background: categoryFilter === cat ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.05)",
-                                color: categoryFilter === cat ? "#93c5fd" : "rgba(255,255,255,0.35)",
-                                border: `1px solid ${categoryFilter === cat ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.06)"}`,
-                              }}>
-                              {cat}
-                            </button>
-                          ))}
+                      {draft.mods.length === 0 && draft.resourcePacks.length === 0 && draft.shaders.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <Package size={32} style={{ color: "rgba(255,255,255,0.08)" }} />
+                          <p className="text-[12px] mt-3" style={{ color: "rgba(255,255,255,0.2)" }}>Пока ничего не добавлено</p>
+                          <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.12)" }}>Добавь через «Импорт» или найди справа</p>
                         </div>
-                      );
-                    })()}
-                  </div>
-                );
-              })}
+                      )}
+                    </div>
+                  </motion.div>
+                )}
 
-              
-</>)}
+                {/* ── Импорт ── */}
+                {builderTab === "import" && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.25)" }}>Архив</span>
+                        <label className="flex items-center justify-center gap-2 h-11 rounded-lg cursor-pointer transition-all"
+                          style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.65)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}>
+                          <input type="file" accept=".zip,.jar" multiple className="hidden" onChange={e => {
+                            const files = Array.from(e.target.files || []);
+                            files.forEach(f => {
+                              const name = f.name.replace(/\.(zip|jar)$/i, "");
+                              const isJar = f.name.endsWith(".jar");
+                              const item = { projectId: `local_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, slug: name.toLowerCase(), title: name, icon_url: null, version: "local", downloads: 0, downloadUrl: null, filename: f.name, local: true };
+                              if (isJar) {
+                                setDraft(prev => ({ ...prev, mods: [...prev.mods, item] }));
+                              } else {
+                                setDraft(prev => ({ ...prev, resourcePacks: [...prev.resourcePacks, item] }));
+                              }
+                            });
+                            e.target.value = "";
+                            setImportFlash(true);
+                            setTimeout(() => setImportFlash(false), 1200);
+                          }} />
+                          <Package size={14} /> Добавить из архива (.zip / .jar)
+                        </label>
+                      </div>
 
-{/* Info */}
-              <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                <Info size={13} style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0, marginTop: 1 }} />
-                <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-                  Античит не распространяется на пользовательские сборки. Fabric API добавляется автоматически.
-                </p>
-              </div>
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.25)" }}>Ссылка на мод</span>
+                        <div className="flex gap-2">
+                          <input value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="modrinth.com/mod/sodium"
+                            onKeyDown={e => { if (e.key === "Enter") importFromUrl(); }}
+                            className="flex-1 rounded-lg text-[11px] px-3 py-2.5 outline-none" style={{ background: "rgba(255,255,255,0.06)", color: "#fff" }} />
+                          <button onClick={importFromUrl} disabled={!importUrl.trim() || importingUrl}
+                            className="h-9 px-3.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all disabled:opacity-40"
+                            style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd" }}>
+                            {importingUrl ? <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" /> : <Link2 size={10} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
 
-              {/* Launch history */}
-              {(draft.launchCount > 0 || draft.lastLaunchedAt) && (
-                <div className="rounded-xl p-3 flex gap-2.5" style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)" }}>
-                  <Play size={13} style={{ color: "#22c55e", flexShrink: 0, marginTop: 1 }} />
-                  <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-                    Запусков: {draft.launchCount || 0}{draft.lastLaunchedAt ? ` · Последний: ${new Date(draft.lastLaunchedAt).toLocaleDateString("ru-RU")}` : ""}
-                  </p>
-                </div>
-              )}
+                {/* ── Действия ── */}
+                {builderTab === "actions" && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+                    <div className="flex flex-col gap-3">
+                      <button onClick={updateAllMods} disabled={updatingAll || (!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length)}
+                        className="h-11 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-30"
+                        style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", boxShadow: "0 4px 20px rgba(37,99,235,0.3)" }}
+                        onMouseEnter={e => { if (!updatingAll) e.currentTarget.style.boxShadow = "0 4px 28px rgba(37,99,235,0.45)"; }}
+                        onMouseLeave={e => e.currentTarget.style.boxShadow = "0 4px 20px rgba(37,99,235,0.3)"}>
+                        {updatingAll ? <><div className="w-3.5 h-3.5 border-[1.5px] border-white/30 border-t-white rounded-full animate-spin" /> Обновление...</> : <><RefreshCw size={12} /> Обновить всё</>}
+                      </button>
 
-              {/* Import from archive */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Импорт</span>
-                <label className="flex items-center justify-center gap-2 h-10 rounded-xl cursor-pointer transition-all"
-                  style={{ background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.45)" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.45)"; }}>
-                  <input type="file" accept=".zip,.jar" multiple className="hidden" onChange={e => {
-                    const files = Array.from(e.target.files || []);
-                    files.forEach(f => {
-                      const name = f.name.replace(/\.(zip|jar)$/i, "");
-                      const isJar = f.name.endsWith(".jar");
-                      const item = { projectId: `local_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, slug: name.toLowerCase(), title: name, icon_url: null, version: "local", downloads: 0, downloadUrl: null, filename: f.name, local: true };
-                      if (isJar) {
-                        setDraft(prev => ({ ...prev, mods: [...prev.mods, item] }));
-                      } else {
-                        setDraft(prev => ({ ...prev, resourcePacks: [...prev.resourcePacks, item] }));
-                      }
-                    });
-                    e.target.value = "";
-                  }} />
-                  <Package size={13} /> Добавить из архива (.zip / .jar)
-                </label>
-              </div>
+                      <button onClick={saveProfile} disabled={!draft.name.trim()}
+                        className="h-11 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-30"
+                        style={{
+                          background: saveFlash ? "linear-gradient(135deg, #16a34a, #22c55e)" : draft.name.trim() ? "linear-gradient(135deg, #2563eb, #3b82f6)" : "rgba(96,165,250,0.12)",
+                          color: "#fff",
+                          boxShadow: saveFlash ? "0 4px 20px rgba(34,197,94,0.35)" : draft.name.trim() ? "0 4px 20px rgba(37,99,235,0.3)" : "none",
+                          transition: "background 0.3s, box-shadow 0.3s",
+                        }}
+                        onMouseEnter={e => { if (draft.name.trim() && !saveFlash) e.currentTarget.style.boxShadow = "0 4px 28px rgba(37,99,235,0.45)"; }}
+                        onMouseLeave={e => { if (!saveFlash) e.currentTarget.style.boxShadow = draft.name.trim() ? "0 4px 20px rgba(37,99,235,0.3)" : "none"; }}>
+                        {saveFlash ? <><Check size={12} /> Сохранено!</> : <><Folder size={12} /> Сохранить профиль</>}
+                      </button>
 
-              {/* Import from Modrinth URL */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Импорт по ссылке</span>
-                <div className="flex gap-1.5">
-                  <input value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="modrinth.com/mod/sodium"
-                    onKeyDown={e => { if (e.key === "Enter") importFromUrl(); }}
-                    className="flex-1 rounded-xl text-[11px] px-3 py-2 outline-none" style={{ background: "rgba(255,255,255,0.05)", color: "#fff" }} />
-                  <button onClick={importFromUrl} disabled={!importUrl.trim() || importingUrl}
-                    className="h-8 px-3 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all disabled:opacity-40"
-                    style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}>
-                    {importingUrl ? <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" /> : <Link2 size={10} />}
-                  </button>
-                </div>
-              </div>
+                      <div className="h-px my-1" style={{ background: "rgba(255,255,255,0.06)" }} />
 
-              {/* Action buttons: Update All / Backup / Export / Save Profile */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] uppercase tracking-widest font-semibold flex items-center gap-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  <ShieldCheck size={10} /> Действия
-                </span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button onClick={updateAllMods} disabled={updatingAll || (!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length)}
-                    className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
-                    onMouseEnter={e => { if (!updatingAll) e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
-                    {updatingAll ? <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" /> : <RefreshCw size={10} />}
-                    Обновить всё
-                  </button>
-                  <button onClick={backupCurrentMods} disabled={!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length}
-                    className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
-                    <Save size={10} /> Бэкап
-                  </button>
-                  <button onClick={exportModpack}
-                    className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
-                    <Download size={10} /> Экспорт
-                  </button>
-                  <button onClick={saveProfile} disabled={!draft.name.trim()}
-                    className="h-8 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
-                    style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}>
-                    <Folder size={10} /> Профиль
-                  </button>
-                </div>
+                      <div className="flex gap-2">
+                        <button onClick={backupCurrentMods} disabled={!draft.mods.length && !draft.resourcePacks.length && !draft.shaders.length}
+                          className="flex-1 h-10 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-30"
+                          style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>
+                          <Save size={11} /> Бэкап
+                        </button>
+                        <button onClick={exportModpack}
+                          className="flex-1 h-10 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all"
+                          style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>
+                          <Download size={11} /> Экспорт
+                        </button>
+                      </div>
+
+                      <div className="flex items-start gap-2 mt-2 pt-3">
+                        <Info size={11} style={{ color: "rgba(255,255,255,0.25)", flexShrink: 0, marginTop: 1 }} />
+                        <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.3)" }}>
+                          Античит не распространяется на пользовательские сборки. Fabric API добавляется автоматически.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
               </div>
 
             </div>
 
-            <div className="p-4 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-              <button onClick={() => setShowBuilder(false)} className="flex-1 h-10 rounded-xl text-[12px] font-semibold transition-all"
-                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}
+            <div className="px-5 py-4 flex gap-2.5">
+              <button onClick={() => setShowBuilder(false)} className="flex-1 h-11 rounded-xl text-[13px] font-semibold transition-all"
+                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}
                 onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>Отмена</button>
               <button onClick={saveModpack} disabled={!draft.name.trim()}
                 className="flex-1 h-10 rounded-xl text-[12px] font-bold text-white transition-all disabled:opacity-30"
-                style={{ background: draft.name.trim() ? "linear-gradient(135deg, #2563eb, #3b82f6)" : "rgba(96,165,250,0.15)", boxShadow: draft.name.trim() ? "0 0 20px rgba(37,99,235,0.35)" : "none" }}>
-                Сохранить
+                style={{
+                  background: saveFlash ? "linear-gradient(135deg, #16a34a, #22c55e)" : draft.name.trim() ? "linear-gradient(135deg, #2563eb, #3b82f6)" : "rgba(96,165,250,0.15)",
+                  boxShadow: saveFlash ? "0 0 24px rgba(34,197,94,0.4)" : draft.name.trim() ? "0 0 20px rgba(37,99,235,0.35)" : "none",
+                  transition: "background 0.3s, box-shadow 0.3s",
+                }}>
+                {saveFlash ? "Сохранено!" : "Сохранить"}
               </button>
             </div>
           </div>
@@ -1293,7 +1404,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
           {/* Right panel: Modrinth browser — opaque */}
           <div className="flex-1 flex flex-col" style={{ background: "rgba(10,10,14,0.92)" }}>
             {/* Tabs + search */}
-            <div className="flex items-center gap-3 px-6 pt-5 pb-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center gap-3 px-6 pt-5 pb-3">
               {TABS.map(tab => (
                 <button key={tab.id} onClick={() => { setActiveTab(tab.id); setSearchQuery(""); setSelectedModDetail(null); }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all"
@@ -1305,7 +1416,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
               {/* Sync with server */}
               <button onClick={syncWithServer} disabled={syncing}
                 className="h-8 px-3 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
-                style={{ background: syncResult && !syncResult.error ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)", color: syncResult && !syncResult.error ? "#4ade80" : "rgba(255,255,255,0.5)", border: `1px solid ${syncResult && !syncResult.error ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.08)"}` }}>
+                style={{ background: syncResult && !syncResult.error ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)", color: syncResult && !syncResult.error ? "#4ade80" : "rgba(255,255,255,0.5)" }}>
                 {syncing ? <div className="w-3 h-3 border-[1.5px] border-white/30 border-t-white/70 rounded-full animate-spin" /> : <ArrowUpDown size={12} />}
                 {syncing ? "Синхронизация..." : "Синхронизация"}
               </button>
@@ -1321,7 +1432,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
             {syncResult && (
               <div className="mx-6 mt-3 rounded-xl p-3 flex flex-col gap-1.5" style={{
                 background: syncResult.error ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.06)",
-                border: `1px solid ${syncResult.error ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.15)"}`,
               }}>
                 {syncResult.error ? (
                   <p className="text-[11px]" style={{ color: "#fca5a5" }}>Ошибка: {syncResult.error}</p>
@@ -1338,7 +1448,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
 
             {/* Compatibility warnings */}
             {compatWarnings.length > 0 && (
-              <div className="mx-6 mt-2 rounded-xl p-3 flex flex-col gap-1.5" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+              <div className="mx-6 mt-2 rounded-xl p-3 flex flex-col gap-1.5" style={{ background: "rgba(245,158,11,0.06)" }}>
                 <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#fbbf24" }}>Проблемы совместимости</p>
                 {compatWarnings.map((w, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]" style={{ color: "rgba(255,255,255,0.5)" }}>
@@ -1380,7 +1490,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                         const installedItem = allItems.find(m => m.projectId === selectedModDetail.project_id);
                         const isInstalled = installedItem?.version === ver.version_number;
                         return (
-                          <div key={ver.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: isInstalled ? "rgba(74,222,128,0.06)" : "rgba(255,255,255,0.03)", border: `1px solid ${isInstalled ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.06)"}` }}>
+                           <div key={ver.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: isInstalled ? "rgba(74,222,128,0.06)" : "rgba(255,255,255,0.03)" }}>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-[13px] font-bold" style={{ color: isInstalled ? "#4ade80" : "#fff" }}>{ver.version_number}</span>
@@ -1421,8 +1531,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
                       const added = isItemAdded(hit.project_id);
                       return (
                         <motion.button key={hit.project_id} onClick={() => openModDetail(hit)} whileHover={{ scale: 1.01 }} className="text-left rounded-2xl p-4 transition-all"
-                          style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
-                          onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"} onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"}>
+                           style={{ background: "rgba(255,255,255,0.03)" }}
+                           onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}>
                       <div className="flex items-start gap-3">
                         {hit.icon_url && <img src={hit.icon_url} alt={hit.title || "Мод"} className="w-10 h-10 rounded-xl flex-shrink-0" />}
                         <div className="flex-1 min-w-0">
@@ -1513,11 +1623,11 @@ export default function PlayPage({ user, onOpenCommunity }) {
             </div>
             {mcRunning ? (
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2.5 h-[44px] px-6 rounded-2xl font-black text-[13px] tracking-widest uppercase" style={{ background: "rgba(22,163,74,0.15)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.2)" }}>
+                <div className="flex items-center gap-2.5 h-[44px] px-6 rounded-2xl font-black text-[13px] tracking-widest uppercase" style={{ background: "rgba(22,163,74,0.15)", color: "#4ade80" }}>
                   <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> В ИГРЕ
                 </div>
                 <motion.button onClick={handleClose} aria-label="Закрыть" whileTap={{ scale: 0.95 }} className="h-[44px] px-4 rounded-2xl font-bold text-[11px] tracking-wider uppercase transition-all"
-                  style={{ background: "rgba(239,68,68,0.12)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)" }}
+                  style={{ background: "rgba(239,68,68,0.12)", color: "#fca5a5" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.25)"; e.currentTarget.style.color = "#fff"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.color = "#fca5a5"; }}><X size={14} /></motion.button>
               </div>
@@ -1539,7 +1649,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
                   role="alert"
                   className="absolute bottom-6 left-1/2 -translate-x-1/2 max-w-[480px] rounded-xl px-4 py-3 text-[12px]"
-                  style={{ background: "rgba(220,38,38,0.15)", color: "#fca5a5", border: "1px solid rgba(220,38,38,0.3)" }}>
+                  style={{ background: "rgba(220,38,38,0.15)", color: "#fca5a5" }}>
                   <p className="font-bold mb-1">Не удалось запустить</p>
                   <p className="text-[11px] opacity-80">{launchError}</p>
                   <button onClick={() => setLaunchError(null)} aria-label="Закрыть ошибку" className="absolute top-1 right-2 text-[14px] opacity-50 hover:opacity-100" style={{ color: "#fca5a5" }}>×</button>
@@ -1576,7 +1686,6 @@ export default function PlayPage({ user, onOpenCommunity }) {
                       style={{
                         background: ramGb === p.ram ? "rgba(37,99,235,0.25)" : "rgba(255,255,255,0.04)",
                         color: ramGb === p.ram ? "#93c5fd" : "rgba(255,255,255,0.4)",
-                        border: `1px solid ${ramGb === p.ram ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.06)"}`,
                       }}>
                       {p.label} ({p.ram} ГБ)
                     </button>
@@ -1599,24 +1708,24 @@ export default function PlayPage({ user, onOpenCommunity }) {
             <motion.div initial={{ scale: 0.92, y: 12, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 280, damping: 26 }}
               role="dialog" aria-modal="true" aria-label="Предупреждение"
               className="w-full max-w-[520px] rounded-3xl p-6 flex flex-col gap-4"
-              style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", border: "1px solid rgba(239,68,68,0.35)", boxShadow: "0 0 80px rgba(239,68,68,0.25), 0 24px 60px rgba(0,0,0,0.7)" }}>
+              style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", boxShadow: "0 0 80px rgba(239,68,68,0.25), 0 24px 60px rgba(0,0,0,0.7)" }}>
               <div className="flex items-start gap-3">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}><AlertTriangle size={22} weight="fill" style={{ color: "#fca5a5" }} /></div>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(239,68,68,0.15)" }}><AlertTriangle size={22} weight="fill" style={{ color: "#fca5a5" }} /></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[15px] font-black text-white">Обнаружена подозрительная активность</p>
                   <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>Мод-пак скомпрометирован. Запуск заблокирован.</p>
                 </div>
                 <button onClick={handleModpackCancel} aria-label="Закрыть" className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}><X size={14} /></button>
               </div>
-              <div className="rounded-2xl p-3 max-h-[280px] overflow-y-auto" style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <div className="rounded-2xl p-3 max-h-[280px] overflow-y-auto" style={{ background: "rgba(0,0,0,0.4)" }}>
                 {modpackReport.rejected?.length > 0 && modpackReport.rejected.map((issue, i) => (
-                  <div key={i} className="rounded-lg p-2.5 mb-1.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                  <div key={i} className="rounded-lg p-2.5 mb-1.5" style={{ background: "rgba(239,68,68,0.08)" }}>
                     <div className="flex items-center gap-2"><ShieldAlert size={11} style={{ color: "#fca5a5", flexShrink: 0 }} /><span className="text-[11px] font-bold text-white font-mono truncate">{issue.name}</span></div>
                     <p className="text-[10px] mt-1 ml-5" style={{ color: "rgba(255,255,255,0.5)" }}>{issue.detail}</p>
                   </div>
                 ))}
                 {modpackReport.missing?.length > 0 && modpackReport.missing.map((issue, i) => (
-                  <div key={i} className="rounded-lg p-2 mb-1" style={{ background: "rgba(147,197,253,0.06)", border: "1px solid rgba(147,197,253,0.12)" }}>
+                  <div key={i} className="rounded-lg p-2 mb-1" style={{ background: "rgba(147,197,253,0.06)" }}>
                     <span className="text-[11px] font-mono text-white">{issue.name}</span>
                   </div>
                 ))}
@@ -1634,10 +1743,10 @@ export default function PlayPage({ user, onOpenCommunity }) {
             style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) setDepModal(null); }}>
             <motion.div initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 12 }} transition={{ duration: 0.18 }}
               className="w-[400px] rounded-2xl p-5 flex flex-col gap-4"
-              style={{ background: "rgba(10,10,14,0.98)", border: "1px solid rgba(96,165,250,0.25)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
+              style={{ background: "rgba(10,10,14,0.98)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.25)" }}>
+                  style={{ background: "rgba(96,165,250,0.12)" }}>
                   <Download size={15} style={{ color: "#60a5fa" }} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1645,7 +1754,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{depModal.parent} требует {depModal.deps.length} {depModal.deps.length === 1 ? "зависимость" : "зависимостей"}</p>
                 </div>
               </div>
-              <div className="rounded-xl p-2 space-y-1" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <div className="rounded-xl p-2 space-y-1" style={{ background: "rgba(0,0,0,0.3)" }}>
                 {depModal.deps.map((d, i) => (
                   <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.03)" }}>
                     <Package size={10} style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0 }} />
@@ -1668,16 +1777,16 @@ export default function PlayPage({ user, onOpenCommunity }) {
             style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) setGuardModal(null); }}>
             <motion.div initial={{ scale: 0.92, y: 12, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 280, damping: 26 }}
               className="w-full max-w-[480px] rounded-3xl p-6 flex flex-col gap-4"
-              style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", border: "1px solid rgba(239,68,68,0.4)", boxShadow: "0 0 80px rgba(239,68,68,0.3), 0 24px 60px rgba(0,0,0,0.7)" }}>
+              style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", boxShadow: "0 0 80px rgba(239,68,68,0.3), 0 24px 60px rgba(0,0,0,0.7)" }}>
               <div className="flex items-start gap-3">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}><ShieldAlert size={22} weight="fill" style={{ color: "#fca5a5" }} /></div>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(239,68,68,0.15)" }}><ShieldAlert size={22} weight="fill" style={{ color: "#fca5a5" }} /></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[15px] font-black text-white">Защита SB Games</p>
                   <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>{guardModal.reason === "inject" ? "Инжект DLL" : "Изменения в мод-паке"}</p>
                 </div>
                 <button onClick={() => setGuardModal(null)} aria-label="Закрыть" className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}><X size={14} /></button>
               </div>
-              <div className="rounded-2xl p-3" style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(239,68,68,0.15)" }}>
+              <div className="rounded-2xl p-3" style={{ background: "rgba(0,0,0,0.4)" }}>
                 <p className="text-[12px] font-mono text-white break-all" style={{ lineHeight: 1.5 }}>{guardModal.detail || "—"}</p>
               </div>
               <button onClick={() => setGuardModal(null)} className="w-full h-11 rounded-xl text-[12px] font-bold text-white" style={{ background: "rgba(255,255,255,0.08)" }}>Понятно</button>

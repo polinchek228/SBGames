@@ -90,7 +90,7 @@
     },
     "updater": {
       "active": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1QTQyODZEQkVFRjdFMjUKUldRbGZ1KytiU2lrSlRjY1RzNnZGSUxkQ3hoQjBubEdKS2d1YS9CNkpHWWJhMWMxY3AwN2RwVk4K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzNzI3REMyQkY5QTJERUIKUldUckxacS93bjF5b3pCREFCY1FWVThSVW1Ha2pIU1VkRTlZYmg0SE5MSVhyc0lCY2pZOE8wcEEK",
       "endpoints": [
         "https://games.sb-capital.group/update/{{target}}/{{arch}}/{{current_version}}"
       ],

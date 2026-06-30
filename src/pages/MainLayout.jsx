@@ -222,7 +222,6 @@ export default function MainLayout({ user, onLogout }) {
         style={{
           height: "46px",
           background: "rgba(8,8,10,0.98)",
-          borderBottom: "1px solid rgba(255,255,255,0.05)",
           backdropFilter: "blur(20px)",
           zIndex: 50,
           gridTemplateColumns: "1fr auto 1fr",
@@ -333,7 +332,7 @@ export default function MainLayout({ user, onLogout }) {
               style={{ width: "min(360px, 76vw)" }}
             >
               <div className="w-full h-full rounded-l-2xl overflow-hidden"
-                style={{ background: "rgba(8,8,10,0.97)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
+                style={{ background: "rgba(8,8,10,0.97)" }}>
                 <CommunityPage
                   user={user}
                   mini

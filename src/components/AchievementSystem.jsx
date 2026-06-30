@@ -107,7 +107,6 @@ export default function AchievementSystem({ user }) {
               style={{
                 background: active ? "rgba(255,255,255,0.12)" : "transparent",
                 color: active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.55)",
-                border: active ? "1px solid rgba(255,255,255,0.15)" : "1px solid transparent",
               }}
             >
               {cat.label}
@@ -134,7 +133,6 @@ export default function AchievementSystem({ user }) {
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150"
                 style={{
                   background: isUnlocked ? `${ach.color}0a` : "rgba(255,255,255,0.04)",
-                  border: isUnlocked ? `1px solid ${ach.color}20` : "1px solid rgba(255,255,255,0.08)",
                   opacity: isUnlocked ? 1 : 0.75,
                 }}
                 onMouseEnter={e => {

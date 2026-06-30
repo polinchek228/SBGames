@@ -72,7 +72,6 @@ function ItemCard({ item, equipped, onEquip, onUnequip, busy, onClick }) {
       onClick={() => onClick?.(item)}
       style={{
         background: isEquipped ? `${rarity.glow}` : "rgba(255,255,255,0.06)",
-        border: isEquipped ? `1.5px solid ${rarity.color}40` : "1.5px solid rgba(255,255,255,0.12)",
       }}
     >
       {/* Rarity glow */}
@@ -216,7 +215,7 @@ function ItemDetail({ item, equipped, onEquip, onUnequip, busy, onClose }) {
 
       {/* Description */}
       <div className="rounded-2xl p-4"
-        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
+        style={{ background: "rgba(255,255,255,0.05)" }}>
         <p className="text-[10px] uppercase tracking-widest font-semibold mb-2"
           style={{ color: "rgba(255,255,255,0.4)" }}>Описание</p>
         <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.75)" }}>
@@ -438,7 +437,6 @@ export default function InventoryTab({ user }) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <div className="flex items-center gap-3 px-5 pt-4 pb-3 flex-shrink-0"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}
         >
           {/* Search */}
           <div className="relative flex-1 max-w-[220px]">
@@ -448,7 +446,7 @@ export default function InventoryTab({ user }) {
               onChange={e => setSearch(e.target.value)}
               placeholder="Найти предмет…"
               className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] text-white/80 placeholder:text-white/40 outline-none"
-              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+              style={{ background: "rgba(255,255,255,0.06)" }}
             />
           </div>
 
@@ -576,7 +574,6 @@ export default function InventoryTab({ user }) {
                       onClick={() => setSelected(item)}
                       style={{
                         background: isEquipped ? `${meta.color}12` : "rgba(255,255,255,0.05)",
-                        border: isEquipped ? `1.5px solid ${meta.color}40` : "1.5px solid rgba(255,255,255,0.1)",
                       }}>
                       <div className="relative h-[100px] flex items-center justify-center overflow-hidden"
                         style={{ background: `radial-gradient(ellipse at 50% 120%, ${meta.color}12 0%, transparent 70%), rgba(0,0,0,0.3)` }}>
@@ -628,8 +625,7 @@ export default function InventoryTab({ user }) {
       {/* Detail sidebar */}
       <AnimatePresence>
         {selected && (
-          <div className="w-[280px] flex-shrink-0 p-4"
-            style={{ borderLeft: "1px solid rgba(255,255,255,0.1)" }}>
+          <div className="w-[280px] flex-shrink-0 p-4">
             <ItemDetail
               item={selected}
               equipped={equipped[selected.category] === selected.id}
