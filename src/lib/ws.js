@@ -46,7 +46,14 @@ function connect() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === "_auth_ok") { authenticated = true; pendingAuth = null; return; }
-      if (msg.type === "auth_error") { authenticated = false; return; }
+      if (msg.type === "auth_error") {
+        authenticated = false;
+        dead = true; // stop reconnecting — token is invalid
+        clearTimeout(reconnectTimer);
+        clearInterval(heartbeatTimer);
+        listeners.forEach(fn => fn({ type: "_ws_status", connected: false, authError: true }));
+        return;
+      }
       listeners.forEach(fn => { try { fn(msg); } catch {} });
     } catch {}
   };
@@ -108,6 +115,20 @@ export function destroyWS() {
   listeners.clear();
   authenticated = false;
   pendingAuth = null;
+  if (socket) {
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.close();
+    socket = null;
+  }
+}
+
+export function resetWS() {
+  dead = false;
+  reconnectDelay = 1000;
+  clearTimeout(reconnectTimer);
+  clearInterval(heartbeatTimer);
+  authenticated = false;
   if (socket) {
     socket.onclose = null;
     socket.onerror = null;

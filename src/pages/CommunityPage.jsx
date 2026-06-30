@@ -238,11 +238,16 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
   // ─── Subscribe to shared WS messages ──────────────────────────────────
   const [connected, setConnected] = useState(isWSConnected());
+  const [authError, setAuthError] = useState(false);
 
   useEffect(() => {
     setConnected(isWSConnected());
     const unsub = onWSMessage((msg) => {
-      if (msg.type === "_ws_status") { setConnected(msg.connected); return; }
+      if (msg.type === "_ws_status") {
+        setConnected(msg.connected);
+        if (msg.authError) setAuthError(true);
+        return;
+      }
       handleEvent(msg);
     });
     return unsub;
@@ -518,19 +523,27 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
             <p className="text-[13px] font-bold text-white">Сообщество</p>
             <div className="flex items-center gap-2 mt-1">
               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider transition-all duration-300 ${
-                connected
-                  ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
-                  : "bg-amber-500/15 text-amber-300 border border-amber-500/25"
+                authError
+                  ? "bg-red-500/15 text-red-300 border border-red-500/25"
+                  : connected
+                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
+                    : "bg-amber-500/15 text-amber-300 border border-amber-500/25"
               }`}>
                 <motion.span
                   animate={{ opacity: [0.4, 1, 0.4] }}
                   transition={{ repeat: Infinity, duration: 1.5 }}
-                  className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-amber-400"}`}
-                  style={{ boxShadow: connected ? "0 0 6px #34d399" : "0 0 6px #fbbf24" }}
+                  className={`w-1.5 h-1.5 rounded-full ${authError ? "bg-red-400" : connected ? "bg-emerald-400" : "bg-amber-400"}`}
+                  style={{ boxShadow: authError ? "0 0 6px #f87171" : connected ? "0 0 6px #34d399" : "0 0 6px #fbbf24" }}
                 />
-                {connected ? "ОНЛАЙН" : "ПОДКЛЮЧЕНИЕ"}
+                {authError ? "ОШИБКА" : connected ? "ОНЛАЙН" : "ПОДКЛЮЧЕНИЕ"}
               </span>
-              {connected && (
+              {authError && (
+                <button onClick={() => window.location.reload()}
+                  className="text-[9px] font-bold text-red-400/80 hover:text-red-300 transition-colors underline">
+                  Перезайти
+                </button>
+              )}
+              {!authError && connected && (
                 <span className="text-[9px] font-bold text-white/50 tracking-wider">
                   &middot; {friends.length} друзей
                 </span>
