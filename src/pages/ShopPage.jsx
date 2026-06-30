@@ -393,10 +393,9 @@ function MarketplaceView({ onViewProfile }) {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [sellOpen, setSellOpen] = useState(false);
+  const { push: pushNotif } = useNotifications() || {};
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadListings = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       if (filter !== "all") params.set("type", filter);
@@ -406,7 +405,7 @@ function MarketplaceView({ onViewProfile }) {
       setListings(data.listings || []);
     } catch (e) {
       setError("Не удалось загрузить маркет");
-    } finally { setLoading(false); }
+    }
   }, [filter, serverFilter]);
 
   const loadOwned = useCallback(async () => {
@@ -420,8 +419,13 @@ function MarketplaceView({ onViewProfile }) {
     } catch {}
   }, []);
 
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try { await Promise.all([loadListings(), loadOwned()]); }
+    finally { setLoading(false); }
+  }, [loadListings, loadOwned]);
+
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { loadOwned(); }, [loadOwned]);
 
   const filteredListings = useMemo(() => {
     let items = [...listings];
@@ -571,7 +575,7 @@ function MarketplaceView({ onViewProfile }) {
             owned={owned}
             catalog={catalog}
             onClose={() => setSellOpen(false)}
-            onCreated={() => { setSellOpen(false); load(); loadOwned(); }}
+            onCreated={() => { setSellOpen(false); load(); }}
           />
         )}
       </AnimatePresence>
@@ -599,14 +603,16 @@ function ListingRow({ listing, index, onBought, onViewProfile }) {
   const hasImage = !!(catItem?.image || catItem?.icon);
   const hasGradient = !!mktItem?.preview?.startsWith?.("linear");
   const [buying, setBuying] = useState(false);
+  const { push: pushNotif } = useNotifications() || {};
 
   const buy = async () => {
     if (buying) return;
     setBuying(true);
     try {
       await authedFetch(`/api/market/buy/${listing.id}`, { method: "POST" });
+      pushNotif?.("Покупка", `${name} куплен`, "market");
       onBought?.();
-    } catch (e) { alert(e.message); }
+    } catch (e) { pushNotif?.("Ошибка", e.message, "group"); }
     finally { setBuying(false); }
   };
 
