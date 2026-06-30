@@ -5,6 +5,7 @@ import {
   WifiHigh, WifiSlash, PaperPlaneTilt, Check, Checks,
   CaretLeft, Users, UserPlus, SignOut, Phone, PhoneSlash,
   Microphone, MicrophoneSlash, MonitorArrowUp, VideoCamera,
+  ArrowsLeftRight,
 } from "@phosphor-icons/react";
 import { Eye, Plus } from "lucide-react";
 import { authFetch } from "../lib/api.js";

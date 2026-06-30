@@ -3163,6 +3163,7 @@ wss.on("connection", (ws, req) => {
           break;
         }
         // ─── Community sync ─────────────────────────────────────────────────
+        case "community_sync": {
           const friendIds = [...getFriends(client.userId)];
           const friendList = await Promise.all(friendIds.map(async fid => {
             let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);

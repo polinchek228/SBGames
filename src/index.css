@@ -17,6 +17,12 @@
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
+.sell-modal-grid::-webkit-scrollbar { width: 4px; }
+.sell-modal-grid::-webkit-scrollbar-track { background: transparent; }
+.sell-modal-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+.sell-modal-grid::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+.sell-modal-grid { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.12) transparent; }
+
 /* Remove outline only for mouse clicks — keep keyboard focus visible */
 input:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 input:focus-visible, button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visible {

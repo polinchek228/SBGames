@@ -658,10 +658,11 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
       if (cat) {
         const name = cat.name || (cat.type === "background" ? `Фон ${id.replace("bg_fon", "")}` : id);
         const preview = cat.image || cat.icon || null;
-        map[id] = { name, preview, color: cat.color, type: cat.type, rarity: cat.rarity, source: "shop" };
+        const video = cat.video || null;
+        map[id] = { name, preview, video, color: cat.color, type: cat.type, rarity: cat.rarity, source: "shop" };
         continue;
       }
-      map[id] = { name: id, preview: null, color: "#888", type: "?", source: "unknown" };
+      map[id] = { name: id, preview: null, video: null, color: "#888", type: "?", source: "unknown" };
     }
     return map;
   }, [owned, catalog]);
@@ -701,11 +702,12 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
               Нет предметов для продажи.
             </p>
           ) : (
-            <div className="grid grid-cols-4 gap-2 max-h-[240px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+            <div className="sell-modal-grid grid grid-cols-4 gap-2 max-h-[280px] overflow-y-auto pr-1">
               {owned.map(id => {
                 const item = allItems[id];
                 if (!item) return null;
                 const hasImage = !!item.preview;
+                const hasVideo = !!item.video;
                 const accentColor = item.color || "#888";
                 return (
                   <button key={id} onClick={() => setPicked(id)}
@@ -716,9 +718,12 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
                       border: picked === id ? `1px solid ${accentColor}40` : "1px solid transparent",
                     }}>
                     <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center"
-                      style={{ background: hasImage ? "rgba(0,0,0,0.3)" : `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)` }}>
+                      style={{ background: `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)` }}>
                       {hasImage ? (
                         <img src={item.preview} alt="" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = "none"; }} />
+                      ) : hasVideo ? (
+                        <video src={item.video} className="w-full h-full object-cover" muted loop autoPlay playsInline
+                          onError={e => { e.currentTarget.style.display = "none"; }} />
                       ) : (
                         <div className="w-6 h-6 rounded" style={{ background: accentColor, opacity: 0.6 }} />
                       )}
