@@ -204,7 +204,7 @@ export default function MainLayout({ user, onLogout }) {
       case "profile":     return <Suspense fallback={fallback}><ProfilePage user={user} viewUserId={viewUserId} onBack={() => setViewUserId(null)} /></Suspense>;
       case "community":   return <Suspense fallback={fallback}><CommunityPage user={user} onBadgeChange={() => {}} pendingCall={pendingCall} onPendingCallConsumed={() => setPendingCall(null)} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} suppressNotifications={communityOpen && page !== "community"} /></Suspense>;
       case "news":        return <Suspense fallback={fallback}><NewsPage /></Suspense>;
-      case "shop":        return <Suspense fallback={fallback}><ShopPage user={user} onBalanceChange={setBalance} /></Suspense>;
+      case "shop":        return <Suspense fallback={fallback}><ShopPage user={user} onBalanceChange={setBalance} onViewProfile={(id) => { setViewUserId(id); setPage("profile"); }} /></Suspense>;
       case "support":     return <Suspense fallback={fallback}><SupportPage user={user} /></Suspense>;
       default:            return null;
     }

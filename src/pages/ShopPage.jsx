@@ -17,7 +17,7 @@ function rarityForPrice(price) {
   return { label: "Обычный", color: "#22c55e", bg: "rgba(34,197,94,0.07)" };
 }
 
-export default function ShopPage({ user, onBalanceChange }) {
+export default function ShopPage({ user, onBalanceChange, onViewProfile }) {
   const [mode, setMode] = useState("choose"); // "choose" | "donate" | "market"
 
   return (
@@ -112,7 +112,7 @@ export default function ShopPage({ user, onBalanceChange }) {
               onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.5)"}>
               <CaretLeft size={13} weight="bold" /> Назад
             </button>
-            <MarketplaceView />
+            <MarketplaceView onViewProfile={onViewProfile} />
           </motion.div>
         )}
 
@@ -381,7 +381,7 @@ const MKT_SERVERS = [
   { id: "anarchy",  name: "Анархия",        image: "https://games.sb-capital.group/servers/anarchy.jpg", color: "#f59e0b" },
 ];
 
-function MarketplaceView() {
+function MarketplaceView({ onViewProfile }) {
   const [listings, setListings] = useState([]);
   const [owned, setOwned]       = useState([]);
   const [equip, setEquip]       = useState({});
@@ -520,7 +520,7 @@ function MarketplaceView() {
           ) : (
             <div className="flex flex-col">
               {filteredListings.map((l, i) => (
-                <ListingRow key={l.id} listing={l} index={i} onBought={load} />
+                <ListingRow key={l.id} listing={l} index={i} onBought={load} onViewProfile={onViewProfile} />
               ))}
             </div>
           )}
@@ -590,8 +590,14 @@ const CATALOG = {
   m_aurora_shard:   { type: "shard",    name: "Осколок Авроры",    preview: "linear-gradient(135deg,#0c4a6e,#22d3ee,#a855f7)" },
 };
 
-function ListingRow({ listing, index, onBought }) {
-  const item = CATALOG[listing.itemId] || { name: listing.name, preview: "#333", type: listing.itemType };
+function ListingRow({ listing, index, onBought, onViewProfile }) {
+  const catItem = CATALOG_BY_ID[listing.itemId];
+  const mktItem = CATALOG[listing.itemId];
+  const item = mktItem || catItem || {};
+  const name = mktItem?.name || catItem?.name || listing.name || "—";
+  const accentColor = item.color || "#888";
+  const hasImage = !!(catItem?.image || catItem?.icon);
+  const hasGradient = !!mktItem?.preview?.startsWith?.("linear");
   const [buying, setBuying] = useState(false);
 
   const buy = async () => {
@@ -613,15 +619,21 @@ function ListingRow({ listing, index, onBought }) {
       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
       {/* Item */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center"
-          style={{ background: item.preview?.startsWith?.("linear") ? item.preview : "rgba(255,255,255,0.06)" }}>
-          {item.preview?.startsWith?.("linear") && (
-            <div className="w-5 h-5 rounded" style={{ background: item.preview, opacity: 0.8 }} />
-          )}
+        <div className="w-10 h-10 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center"
+          style={{ background: hasGradient ? mktItem.preview : `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)` }}>
+          {hasImage ? (
+            <img src={catItem.image || catItem.icon} alt="" className="w-full h-full object-cover"
+              onError={e => { e.currentTarget.style.display = "none"; }} />
+          ) : hasGradient ? (
+            <div className="w-5 h-5 rounded" style={{ background: mktItem.preview, opacity: 0.8 }} />
+          ) : null}
         </div>
         <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-white truncate">{item.name || listing.name || "—"}</p>
-          <p className="text-[10px] truncate" style={{ color: "rgba(255,255,255,0.35)" }}>@{listing.sellerName}</p>
+          <p className="text-[12px] font-semibold text-white truncate">{name}</p>
+          <button onClick={() => onViewProfile?.(listing.sellerId)} className="text-[10px] truncate text-left hover:underline"
+            style={{ color: "rgba(255,255,255,0.35)" }}>
+            @{listing.sellerName}
+          </button>
         </div>
       </div>
 
@@ -724,7 +736,7 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
                       {hasImage ? (
                         <img src={item.preview} alt="" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = "none"; }} />
                       ) : hasVideo ? (
-                        <video src={item.video} className="w-full h-full object-cover" muted loop autoPlay playsInline
+                        <video src={item.video} className="w-full h-full object-cover" preload="metadata" muted
                           onError={e => { e.currentTarget.style.display = "none"; }} />
                       ) : (
                         <div className="w-6 h-6 rounded" style={{ background: accentColor, opacity: 0.6 }} />
