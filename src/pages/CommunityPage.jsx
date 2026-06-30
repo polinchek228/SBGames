@@ -10,6 +10,7 @@ import { Eye, Plus } from "lucide-react";
 import { authFetch } from "../lib/api.js";
 import { sendWS, onWSMessage, isWSConnected } from "../lib/ws.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
+import { CATALOG_BY_ID } from "./catalog.js";
 
 function highlight(text, query) {
   if (!query || !text) return text;
@@ -49,6 +50,11 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
   const [parties,       setParties]       = useState([]);    // all parties user is in
   const [partyInvites,  setPartyInvites]  = useState([]);
+
+  const [activeTrade, setActiveTrade] = useState(null);  // { id, partnerId, partnerName, myItems, theirItems, myConfirmed, theirConfirmed, amInitiator }
+  const [tradeInventory, setTradeInventory] = useState([]); // user's sellable items
+  const tradeRef = useRef(null);
+  useEffect(() => { tradeRef.current = activeTrade; }, [activeTrade]);
 
   // refs to avoid stale closures in handleEvent without re-subscribing WS
   const chatWithRef   = useRef(null);
@@ -183,6 +189,39 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         setPartyInvites(msg.invites || []);
         break;
 
+      // ─── Trade ──────────────────────────────────────────────────────────────
+      case "trade_request_received":
+        pushNotif?.("Запрос трейда", `${msg.fromUsername} хочет обменяться предметами`, "info");
+        setActiveTrade({ id: msg.tradeId, partnerId: msg.fromId, partnerName: msg.fromUsername, myItems: [], theirItems: [], myConfirmed: false, theirConfirmed: false, amInitiator: false });
+        break;
+      case "trade_request_sent":
+        setActiveTrade(prev => prev ? prev : { id: msg.tradeId, partnerId: msg.toId, partnerName: "", myItems: [], theirItems: [], myConfirmed: false, theirConfirmed: false, amInitiator: true });
+        break;
+      case "trade_updated":
+        setActiveTrade(prev => {
+          if (!prev || prev.id !== msg.tradeId) return prev;
+          return { ...prev, myItems: prev.amInitiator ? msg.initiatorItems : msg.targetItems, theirItems: prev.amInitiator ? msg.targetItems : msg.initiatorItems, myConfirmed: false, theirConfirmed: false };
+        });
+        break;
+      case "trade_confirmed":
+        setActiveTrade(prev => {
+          if (!prev || prev.id !== msg.tradeId) return prev;
+          const byMe = msg.by === user?.id;
+          return { ...prev, myConfirmed: byMe ? true : prev.myConfirmed, theirConfirmed: byMe ? prev.theirConfirmed : true };
+        });
+        break;
+      case "trade_cancelled":
+        setActiveTrade(null);
+        pushNotif?.("Трейд отменён", "", "info");
+        break;
+      case "trade_completed":
+        setActiveTrade(null);
+        pushNotif?.("Трейд завершён", "Предметы обменяны!", "market");
+        break;
+      case "trade_error":
+        pushNotif?.("Ошибка трейда", msg.message || "", "group");
+        break;
+
       case "dm_history":
         setMessages(msg.messages || []);
         break;
@@ -289,6 +328,18 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
     if (!text.trim() || !chatWith) return;
     sendWS({ type: "dm_send", toId: chatWith.id, text });
     setLastMessages(prev => ({ ...prev, [chatWith.id]: { text, time: Date.now(), from: user?.id } }));
+  };
+
+  const startTrade = async () => {
+    if (!chatWith) return;
+    if (activeTrade) return;
+    try {
+      const data = await authFetch("/api/inventory");
+      const d = await data.json();
+      const allItems = [...new Set([...(d.market || []), ...(d.owned || [])])];
+      setTradeInventory(allItems);
+    } catch { setTradeInventory([]); }
+    sendWS({ type: "trade_request", toId: chatWith.id });
   };
 
   // ─── WebRTC helpers ──────────────────────────────────────────────────────────
@@ -506,6 +557,18 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
             onMute={toggleMute}
             onShare={activeCall.sharing ? stopScreenShare : startScreenShare}
             onHangUp={hangUp}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ─── Trade modal ─── */}
+      <AnimatePresence>
+        {activeTrade && (
+          <TradeModal
+            trade={activeTrade}
+            myId={user?.id}
+            inventory={tradeInventory}
+            onClose={() => { sendWS({ type: "trade_cancel", tradeId: activeTrade.id }); setActiveTrade(null); }}
           />
         )}
       </AnimatePresence>
@@ -788,6 +851,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
                 onBack={() => setChatWith(null)}
                 onViewProfile={() => { onViewProfile(chatWith.id); setChatWith(null); }}
                 online={onlineIds.has(chatWith.id)}
+                onTrade={startTrade}
               />
             </motion.div>
           )}
@@ -1087,8 +1151,126 @@ function ConversationRow({ f, i, myId, onOpen, onProfile }) {
   );
 }
 
+// ─── Trade Modal ──────────────────────────────────────────────────────────────
+function TradeModal({ trade, myId, inventory, onClose }) {
+  const [myItems, setMyItems] = useState(trade.myItems || []);
+  const [theirItems, setTheirItems] = useState(trade.theirItems || []);
+  const [myConfirmed, setMyConfirmed] = useState(false);
+  const [theirConfirmed, setTheirConfirmed] = useState(false);
+
+  useEffect(() => {
+    setMyItems(trade.myItems || []);
+    setTheirItems(trade.theirItems || []);
+    setMyConfirmed(trade.myConfirmed || false);
+    setTheirConfirmed(trade.theirConfirmed || false);
+  }, [trade.myItems, trade.theirItems, trade.myConfirmed, trade.theirConfirmed]);
+
+  const toggleItem = (itemId) => {
+    const isMine = myItems.includes(itemId);
+    const next = isMine ? myItems.filter(x => x !== itemId) : [...myItems, itemId];
+    setMyItems(next);
+    setMyConfirmed(false);
+    setTheirConfirmed(false);
+    sendWS({ type: "trade_offer", tradeId: trade.id, items: next });
+  };
+
+  const confirm = () => {
+    setMyConfirmed(true);
+    sendWS({ type: "trade_confirm", tradeId: trade.id });
+  };
+
+  const cancel = () => {
+    sendWS({ type: "trade_cancel", tradeId: trade.id });
+    onClose();
+  };
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={cancel} />
+      <motion.div initial={{ scale: 0.94, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 8 }}
+        className="relative z-10 w-[560px] max-h-[80vh] rounded-2xl overflow-hidden flex flex-col"
+        style={{ background: "rgba(10,10,10,0.92)", backdropFilter: "blur(24px)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div>
+            <p className="text-[14px] font-bold text-white">Обмен с {trade.partnerName}</p>
+            <p className="text-[10px] text-white/40 mt-0.5">{myItems.length} твоих · {theirItems.length} его/её</p>
+          </div>
+          <button onClick={cancel} className="w-7 h-7 rounded-lg text-white/55 hover:text-white hover:bg-white/[0.07] flex items-center justify-center">
+            <X size={12} />
+          </button>
+        </div>
+
+        {/* Two sides */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* My items */}
+          <div className="flex-1 p-4 flex flex-col gap-2" style={{ borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-white/50 mb-1">Твои предметы</p>
+            <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-1.5 content-start" style={{ scrollbarWidth: "thin" }}>
+              {inventory.map(id => {
+                const selected = myItems.includes(id);
+                const cat = CATALOG_BY_ID[id];
+                const label = cat?.name || id.replace(/^m_/, "").replace(/_/g, " ");
+                return (
+                  <button key={id} onClick={() => toggleItem(id)}
+                    className="rounded-lg p-2 flex flex-col items-center gap-1 text-center transition-all"
+                    style={{
+                      background: selected ? "rgba(37,99,235,0.2)" : "rgba(255,255,255,0.04)",
+                      border: selected ? "1px solid rgba(37,99,235,0.4)" : "1px solid transparent",
+                    }}>
+                    <div className="w-8 h-8 rounded-md" style={{ background: cat?.color ? `linear-gradient(135deg, ${cat.color}40, ${cat.color}20)` : "linear-gradient(135deg, rgba(37,99,235,0.3), rgba(99,102,241,0.2))" }} />
+                    <span className="text-[8px] text-white/60 truncate w-full">{label}</span>
+                  </button>
+                );
+              })}
+              {inventory.length === 0 && <p className="text-[10px] text-white/30 col-span-3 text-center py-6">Нет предметов</p>}
+            </div>
+            {myConfirmed && <p className="text-[10px] text-green-400 text-center py-1">✓ Подтверждено</p>}
+          </div>
+
+          {/* Their items */}
+          <div className="flex-1 p-4 flex flex-col gap-2">
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-white/50 mb-1">Предметы {trade.partnerName}</p>
+            <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-1.5 content-start" style={{ scrollbarWidth: "thin" }}>
+              {theirItems.map(id => {
+                const cat = CATALOG_BY_ID[id];
+                const label = cat?.name || id.replace(/^m_/, "").replace(/_/g, " ");
+                return (
+                  <div key={id}
+                    className="rounded-lg p-2 flex flex-col items-center gap-1 text-center"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="w-8 h-8 rounded-md" style={{ background: cat?.color ? `linear-gradient(135deg, ${cat.color}40, ${cat.color}20)` : "linear-gradient(135deg, rgba(168,85,247,0.3), rgba(236,72,153,0.2))" }} />
+                    <span className="text-[8px] text-white/60 truncate w-full">{label}</span>
+                  </div>
+                );
+              })}
+              {theirItems.length === 0 && <p className="text-[10px] text-white/30 col-span-3 text-center py-6">Ожидаем...</p>}
+            </div>
+            {theirConfirmed && <p className="text-[10px] text-green-400 text-center py-1">✓ Подтверждено</p>}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 px-5 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button onClick={cancel}
+            className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold"
+            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)" }}>
+            Отмена
+          </button>
+          <button onClick={confirm} disabled={myConfirmed || myItems.length === 0}
+            className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-30 transition-all"
+            style={{ background: myConfirmed ? "rgba(34,197,94,0.2)" : "linear-gradient(135deg, #2563eb, #3b82f6)" }}>
+            {myConfirmed ? "Ожидание..." : "Подтвердить"}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── DM Chat (Telegram-style) ──────────────────────────────────────────────
-function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, online }) {
+function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, online, onTrade }) {
   const [input, setInput] = useState("");
   const bottomRef = useRef(null);
 
@@ -1160,8 +1342,13 @@ function DMChat({ chatWith, messages, userId, onSend, onBack, onViewProfile, onl
 
       {/* Input */}
       <form onSubmit={handleSend}
-        className="flex items-end gap-2.5 px-4 py-3 flex-shrink-0"
+        className="flex items-end gap-2 px-4 py-3 flex-shrink-0"
         style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <button type="button" onClick={onTrade} title="Обменяться предметами"
+          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors"
+          style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
+          <ArrowsLeftRight size={16} />
+        </button>
         <input
           value={input}
           onChange={e => setInput(e.target.value)}

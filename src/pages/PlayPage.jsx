@@ -783,34 +783,64 @@ export default function PlayPage({ user, onOpenCommunity }) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2">
-            {SERVERS.map(srv => {
+            {SERVERS.map((srv, idx) => {
               const active = selected?.id === srv.id && !showBuilder;
               const online = serverOnline[srv.id] || 0;
               return (
-                <div key={srv.id} className="relative group">
-                  <button onClick={() => { setShowBuilder(false); setShowSidebarMenu(false); setSelected(selected?.id === srv.id && !showBuilder ? null : srv); }} className="w-full text-left focus:outline-none">
-                    <motion.div animate={{ opacity: active ? 1 : 0.45 }} whileHover={{ opacity: active ? 1 : 0.75 }} transition={{ duration: 0.15 }} className="relative rounded-xl overflow-hidden"
-                      style={{ boxShadow: active ? `0 0 12px rgba(37,99,235,0.4), 0 4px 20px ${srv.accent}20` : "none", border: "none" }}>
-                      <div className="h-[90px] relative" style={{ background: srv.bg }}>
-                        {srv.image && <img src={srv.image} alt={srv.name || "Сервер"} className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
+                <motion.div key={srv.id} className="relative group"
+                  initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: idx * 0.06, ease: [0.25, 0.46, 0.45, 0.94] }}>
+                  <button onClick={() => { setShowBuilder(false); setShowSidebarMenu(false); setSelected(selected?.id === srv.id && !showBuilder ? null : srv); }}
+                    className="w-full text-left focus:outline-none">
+                    <motion.div
+                      animate={{ opacity: active ? 1 : 0.5 }}
+                      whileHover={{ opacity: 1, scale: 1.015 }}
+                      whileTap={{ scale: 0.985 }}
+                      transition={{ duration: 0.2 }}
+                      className="relative rounded-xl overflow-hidden"
+                      style={{
+                        boxShadow: active
+                          ? `0 0 20px ${srv.accent}35, 0 4px 24px ${srv.accent}18, inset 0 1px 0 ${srv.accent}15`
+                          : "none",
+                      }}>
+                      <div className="h-[90px] relative overflow-hidden" style={{ background: srv.bg }}>
+                        {srv.image && (
+                          <motion.img src={srv.image} alt={srv.name || "Сервер"}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            loading="lazy" onError={e => e.currentTarget.style.display = "none"}
+                            whileHover={{ scale: 1.08 }}
+                            transition={{ duration: 0.4, ease: "easeOut" }}
+                          />
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                        {active && <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 30% 100%, rgba(37,99,235,0.15), transparent 65%)` }} />}
-                        {active && <motion.div layoutId="srv-bar" className="absolute bottom-0 left-3 right-3 h-[2.5px] rounded-full" style={{ background: "linear-gradient(90deg, transparent, #2563eb, transparent)" }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />}
+                        {active && <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 30% 100%, ${srv.accent}22, transparent 65%)` }} />}
+                        {active && (
+                          <motion.div layoutId="srv-bar"
+                            className="absolute bottom-0 left-3 right-3 h-[2.5px] rounded-full"
+                            style={{ background: `linear-gradient(90deg, transparent, ${srv.accent}, transparent)` }}
+                            transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                          />
+                        )}
                         <div className="absolute bottom-2.5 left-3">
                           <p className="text-[12px] font-black text-white tracking-wide leading-none">{srv.name}</p>
                           <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{srv.subtitle}</p>
                         </div>
                         {online > 0 && (
-                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-1.5 py-0.5 rounded-md"
+                          <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                            className="absolute top-2.5 right-2.5 flex items-center gap-1 px-1.5 py-0.5 rounded-md"
                             style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                            <motion.div className="w-1.5 h-1.5 rounded-full bg-green-400"
+                              animate={{ boxShadow: ["0 0 0 0 rgba(74,222,128,0.5)", "0 0 0 4px rgba(74,222,128,0)"] }}
+                              transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
+                            />
                             <span className="text-[9px] font-bold text-green-400">{online}</span>
-                          </div>
+                          </motion.div>
                         )}
+
                       </div>
                     </motion.div>
                   </button>
-                </div>
+                </motion.div>
               );
             })}
 
@@ -932,32 +962,38 @@ export default function PlayPage({ user, onOpenCommunity }) {
               {/* Content */}
               <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
                 {sidebarMenuTab === "servers" ? (
-                  SERVERS.map(srv => {
+                  SERVERS.map((srv, idx) => {
                     const activeS = selected?.id === srv.id && !showBuilder;
                     const online = serverOnline[srv.id] || 0;
                     return (
-                      <button key={srv.id} onClick={() => { setShowBuilder(false); setSelected(srv); setShowSidebarMenu(false); }}
-                        className="group w-full rounded-xl overflow-hidden flex items-center gap-3 px-2.5 py-2 text-left transition-all"
-                        style={{ background: activeS ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)" }}
-                        onMouseEnter={e => { if (!activeS) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
-                        onMouseLeave={e => { if (!activeS) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}>
-                        <div className="w-11 h-11 rounded-lg flex-shrink-0 overflow-hidden relative" style={{ background: srv.bg }}>
+                      <motion.button key={srv.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2, delay: idx * 0.04 }}
+                        onClick={() => { setShowBuilder(false); setSelected(srv); setShowSidebarMenu(false); }}
+                        className="group w-full rounded-xl overflow-hidden flex items-center gap-3 px-2.5 py-2 text-left"
+                        style={{ background: activeS ? `${srv.accent}18` : "rgba(255,255,255,0.03)" }}>
+                        <motion.div whileHover={{ scale: 1.08 }} transition={{ duration: 0.2 }}
+                          className="w-11 h-11 rounded-lg flex-shrink-0 overflow-hidden relative" style={{ background: srv.bg }}>
                           {srv.image && <img src={srv.image} alt={srv.name || "Сервер"} className="w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
                           <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.4))" }} />
-                        </div>
+                        </motion.div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] font-black text-white truncate leading-tight">{srv.name}</p>
                           <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.4)" }}>{srv.description}</p>
                         </div>
                         {online > 0 ? (
                           <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md" style={{ background: "rgba(34,197,94,0.12)" }}>
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                            <motion.div className="w-1.5 h-1.5 rounded-full bg-green-400"
+                              animate={{ boxShadow: ["0 0 0 0 rgba(74,222,128,0.5)", "0 0 0 4px rgba(74,222,128,0)"] }}
+                              transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
+                            />
                             <span className="text-[9px] font-bold text-green-400">{online}</span>
                           </div>
                         ) : activeS ? (
-                          <Check size={14} style={{ color: "#60a5fa" }} />
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 25 }}>
+                            <Check size={14} style={{ color: srv.accent || "#60a5fa" }} />
+                          </motion.div>
                         ) : null}
-                      </button>
+                      </motion.button>
                     );
                   })
                 ) : (

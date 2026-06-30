@@ -7,6 +7,7 @@ import {
 } from "@phosphor-icons/react";
 import { authedFetch, API_URL } from "../lib/api.js";
 import { useNotifications } from "../components/NotificationSystem.jsx";
+import { CATALOG_BY_ID, LIBRARY_CATALOG } from "./catalog.js";
 
 // Цветовая "редкость" для визуала карточек — вычисляется по цене товара из БД.
 function rarityForPrice(price) {
@@ -411,9 +412,11 @@ function MarketplaceView() {
   const loadOwned = useCallback(async () => {
     try {
       const data = await authedFetch("/api/inventory");
-      setOwned(data.market || []);
+      const marketItems = data.market || [];
+      const cosmeticItems = (data.owned || []).filter(id => !marketItems.includes(id));
+      setOwned([...marketItems, ...cosmeticItems]);
       setEquip(data.equip || {});
-      setCatalog(data.marketCatalog || []);
+      setCatalog([...(data.marketCatalog || []), ...(data.catalog || [])]);
     } catch {}
   }, []);
 
@@ -646,6 +649,23 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
   const [busy, setBusy]     = useState(false);
   const [error, setError]   = useState(null);
 
+  const allItems = useMemo(() => {
+    const map = {};
+    for (const id of owned) {
+      const mkt = CATALOG[id];
+      if (mkt) { map[id] = { name: mkt.name, preview: mkt.preview, type: mkt.type, source: "market" }; continue; }
+      const cat = CATALOG_BY_ID[id];
+      if (cat) {
+        const name = cat.name || (cat.type === "background" ? `Фон ${id.replace("bg_fon", "")}` : id);
+        const preview = cat.image || cat.icon || null;
+        map[id] = { name, preview, color: cat.color, type: cat.type, rarity: cat.rarity, source: "shop" };
+        continue;
+      }
+      map[id] = { name: id, preview: null, color: "#888", type: "?", source: "unknown" };
+    }
+    return map;
+  }, [owned, catalog]);
+
   const submit = async () => {
     if (!picked || busy) return;
     setBusy(true); setError(null);
@@ -678,21 +698,32 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
           </p>
           {owned.length === 0 ? (
             <p className="text-[11px] py-6 text-center" style={{ color: "rgba(255,255,255,0.75)" }}>
-              У тебя нет предметов в библиотеке.
+              Нет предметов для продажи.
             </p>
           ) : (
-            <div className="grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto">
+            <div className="grid grid-cols-4 gap-2 max-h-[240px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
               {owned.map(id => {
-                const item = CATALOG[id] || { name: id, preview: "#888", type: "?" };
+                const item = allItems[id];
+                if (!item) return null;
+                const hasImage = !!item.preview;
+                const accentColor = item.color || "#888";
                 return (
                   <button key={id} onClick={() => setPicked(id)}
-                    className="relative rounded-xl p-2 flex flex-col items-center gap-1"
+                    className="relative rounded-xl p-2 flex flex-col items-center gap-1.5 transition-all"
                     style={{
                       background: picked === id ? "rgba(168,85,247,0.18)" : "rgba(255,255,255,0.04)",
+                      boxShadow: picked === id ? `0 0 16px ${accentColor}30` : "none",
+                      border: picked === id ? `1px solid ${accentColor}40` : "1px solid transparent",
                     }}>
-                    <div className="w-10 h-10 rounded-lg"
-                      style={{ background: item.preview, boxShadow: `0 0 12px ${item.preview}55` }} />
-                    {item.name && <span className="text-[9px] text-white truncate w-full text-center">{item.name}</span>}
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center"
+                      style={{ background: hasImage ? "rgba(0,0,0,0.3)" : `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)` }}>
+                      {hasImage ? (
+                        <img src={item.preview} alt="" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = "none"; }} />
+                      ) : (
+                        <div className="w-6 h-6 rounded" style={{ background: accentColor, opacity: 0.6 }} />
+                      )}
+                    </div>
+                    <span className="text-[9px] text-white/70 truncate w-full text-center leading-tight">{item.name}</span>
                   </button>
                 );
               })}
@@ -725,7 +756,7 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
               Отмена
             </button>
             <button onClick={submit} disabled={!picked || busy}
-              className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-30"
+              className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-30 transition-all"
               style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)" }}>
               {busy ? "Создаём…" : "Выставить"}
             </button>

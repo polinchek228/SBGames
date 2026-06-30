@@ -483,6 +483,7 @@ const invoices       = new Map();
 let ticketCounter  = 1000;
 let invoiceCounter = 1;
 
+const trades = new Map(); // tradeId -> { id, initiatorId, targetId, initiatorItems: [], targetItems: [], initiatorConfirmed, targetConfirmed, status, createdAt }
 const wsClients = new Map();
 
 function getFriends(userId)         { return friendships.get(userId) || new Set(); }
@@ -1575,15 +1576,28 @@ app.post("/api/market/sell", requireAuth, async (req, res) => {
   const acc = await redisAccounts.get(req.userId);
   if (!acc) return res.status(404).json({ message: "Игрок не найден" });
   const marketOwn = Array.isArray(acc.market_inventory) ? acc.market_inventory : [];
-  if (!marketOwn.includes(cleanId)) return res.status(400).json({ message: "Нет этого предмета" });
-  const item = MARKET_CATALOG.find(i => i.id === cleanId);
+  const invOwn = Array.isArray(acc.inventory) ? acc.inventory : [];
+  const fromMarket = marketOwn.includes(cleanId);
+  const fromInventory = !fromMarket && invOwn.includes(cleanId);
+  if (!fromMarket && !fromInventory) return res.status(400).json({ message: "Нет этого предмета" });
+  const item = MARKET_CATALOG.find(i => i.id === cleanId) || getShopItem(cleanId);
   if (!item) return res.status(404).json({ message: "Предмет не найден" });
   const hasActive = [...listings.values()].some(l => l.status === "active" && l.sellerId === req.userId && l.itemId === cleanId);
   if (hasActive) return res.status(400).json({ message: "Уже выставлен" });
-  acc.market_inventory = marketOwn.filter(x => x !== cleanId);
+  if (fromMarket) {
+    acc.market_inventory = marketOwn.filter(x => x !== cleanId);
+  } else {
+    acc.inventory = invOwn.filter(x => x !== cleanId);
+    if (acc.equip && typeof acc.equip === "object") {
+      for (const [slot, equipped] of Object.entries(acc.equip)) {
+        if (equipped === cleanId) delete acc.equip[slot];
+      }
+    }
+  }
   await redisAccounts.set(req.userId, acc);
   const id = String(++listingCounter);
-  const listing = { id, itemId: cleanId, itemType: item.type, name: item.name, preview: item.preview, price: priceNum, sellerId: req.userId, sellerName: acc.username, createdAt: Date.now(), status: "active" };
+  const preview = item.preview || item.image || "#888";
+  const listing = { id, itemId: cleanId, itemType: item.type || "item", name: item.name || cleanId, preview, price: priceNum, sellerId: req.userId, sellerName: acc.username, createdAt: Date.now(), status: "active" };
   listings.set(id, listing);
   saveListing(listing);
   res.json({ ok: true, listing: publicListing(listing) });
@@ -1608,11 +1622,17 @@ app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
   const sellerGain = listing.price - fee;    // продавец получает цену за вычетом комиссии
 
   // Шаг 1: атомарно списываем у покупателя и выдаём предмет.
+  const cosmeticTypes = ["frame", "background", "badge", "avatar_animated"];
+  const isCosmetic = cosmeticTypes.includes(listing.itemType);
   const rb = await redisAccounts.mutate(req.userId, (acc) => {
     if (!acc) return { ok: false, error: "Аккаунт не найден" };
     if ((acc.balance || 0) < buyerCost) return { ok: false, error: "Недостаточно СБТ" };
     acc.balance = (acc.balance || 0) - buyerCost;
-    acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId];
+    if (isCosmetic) {
+      acc.inventory = Array.isArray(acc.inventory) ? [...new Set([...acc.inventory, listing.itemId])] : [listing.itemId];
+    } else {
+      acc.market_inventory = Array.isArray(acc.market_inventory) ? [...acc.market_inventory, listing.itemId] : [listing.itemId];
+    }
     return { ok: true, value: acc };
   });
   if (!rb.ok) {
@@ -1631,7 +1651,11 @@ app.post("/api/market/buy/:id", requireAuth, async (req, res) => {
     await redisAccounts.mutate(req.userId, (acc) => {
       if (!acc) return { ok: false, error: "acc gone" };
       acc.balance = (acc.balance || 0) + buyerCost;
-      acc.market_inventory = (Array.isArray(acc.market_inventory) ? acc.market_inventory : []).filter(x => x !== listing.itemId);
+      if (isCosmetic) {
+        acc.inventory = (Array.isArray(acc.inventory) ? acc.inventory : []).filter(x => x !== listing.itemId);
+      } else {
+        acc.market_inventory = (Array.isArray(acc.market_inventory) ? acc.market_inventory : []).filter(x => x !== listing.itemId);
+      }
       return { ok: true, value: acc };
     });
     listing.status = "active"; delete listing.soldTo; delete listing.soldAt; listings.set(id, listing);
@@ -3052,7 +3076,93 @@ wss.on("connection", (ws, req) => {
           for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
           break;
         }
-        case "community_sync": {
+        // ─── Trade system ────────────────────────────────────────────────────
+        case "trade_request": {
+          const targetId = sanitize(msg.toId || "", 64);
+          if (!targetId || targetId === client.userId) break;
+          if (!areFriends(client.userId, targetId)) { send(ws, { type: "trade_error", message: "Не в друзьях" }); break; }
+          const existing = [...trades.values()].find(t => t.status === "active" && (t.initiatorId === client.userId || t.targetId === client.userId));
+          if (existing) { send(ws, { type: "trade_error", message: "Уже в трейде" }); break; }
+          const targetExisting = [...trades.values()].find(t => t.status === "active" && (t.initiatorId === targetId || t.targetId === targetId));
+          if (targetExisting) { send(ws, { type: "trade_error", message: "Игрок уже в трейде" }); break; }
+          const tradeId = String(++listingCounter);
+          const trade = { id: tradeId, initiatorId: client.userId, targetId, initiatorItems: [], targetItems: [], initiatorConfirmed: false, targetConfirmed: false, status: "active", createdAt: Date.now() };
+          trades.set(tradeId, trade);
+          sendToUser(targetId, { type: "trade_request_received", tradeId, fromId: client.userId, fromUsername: client.username });
+          send(ws, { type: "trade_request_sent", tradeId, toId: targetId });
+          break;
+        }
+        case "trade_offer": {
+          const trade = trades.get(msg.tradeId);
+          if (!trade || trade.status !== "active") break;
+          if (trade.initiatorId !== client.userId && trade.targetId !== client.userId) break;
+          const isInitiator = trade.initiatorId === client.userId;
+          const items = Array.isArray(msg.items) ? msg.items.map(i => sanitize(String(i), 64)).filter(Boolean).slice(0, 20) : [];
+          if (isInitiator) trade.initiatorItems = items; else trade.targetItems = items;
+          trade.initiatorConfirmed = false; trade.targetConfirmed = false;
+          const otherId = isInitiator ? trade.targetId : trade.initiatorId;
+          sendToUser(otherId, { type: "trade_updated", tradeId: trade.id, initiatorItems: trade.initiatorItems, targetItems: trade.targetItems });
+          send(ws, { type: "trade_updated", tradeId: trade.id, initiatorItems: trade.initiatorItems, targetItems: trade.targetItems });
+          break;
+        }
+        case "trade_confirm": {
+          const trade = trades.get(msg.tradeId);
+          if (!trade || trade.status !== "active") break;
+          if (trade.initiatorId !== client.userId && trade.targetId !== client.userId) break;
+          const isInit = trade.initiatorId === client.userId;
+          if (isInit) trade.initiatorConfirmed = true; else trade.targetConfirmed = true;
+          const otherId2 = isInit ? trade.targetId : trade.initiatorId;
+          sendToUser(otherId2, { type: "trade_confirmed", tradeId: trade.id, by: client.userId });
+          send(ws, { type: "trade_confirmed", tradeId: trade.id, by: client.userId });
+          if (trade.initiatorConfirmed && trade.targetConfirmed) {
+            trade.status = "completed";
+            const acc1 = await redisAccounts.get(trade.initiatorId);
+            const acc2 = await redisAccounts.get(trade.targetId);
+            if (acc1 && acc2) {
+              const inv1 = Array.isArray(acc1.inventory) ? [...acc1.inventory] : [];
+              const mkt1 = Array.isArray(acc1.market_inventory) ? [...acc1.market_inventory] : [];
+              const inv2 = Array.isArray(acc2.inventory) ? [...acc2.inventory] : [];
+              const mkt2 = Array.isArray(acc2.market_inventory) ? [...acc2.market_inventory] : [];
+              const allInv1 = [...new Set([...inv1, ...mkt1])];
+              const allInv2 = [...new Set([...inv2, ...mkt2])];
+              let ok = true;
+              for (const itemId of trade.initiatorItems) { if (!allInv1.includes(itemId)) ok = false; }
+              for (const itemId of trade.targetItems) { if (!allInv2.includes(itemId)) ok = false; }
+              if (ok) {
+                for (const itemId of trade.initiatorItems) {
+                  if (inv1.includes(itemId)) acc1.inventory = inv1.filter(x => x !== itemId);
+                  else acc1.market_inventory = mkt1.filter(x => x !== itemId);
+                  if (inv2.includes(itemId)) acc2.inventory = [...inv2, itemId]; else acc2.market_inventory = [...mkt2, itemId];
+                }
+                for (const itemId of trade.targetItems) {
+                  if (inv2.includes(itemId)) acc2.inventory = inv2.filter(x => x !== itemId);
+                  else acc2.market_inventory = mkt2.filter(x => x !== itemId);
+                  if (inv1.includes(itemId)) acc1.inventory = [...(acc1.inventory || []), itemId]; else acc1.market_inventory = [...(acc1.market_inventory || []), itemId];
+                }
+                await redisAccounts.set(trade.initiatorId, acc1);
+                await redisAccounts.set(trade.targetId, acc2);
+                sendToUser(trade.initiatorId, { type: "trade_completed", tradeId: trade.id });
+                sendToUser(trade.targetId, { type: "trade_completed", tradeId: trade.id });
+              } else {
+                trade.status = "failed";
+                sendToUser(trade.initiatorId, { type: "trade_error", message: "Предметы больше не доступны" });
+                sendToUser(trade.targetId, { type: "trade_error", message: "Предметы больше не доступны" });
+              }
+            }
+          }
+          break;
+        }
+        case "trade_cancel": {
+          const trade = trades.get(msg.tradeId);
+          if (!trade || trade.status !== "active") break;
+          if (trade.initiatorId !== client.userId && trade.targetId !== client.userId) break;
+          trade.status = "cancelled";
+          const otherId3 = trade.initiatorId === client.userId ? trade.targetId : trade.initiatorId;
+          sendToUser(otherId3, { type: "trade_cancelled", tradeId: trade.id });
+          send(ws, { type: "trade_cancelled", tradeId: trade.id });
+          break;
+        }
+        // ─── Community sync ─────────────────────────────────────────────────
           const friendIds = [...getFriends(client.userId)];
           const friendList = await Promise.all(friendIds.map(async fid => {
             let fa = [...redisAccounts._map.values()].find(a => a && a.id === fid);
