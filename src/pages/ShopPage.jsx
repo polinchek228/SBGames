@@ -6,7 +6,6 @@ import {
   ArrowsLeftRight, CaretLeft, Plus, Tag,
 } from "@phosphor-icons/react";
 import { authedFetch, API_URL } from "../lib/api.js";
-import { useNotifications } from "../components/NotificationSystem.jsx";
 import { CATALOG_BY_ID, LIBRARY_CATALOG } from "./catalog.js";
 
 // Цветовая "редкость" для визуала карточек — вычисляется по цене товара из БД.
@@ -130,7 +129,6 @@ function DonateView({ user, onBalanceChange }) {
   const [detail,   setDetail]   = useState(null);
   const [showCart, setShowCart]  = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
-  const { push: pushNotif } = useNotifications() || {};
 
   // Загружаем каталог из БД — те же товары, что админ редактирует на сайте.
   useEffect(() => {
@@ -157,10 +155,7 @@ function DonateView({ user, onBalanceChange }) {
     }
     if (onBalanceChange && lastBalance != null) onBalanceChange(lastBalance);
     if (okCount > 0) {
-      pushNotif?.("Заказ оформлен", `Добавлено товаров: ${okCount}${lastErr ? ` (часть не удалась: ${lastErr})` : ""}`, "success");
       setCart(new Set()); setShowCart(false);
-    } else {
-      pushNotif?.("Ошибка заказа", lastErr || "Не удалось оформить заказ", "error");
     }
     setCheckingOut(false);
   };
@@ -393,7 +388,6 @@ function MarketplaceView({ onViewProfile }) {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [sellOpen, setSellOpen] = useState(false);
-  const { push: pushNotif } = useNotifications() || {};
 
   const loadListings = useCallback(async () => {
     try {
@@ -603,16 +597,14 @@ function ListingRow({ listing, index, onBought, onViewProfile }) {
   const hasImage = !!(catItem?.image || catItem?.icon);
   const hasGradient = !!mktItem?.preview?.startsWith?.("linear");
   const [buying, setBuying] = useState(false);
-  const { push: pushNotif } = useNotifications() || {};
 
   const buy = async () => {
     if (buying) return;
     setBuying(true);
     try {
       await authedFetch(`/api/market/buy/${listing.id}`, { method: "POST" });
-      pushNotif?.("Покупка", `${name} куплен`, "market");
       onBought?.();
-    } catch (e) { pushNotif?.("Ошибка", e.message, "group"); }
+    } catch (e) { /* silent */ }
     finally { setBuying(false); }
   };
 
@@ -700,10 +692,10 @@ function SellModal({ owned, catalog, onClose, onCreated }) {
   return (
     <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <motion.div initial={{ scale: 0.94, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 8 }}
         className="relative z-10 w-[440px] rounded-2xl overflow-hidden"
-        style={{ background: "rgba(10,10,10,0.85)", backdropFilter: "blur(24px)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }}>
+        style={{ background: "rgba(12,12,18,0.95)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }}>
         <div className="flex items-center justify-between px-5 py-4">
           <div>
             <p className="text-[13px] font-bold text-white">Выставить на продажу</p>
