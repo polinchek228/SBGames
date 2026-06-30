@@ -392,6 +392,17 @@ export default function LoginPage({ onLogin }) {
                       </div>
                     ) : null}
 
+                    {code && (
+                      <div className="text-center">
+                        <p className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>
+                          Подтвердите вход в <span style={{ color: "#2CA5E0" }}>@Sbgamescbot</span>
+                        </p>
+                        <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>
+                          Отсканируйте QR-код камерой телефона
+                        </p>
+                      </div>
+                    )}
+
                     <div
                       className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
                       style={PILL_STYLE}
