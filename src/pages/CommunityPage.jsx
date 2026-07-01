@@ -599,7 +599,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
       </AnimatePresence>
 
       {/* ─── Active call overlay ─── */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {activeCall && (
           <CallOverlay
             call={activeCall}
@@ -2815,6 +2815,16 @@ function CallOverlay({ call, groupVoiceIds, friends, localStream, screenStream, 
   React.useEffect(() => {
     const t = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // Очистка srcObject при unmount — иначе removeChild крашится
+  React.useEffect(() => {
+    return () => {
+      try {
+        if (selfVideoRef.current) selfVideoRef.current.srcObject = null;
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      } catch {}
+    };
   }, []);
 
   // Привязываем локальный стрим к video-элементу (только если сами шарим экран)
