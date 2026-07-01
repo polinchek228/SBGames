@@ -51,6 +51,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
 
   const [parties,       setParties]       = useState([]);    // all parties user is in
   const [partyInvites,  setPartyInvites]  = useState([]);
+  const [partyMessages, setPartyMessages] = useState([]);
 
   const [activeTrade, setActiveTrade] = useState(null);  // { id, partnerId, partnerName, myItems, theirItems, myConfirmed, theirConfirmed, amInitiator }
   const [tradeInventory, setTradeInventory] = useState([]); // user's sellable items
@@ -190,6 +191,14 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
         break;
       case "party_invites_list":
         setPartyInvites(msg.invites || []);
+        break;
+      case "party_chat":
+        if (msg.message) setPartyMessages(prev => [...prev, msg.message]);
+        break;
+      case "party_chat_history":
+        if (msg.messages) setPartyMessages(msg.messages);
+        break;
+      case "party_voice_update":
         break;
 
       // ─── Trade ──────────────────────────────────────────────────────────────
@@ -597,6 +606,7 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
             groupVoiceIds={groupVoiceIds}
             friends={friends}
             localStream={localStream}
+            screenStream={screenStream}
             remoteScreen={remoteScreen}
             remoteSharing={remoteSharing}
             onMute={toggleMute}
@@ -1137,6 +1147,12 @@ export default function CommunityPage({ user, onBadgeChange, onViewProfile, mini
               onKick={(partyId, userId) => sendWS({ type: "party_kick", partyId, userId })}
               onAcceptInvite={(partyId) => sendWS({ type: "party_invite_respond", partyId, accept: true })}
               onDeclineInvite={(partyId) => sendWS({ type: "party_invite_respond", partyId, accept: false })}
+              partyMessages={partyMessages}
+              onSendPartyMessage={(partyId, text) => sendWS({ type: "party_chat", partyId, text })}
+              activeCall={activeCall}
+              groupVoiceIds={groupVoiceIds}
+              onJoinCall={(partyId) => joinGroupCall(partyId, groupVoiceIds)}
+              onHangCall={hangUp}
             />
           )}
         </AnimatePresence>
@@ -1468,9 +1484,9 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
   };
 
   const TAB_STYLE = (active) => ({
-    background: active ? "rgba(168,85,247,0.2)" : "rgba(255,255,255,0.03)",
-    border: active ? "1px solid rgba(168,85,247,0.3)" : "1px solid rgba(255,255,255,0.06)",
-    color: active ? "rgba(168,85,247,0.9)" : "rgba(255,255,255,0.4)"
+    background: active ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
+    border: active ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(255,255,255,0.06)",
+    color: active ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)"
   });
 
   /* ── Detail view (browse or my) ── */
@@ -1489,15 +1505,15 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
         <div className="mb-4">
           <button onClick={() => setViewingGroup(null)}
             className="flex items-center gap-1.5 text-[11px] font-semibold mb-3 transition-all"
-            style={{ color: "rgba(168,85,247,0.7)" }}
-            onMouseEnter={e => e.currentTarget.style.color = "rgba(168,85,247,1)"}
-            onMouseLeave={e => e.currentTarget.style.color = "rgba(168,85,247,0.7)"}>
+            style={{ color: "rgba(255,255,255,0.4)" }}
+            onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
             <CaretLeft size={12} weight="bold" /> Назад к списку
           </button>
 
           <div className="flex items-center gap-3 mb-4">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 700, fontSize: 22 }}>
+              style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", fontWeight: 700, fontSize: 22 }}>
               {g.name.slice(0, 1).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
@@ -1534,7 +1550,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
               </p>
             </div>
             <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: "rgba(255,255,255,0.07)" }}>
-              <div className="h-full rounded-full transition-all" style={{ width: `${li.xpPct || 0}%`, background: "linear-gradient(90deg, #2563eb, #3b82f6)" }} />
+              <div className="h-full rounded-full transition-all" style={{ width: `${li.xpPct || 0}%`, background: "rgba(255,255,255,0.2)" }} />
             </div>
             {li.nextLevel ? (
               <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>
@@ -1552,13 +1568,20 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             {members.slice(0, 20).map(mid => {
               const role = mid === g.ownerId ? "owner" : (g.memberRoles?.[mid] || "member");
               const roleLabel = { owner: "OWNER", leader: "РУКОВОДИТЕЛЬ", elder: "СТАРШИНА", member: "" }[role];
-              const roleColor = { owner: "rgba(251,191,36,0.8)", leader: "rgba(96,165,250,0.8)", elder: "rgba(168,85,247,0.8)", member: "" }[role];
-              const roleBg = { owner: "rgba(251,191,36,0.12)", leader: "rgba(96,165,250,0.12)", elder: "rgba(168,85,247,0.12)", member: "" }[role];
+              const roleColor = { owner: "rgba(251,191,36,0.8)", leader: "rgba(96,165,250,0.8)", elder: "rgba(255,255,255,0.6)", member: "" }[role];
+              const roleBg = { owner: "rgba(251,191,36,0.12)", leader: "rgba(96,165,250,0.12)", elder: "rgba(255,255,255,0.06)", member: "" }[role];
               return (
               <div key={mid} className="flex items-center gap-2.5 py-1.5">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
-                  style={{ background: "rgba(99,102,241,0.2)", color: "rgba(168,85,247,0.8)" }}>
-                  {(memberNames[mid] || "?").slice(0, 1).toUpperCase()}
+                <div className="w-7 h-7 rounded-lg overflow-hidden flex-shrink-0"
+                  style={{ background: "rgba(255,255,255,0.05)" }}>
+                  {g.memberAvatars?.[mid] ? (
+                    <img src={g.memberAvatars[mid]} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold"
+                      style={{ color: "rgba(255,255,255,0.4)" }}>
+                      {(memberNames[mid] || "?").slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0 flex items-center gap-2">
                   <p className="text-[12px] text-white truncate">{memberNames[mid] || mid}</p>
@@ -1581,9 +1604,9 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           {!isMember && !g.closed && (
             <button onClick={() => apply(g.id)} disabled={applyingId === g.id || isApplied || inAnyClan}
               className="w-full py-3 rounded-xl text-[12px] font-bold text-white transition-all disabled:opacity-40"
-              style={{ background: isApplied ? "rgba(34,197,94,0.3)" : inAnyClan ? "rgba(255,255,255,0.05)" : "rgba(168,85,247,0.45)" }}
-              onMouseEnter={e => { if (!isApplied && !inAnyClan) e.currentTarget.style.background = "rgba(168,85,247,0.65)"; }}
-              onMouseLeave={e => { if (!isApplied && !inAnyClan) e.currentTarget.style.background = "rgba(168,85,247,0.45)"; }}>
+              style={{ background: isApplied ? "rgba(34,197,94,0.3)" : inAnyClan ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.08)" }}
+              onMouseEnter={e => { if (!isApplied && !inAnyClan) e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+              onMouseLeave={e => { if (!isApplied && !inAnyClan) e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}>
               {isApplied ? "Заявка отправлена" : inAnyClan ? "Вы уже в клане" : "Подать заявку"}
             </button>
           )}
@@ -1647,15 +1670,15 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
         {groupInvites.length > 0 && (
           <div className="mb-4">
             <p className="text-[9px] uppercase tracking-widest px-1 pb-2 font-semibold"
-              style={{ color: "rgba(168,85,247,0.7)" }}>
+              style={{ color: "rgba(255,255,255,0.4)" }}>
               Приглашения &middot; {groupInvites.length}
             </p>
             {groupInvites.map((inv, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                 className="rounded-xl p-3 mb-2 flex items-center gap-3"
-                style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.12)" }}>
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff", fontWeight: 700, fontSize: 13 }}>
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", fontWeight: 700, fontSize: 13 }}>
                   {inv.groupName?.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1664,9 +1687,9 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                 </div>
                 <button onClick={() => onAcceptInvite(inv.groupId)}
                   className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all"
-                  style={{ background: "rgba(168,85,247,0.5)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.7)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(168,85,247,0.5)"}>
+                  style={{ background: "rgba(255,255,255,0.1)" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.4)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}>
                   Принять
                 </button>
                 <button onClick={() => onDeclineInvite(inv.groupId)}
@@ -1686,7 +1709,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           <div className="px-4 pt-4 pb-3">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff", fontWeight: 800, fontSize: 22, boxShadow: "0 4px 20px rgba(37,99,235,0.3)" }}>
+                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", fontWeight: 800, fontSize: 22 }}>
                 {g.name.slice(0, 1).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -1694,7 +1717,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                   <p className="text-[16px] font-black text-white truncate">{g.name}</p>
                   {isOwner && (
                     <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
-                      style={{ background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.9)", border: "1px solid rgba(251,191,36,0.2)" }}>OWNER</span>
+                      style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>OWNER</span>
                   )}
                 </div>
                 <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -1711,12 +1734,12 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             <div className="rounded-xl p-3 mb-1" style={{ background: "rgba(255,255,255,0.03)" }}>
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>Уровень клана</p>
-                <p className="text-[10px] font-black" style={{ color: "rgba(96,165,250,0.9)" }}>
+                <p className="text-[10px] font-black" style={{ color: "rgba(255,255,255,0.5)" }}>
                   {lvl} / {li.maxLevel || 7}
                 </p>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
-                <div className="h-full rounded-full transition-all" style={{ width: `${li.xpPct || 0}%`, background: "linear-gradient(90deg, #2563eb, #60a5fa)" }} />
+                <div className="h-full rounded-full transition-all" style={{ width: `${li.xpPct || 0}%`, background: "rgba(255,255,255,0.2)" }} />
               </div>
               {li.nextLevel ? (
                 <p className="text-[9px] mt-1.5" style={{ color: "rgba(255,255,255,0.3)" }}>
@@ -1728,46 +1751,26 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
             </div>
           </div>
 
-          {/* Channels */}
-          <div className="px-3 pb-3 pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <p className="text-[9px] uppercase tracking-widest font-semibold px-1 py-2" style={{ color: "rgba(255,255,255,0.28)" }}>
-              Каналы
-            </p>
+          {/* Actions */}
+          <div className="px-3 pb-3 pt-1 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <button onClick={() => onOpenGroup(g)}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all"
-              style={{ color: "rgba(255,255,255,0.62)" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.62)"; }}>
-              <span className="text-[15px] font-black" style={{ color: "rgba(255,255,255,0.28)" }}>#</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-bold truncate">общий</p>
-                <p className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.28)" }}>чат клана</p>
-              </div>
-            </button>
-            <button onClick={() => onOpenGroup(g)}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all"
-              style={{ color: "rgba(255,255,255,0.58)" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(34,197,94,0.08)"; e.currentTarget.style.color = "#fff"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.58)"; }}>
-              <Phone size={14} weight="fill" style={{ color: "rgba(74,222,128,0.7)" }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-bold truncate">общий войс</p>
-                <p className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.28)" }}>голосовой канал внутри чата</p>
-              </div>
-              {onlineCount > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-md" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>{onlineCount}</span>}
+              className="flex-1 py-2.5 rounded-xl text-[11px] font-bold text-center transition-all"
+              style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>
+              Открыть чат
             </button>
             <button onClick={() => setConfirmLeave(true)}
-              className="w-full mt-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all"
-              style={{ color: "rgba(239,68,68,0.55)" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "rgba(239,68,68,0.9)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(239,68,68,0.55)"; }}>
-              <SignOut size={13} />
-              <span className="text-[11px] font-semibold">Покинуть клан</span>
+              className="px-4 py-2.5 rounded-xl text-[11px] font-bold transition-all"
+              style={{ background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.6)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.15)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}>
+              Выйти
             </button>
           </div>
         </div>
 
-        {/* Members list — horizontal row for small, vertical for large */}
+        {/* Members list */}
         <div className="rounded-2xl overflow-hidden mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="px-4 pt-3 pb-2">
             <p className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: "rgba(255,255,255,0.3)" }}>
@@ -1780,7 +1783,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
               const roleConfig = {
                 owner:  { label: "OWNER", color: "rgba(251,191,36,0.9)", bg: "rgba(251,191,36,0.1)" },
                 leader: { label: "LEADER", color: "rgba(96,165,250,0.9)", bg: "rgba(96,165,250,0.1)" },
-                elder:  { label: "ELDER", color: "rgba(168,85,247,0.9)", bg: "rgba(168,85,247,0.1)" },
+                elder:  { label: "ELDER", color: "rgba(255,255,255,0.7)", bg: "rgba(255,255,255,0.06)" },
                 member: null,
               }[role];
               const isOnline = onlineIds.has(mid);
@@ -1789,9 +1792,16 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <div className="relative flex-shrink-0">
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-bold"
-                      style={{ background: isOnline ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.05)", color: isOnline ? "rgba(168,85,247,0.9)" : "rgba(255,255,255,0.35)" }}>
-                      {(memberNames[mid] || "?").slice(0, 1).toUpperCase()}
+                    <div className="w-8 h-8 rounded-xl overflow-hidden"
+                      style={{ background: "rgba(255,255,255,0.05)" }}>
+                      {g.memberAvatars?.[mid] ? (
+                        <img src={g.memberAvatars[mid]} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold"
+                          style={{ color: "rgba(255,255,255,0.35)" }}>
+                          {(memberNames[mid] || "?").slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
                     </div>
                     <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
                       style={{ borderColor: "rgba(15,15,20,1)", background: isOnline ? "#4ade80" : "rgba(255,255,255,0.12)" }} />
@@ -1832,11 +1842,48 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
       {showingBrowse && (
         <button onClick={() => setShowingBrowse(false)}
           className="flex items-center gap-1.5 text-[11px] font-semibold mb-3 transition-all px-1"
-          style={{ color: "rgba(168,85,247,0.7)" }}
-          onMouseEnter={e => e.currentTarget.style.color = "rgba(168,85,247,1)"}
-          onMouseLeave={e => e.currentTarget.style.color = "rgba(168,85,247,0.7)"}>
+          style={{ color: "rgba(255,255,255,0.4)" }}
+          onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
+          onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.4)"}>
           <CaretLeft size={12} weight="bold" /> Назад к клану
         </button>
+      )}
+
+      {/* Create clan */}
+      {!inAnyClan && !showingBrowse && (
+        <div className="mb-3 rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          {!creating ? (
+            <button onClick={() => setCreating(true)}
+              className="w-full py-3 text-[12px] font-bold flex items-center justify-center gap-2 transition-all"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <Plus size={14} /> Создать клан
+            </button>
+          ) : (
+            <div className="p-4">
+              <p className="text-[10px] uppercase tracking-widest font-semibold mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>Новый клан</p>
+              <input value={name} onChange={e => setName(e.target.value)} maxLength={40} autoFocus
+                placeholder="Название клана..."
+                onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
+                className="w-full rounded-xl px-4 py-3 text-[12px] outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+              <input value={description} onChange={e => setDescription(e.target.value)} maxLength={200}
+                placeholder="Описание (необязательно)..."
+                className="w-full rounded-xl px-4 py-3 text-[12px] outline-none mt-2"
+                style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => { setCreating(false); setName(""); setDescription(""); setErr(null); }}
+                  className="flex-1 py-2.5 rounded-xl text-[11px] font-semibold"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>Отмена</button>
+                <button onClick={create} disabled={busy || name.trim().length < 2}
+                  className="flex-1 py-2.5 rounded-xl text-[11px] font-bold text-white disabled:opacity-40"
+                  style={{ background: "rgba(255,255,255,0.1)" }}>Создать</button>
+              </div>
+              {err && <p className="text-[11px] mt-2" style={{ color: "#fca5a5" }}>{err}</p>}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Search */}
@@ -1847,14 +1894,14 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
           placeholder="Поиск клана..."
           className="w-full rounded-xl px-4 py-2.5 text-[11px] outline-none transition-all"
           style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}
-          onFocus={e => e.currentTarget.style.borderColor = "rgba(168,85,247,0.4)"}
+          onFocus={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"}
           onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
         />
       </div>
 
       {browseLoading ? (
         <div className="flex flex-col items-center py-8 gap-3">
-          <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(168,85,247,0.2)", borderTopColor: "rgba(168,85,247,0.7)" }} />
+          <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,255,255,0.08)", borderTopColor: "rgba(255,255,255,0.4)" }} />
           <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>Загрузка...</p>
         </div>
       ) : (() => {
@@ -1889,11 +1936,11 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                   <div className="flex items-center gap-3">
                     <div className="relative flex-shrink-0">
                       <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-                        style={{ background: "linear-gradient(135deg, #2563eb, #7c3aed)", color: "#fff", fontWeight: 900, fontSize: 17, boxShadow: "0 8px 24px rgba(37,99,235,0.22)" }}>
+                        style={{ background: "rgba(255,255,255,0.06)", color: "#fff", fontWeight: 900, fontSize: 17, boxShadow: "0 8px 24px rgba(37,99,235,0.22)" }}>
                         {g.name.slice(0, 1).toUpperCase()}
                       </div>
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-lg flex items-center justify-center text-[8px] font-black"
-                        style={{ background: "#111827", border: "1px solid rgba(96,165,250,0.55)", color: "#93c5fd" }}>
+                        style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
                         {lvl}
                       </div>
                     </div>
@@ -1924,7 +1971,7 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                       <button onClick={(e) => { e.stopPropagation(); apply(g.id); }}
                         disabled={applyingId === g.id}
                         className="text-[9px] px-3 py-1.5 rounded-lg font-bold flex-shrink-0 transition-all disabled:opacity-40"
-                        style={{ background: "rgba(168,85,247,0.35)", color: "#fff" }}>
+                        style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}>
                         {applyingId === g.id ? "..." : isMember ? "Открыть" : "Вступить"}
                       </button>
                     ) : (
@@ -1933,84 +1980,43 @@ function GroupsPanel({ user, groups, groupInvites, onlineIds, onOpenGroup, onCre
                     )}
                   </div>
                 </button>
-
-                <div className="px-3.5 pb-3 flex flex-col gap-1.5">
-                  <button onClick={() => setViewingGroup(g)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all"
-                    style={{ background: "rgba(255,255,255,0.035)", color: "rgba(255,255,255,0.58)" }}>
-                    <span className="text-[14px] font-black text-white/25">#</span>
-                    <span className="text-[11px] font-bold">общий</span>
-                    <span className="ml-auto text-[9px] text-white/25">чат</span>
-                  </button>
-                  <button onClick={() => setViewingGroup(g)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all"
-                    style={{ background: "rgba(34,197,94,0.055)", color: "rgba(255,255,255,0.58)" }}>
-                    <Phone size={13} weight="fill" style={{ color: "rgba(74,222,128,0.75)" }} />
-                    <span className="text-[11px] font-bold">общий войс</span>
-                    <span className="ml-auto text-[9px]" style={{ color: onlineCount > 0 ? "#4ade80" : "rgba(255,255,255,0.25)" }}>
-                      {onlineCount > 0 ? `${onlineCount} доступны` : "пусто"}
-                    </span>
-                  </button>
-                </div>
               </div>
             </motion.div>
           );
         });
       })()}
-
-      {/* Create clan */}
-      <div className="mt-4 rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-        {!creating ? (
-          <button onClick={() => setCreating(true)}
-            className="w-full py-4 text-[12px] font-bold flex items-center justify-center gap-2 transition-all"
-            style={{ color: "rgba(168,85,247,0.8)" }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.06)"}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            <Plus size={14} /> Создать клан
-          </button>
-        ) : (
-          <div className="p-4">
-            <p className="text-[10px] uppercase tracking-widest font-semibold mb-3" style={{ color: "rgba(168,85,247,0.7)" }}>Новый клан</p>
-            <input value={name} onChange={e => setName(e.target.value)} maxLength={40} autoFocus
-              placeholder="Название клана..."
-              onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
-              className="w-full rounded-xl px-4 py-3 text-[12px] outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
-            <input value={description} onChange={e => setDescription(e.target.value)} maxLength={200}
-              placeholder="Описание (необязательно)..."
-              className="w-full rounded-xl px-4 py-3 text-[12px] outline-none mt-2"
-              style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
-            <div className="flex gap-2 mt-3">
-              <button onClick={() => { setCreating(false); setName(""); setDescription(""); setErr(null); }}
-                className="flex-1 py-2.5 rounded-xl text-[11px] font-semibold"
-                style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>Отмена</button>
-              <button onClick={create} disabled={busy || name.trim().length < 2}
-                className="flex-1 py-2.5 rounded-xl text-[11px] font-bold text-white disabled:opacity-40"
-                style={{ background: "rgba(168,85,247,0.5)" }}>Создать</button>
-            </div>
-            {err && <p className="text-[11px] mt-2" style={{ color: "#fca5a5" }}>{err}</p>}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
 // ─── PartiesPanel (временные пати для игры) ──────────────────────────────────
 // ─── PartiesPanel (временные пати для игры) ──────────────────────────────────
-function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreate, onInvite, onLeave, onKick, onAcceptInvite, onDeclineInvite }) {
+function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreate, onInvite, onLeave, onKick, onAcceptInvite, onDeclineInvite, partyMessages = [], onSendPartyMessage, activeCall, groupVoiceIds = [], onJoinCall, onHangCall }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [activeParty, setActiveParty] = useState(null);
   const [inviteFilter, setInviteFilter] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [partyChatInput, setPartyChatInput] = useState("");
+  const partyChatRef = useRef(null);
 
   const MAX_SLOTS = 5;
   const openParty = parties.find(p => p.id === activeParty);
+  const inThisPartyCall = activeCall?.type === "group" && activeCall.groupId === activeParty;
 
   // если открытая партия пропала (удалили/вышли) — сбросим
   React.useEffect(() => {
     if (activeParty && !parties.find(p => p.id === activeParty)) setActiveParty(null);
   }, [parties, activeParty]);
+
+  // Запрос истории чата при открытии группы
+  React.useEffect(() => {
+    if (activeParty && isWSConnected()) {
+      sendWS({ type: "party_chat_history", partyId: activeParty });
+      setPartyChatInput("");
+    }
+  }, [activeParty]);
 
   const createParty = () => {
     const title = newName.trim();
@@ -2028,167 +2034,277 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
     } catch {}
   };
 
-  /* ── Экран конкретной партии ── */
+  // Auto-scroll party chat to bottom
+  useEffect(() => {
+    if (partyChatRef.current) {
+      partyChatRef.current.scrollTop = partyChatRef.current.scrollHeight;
+    }
+  }, [partyMessages]);
+
+  /* ── Экран конкретной партии: чат + сайдбар участников ── */
   if (openParty) {
     const isLeader = openParty.leaderId === user?.id;
-    const memberIds = new Set(openParty.members.map(m => m.id));
-    const invitableFriends = friends.filter(f => !memberIds.has(f.id));
+    const invitableFriends = friends.filter(f => !openParty.members.some(m => m.id === f.id));
+    const sendPartyMsg = (e) => {
+      e?.preventDefault();
+      const t = partyChatInput.trim();
+      if (!t || !onSendPartyMessage) return;
+      onSendPartyMessage(openParty.id, t);
+      setPartyChatInput("");
+    };
+
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Шапка */}
-        <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <button onClick={() => setActiveParty(null)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ color: "rgba(255,255,255,0.4)" }}>
-            <CaretLeft size={14} weight="bold" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-white truncate">{openParty.name}</p>
-            <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>{openParty.members.length} игроков</p>
+      <div className="flex-1 flex overflow-hidden">
+        {/* ── Chat area (left) ── */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-2.5 flex-shrink-0"
+            style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            <button onClick={() => setActiveParty(null)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ color: "rgba(255,255,255,0.4)" }}>
+              <CaretLeft size={14} weight="bold" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-bold text-white truncate">{openParty.name}</p>
+              <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                {openParty.members.length} игроков · {groupVoiceIds.length > 0 ? `${groupVoiceIds.length} в голосе` : ""}
+              </p>
+            </div>
+            {onJoinCall && (
+              <button onClick={() => inThisPartyCall ? onHangCall?.() : onJoinCall(openParty.id)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+                style={{ background: inThisPartyCall ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)", color: inThisPartyCall ? "#4ade80" : "rgba(255,255,255,0.4)" }}>
+                <Phone size={13} weight={inThisPartyCall ? "fill" : "regular"} />
+              </button>
+            )}
           </div>
-          <button onClick={() => onLeave(openParty.id)}
-            className="px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
-            style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.7)" }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
-            Покинуть
-          </button>
+
+          {/* Messages */}
+          <div ref={partyChatRef} className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+            {partyMessages.length === 0 && (
+              <div className="flex-1 flex flex-col items-center justify-center py-12">
+                <ChatCircle size={28} style={{ color: "rgba(255,255,255,0.08)" }} />
+                <p className="text-[11px] mt-2" style={{ color: "rgba(255,255,255,0.2)" }}>Пока нет сообщений</p>
+              </div>
+            )}
+            {partyMessages.map((msg, i) => {
+              const isMe = msg.userId === user?.id;
+              const sameAuthor = i > 0 && partyMessages[i - 1]?.userId === msg.userId;
+              return (
+                <div key={msg.id || i} className={`flex gap-2 ${isMe ? "flex-row-reverse" : "flex-row"} ${sameAuthor ? "mt-0.5" : "mt-2.5"}`}>
+                  {!sameAuthor ? (
+                    <div className="flex-shrink-0 w-7 h-7 rounded-lg overflow-hidden mt-0.5"
+                      style={{ background: "rgba(255,255,255,0.06)" }}>
+                      {msg.avatar ? (
+                        <img src={msg.avatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[9px] font-bold"
+                          style={{ color: "rgba(255,255,255,0.4)" }}>
+                          {msg.username?.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                  ) : <div className="w-7 flex-shrink-0" />}
+
+                  <div className={`max-w-[75%] ${isMe ? "items-end" : "items-start"} flex flex-col`}>
+                    {!sameAuthor && (
+                      <p className="text-[9px] font-semibold mb-0.5 px-0.5" style={{ color: isMe ? "rgba(96,165,250,0.6)" : "rgba(255,255,255,0.3)" }}>
+                        {isMe ? "Ты" : msg.username}
+                      </p>
+                    )}
+                    <div className="px-3 py-2 rounded-xl text-[12px]"
+                      style={{ background: isMe ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)" }}>
+                      {msg.text}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Voice bar */}
+          {groupVoiceIds.length > 0 && (
+            <div className="px-4 py-2 flex-shrink-0 flex items-center gap-2 flex-wrap"
+              style={{ background: "rgba(34,197,94,0.05)", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              <Phone size={10} style={{ color: "#4ade80" }} />
+              {groupVoiceIds.map(uid => (
+                <span key={uid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium"
+                  style={{ background: "rgba(34,197,94,0.1)", color: "rgba(74,222,128,0.8)" }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80" }} />
+                  {uid === user?.id ? "Ты" : (openParty.members.find(m => m.id === uid)?.username || uid)}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Input */}
+          <form onSubmit={sendPartyMsg} className="flex-shrink-0 px-3 py-2.5 flex items-center gap-2"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+            <input value={partyChatInput} onChange={e => setPartyChatInput(e.target.value)}
+              placeholder="Сообщение..." autoFocus
+              className="flex-1 rounded-xl px-4 py-2.5 text-[12px] outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", color: "#fff", border: "1px solid rgba(255,255,255,0.07)" }} />
+            <button type="submit" disabled={!partyChatInput.trim()}
+              className="w-9 h-9 rounded-xl flex items-center justify-center transition-all disabled:opacity-30"
+              style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
+              <PaperPlaneTilt size={14} weight="fill" />
+            </button>
+          </form>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
-          {/* Участники */}
-          {openParty.members.map(m => {
-            const online = onlineIds.has(m.id);
-            return (
-              <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
-                style={{ background: "rgba(255,255,255,0.03)" }}>
-                <div className="relative flex-shrink-0">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold"
-                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
-                    {m.username?.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-black"
-                    style={{ background: online ? "#4ade80" : "rgba(255,255,255,0.15)" }} />
-                </div>
-                <span className="text-[12px] flex-1" style={{ color: "rgba(255,255,255,0.8)" }}>
-                  {m.id === user?.id ? "Ты" : m.username}
-                </span>
-                {m.id === openParty.leaderId && (
-                  <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider"
-                    style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>ЛИДЕР</span>
-                )}
-                {isLeader && m.id !== user?.id && (
-                  <button onClick={() => onKick(openParty.id, m.id)}
-                    className="text-[9px] px-2 py-1 rounded-lg transition-all"
-                    style={{ background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.6)" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"}
-                    onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
-                    Кик
-                  </button>
-                )}
-              </div>
-            );
-          })}
+        {/* ── Members sidebar (right) ── */}
+        <div className="w-48 flex-shrink-0 flex flex-col overflow-hidden"
+          style={{ borderLeft: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
+          {/* Sidebar header */}
+          <div className="px-3 py-2.5 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <p className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.3)" }}>
+              Участники · {openParty.members.length}
+            </p>
+          </div>
 
-          {/* Пригласить */}
-          {isLeader && invitableFriends.length > 0 && (
-            <>
-              <p className="text-[9px] uppercase tracking-widest px-1 pt-2" style={{ color: "rgba(255,255,255,0.28)" }}>
-                Позвать друга
-              </p>
-              {invitableFriends.map(f => (
-                <button key={f.id} onClick={() => onInvite(openParty.id, f.id)}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all"
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.1)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                    style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}>
-                    {f.username?.slice(0, 2).toUpperCase()}
+          {/* Members list */}
+          <div className="flex-1 overflow-y-auto py-1.5 px-1.5">
+            {openParty.members.map(m => {
+              const online = onlineIds.has(m.id);
+              const inVoice = groupVoiceIds.includes(m.id);
+              return (
+                <div key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg"
+                  style={{ background: "rgba(255,255,255,0.02)" }}>
+                  <div className="relative flex-shrink-0">
+                    <div className="w-7 h-7 rounded-lg overflow-hidden"
+                      style={{ background: "rgba(255,255,255,0.06)" }}>
+                      {m.avatar ? (
+                        <img src={m.avatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[9px] font-bold"
+                          style={{ color: "rgba(255,255,255,0.4)" }}>
+                          {m.username?.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-[1.5px]"
+                      style={{ borderColor: "rgba(12,12,18,1)", background: online ? "#4ade80" : "rgba(255,255,255,0.1)" }} />
                   </div>
-                  <span className="text-[12px] flex-1" style={{ color: "rgba(255,255,255,0.7)" }}>{f.username}</span>
-                  <UserPlus size={12} style={{ color: "rgba(96,165,250,0.5)" }} />
-                </button>
-              ))}
-            </>
-          )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-medium truncate" style={{ color: online ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.35)" }}>
+                      {m.id === user?.id ? "Ты" : m.username}
+                    </p>
+                  </div>
+                  {inVoice && <Phone size={8} weight="fill" style={{ color: "#4ade80", flexShrink: 0 }} />}
+                  {isLeader && m.id !== user?.id && (
+                    <button onClick={() => onKick(openParty.id, m.id)}
+                      className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-all"
+                      style={{ color: "rgba(255,255,255,0.15)" }}
+                      onMouseEnter={e => e.currentTarget.style.color = "#f87171"}
+                      onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.15)"}>
+                      <X size={9} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Invite friends */}
+            {isLeader && invitableFriends.length > 0 && (
+              <>
+                <div className="px-2 pt-2 pb-1">
+                  <p className="text-[8px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.2)" }}>Позвать</p>
+                </div>
+                {invitableFriends.map(f => (
+                  <button key={f.id} onClick={() => onInvite(openParty.id, f.id)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-all"
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold flex-shrink-0"
+                      style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.35)" }}>
+                      {f.username?.slice(0, 1).toUpperCase()}
+                    </div>
+                    <span className="text-[10px] flex-1 truncate" style={{ color: "rgba(255,255,255,0.5)" }}>{f.username}</span>
+                    <UserPlus size={9} style={{ color: "rgba(255,255,255,0.15)", flexShrink: 0 }} />
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Leave button */}
+          <div className="px-2 py-2 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+            <button onClick={() => onLeave(openParty.id)}
+              className="w-full py-1.5 rounded-lg text-[10px] font-bold transition-all"
+              style={{ background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.6)" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.15)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}>
+              Покинуть
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  /* ── Главный экран групп ── */
-  const activePartyData = openParty || parties[0] || null;
-  const activeOnlineCount = (activePartyData?.members || []).filter(m => onlineIds.has(m.id)).length;
-  const isActiveLeader = activePartyData?.leaderId === user?.id;
-
+  /* ── Главный экран — список групп ── */
   return (
     <div className="flex-1 overflow-y-auto px-3 py-3">
-      <div className="relative overflow-hidden rounded-3xl mb-3" style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.24), rgba(99,102,241,0.13) 45%, rgba(14,165,233,0.10))", border: "1px solid rgba(96,165,250,0.18)", boxShadow: "0 24px 70px rgba(0,0,0,0.28)" }}>
-        <div className="absolute -top-16 -right-12 w-40 h-40 rounded-full blur-3xl" style={{ background: "rgba(59,130,246,0.28)" }} />
-        <div className="absolute -bottom-20 -left-12 w-36 h-36 rounded-full blur-3xl" style={{ background: "rgba(34,197,94,0.16)" }} />
-        <div className="relative px-4 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.22em] font-black" style={{ color: "rgba(147,197,253,0.85)" }}>Игровые группы</p>
-              <h2 className="text-[20px] font-black text-white mt-1 leading-tight">Собери отряд</h2>
-              <p className="text-[11px] mt-1 max-w-[320px]" style={{ color: "rgba(255,255,255,0.48)" }}>Быстрые лобби до {MAX_SLOTS} игроков: роли, инвайты, онлайн-статусы и контроль состава.</p>
-            </div>
-            <button onClick={() => setCreating(v => !v)} className="px-3 py-2 rounded-2xl text-[11px] font-black text-white flex items-center gap-1.5 transition-all" style={{ background: creating ? "rgba(255,255,255,0.10)" : "linear-gradient(135deg, #2563eb, #38bdf8)", boxShadow: creating ? "none" : "0 12px 30px rgba(37,99,235,0.35)" }}>
-              <Plus size={13} /> {creating ? "Скрыть" : "Создать"}
-            </button>
-          </div>
-          <div className="grid grid-cols-3 gap-2 mt-4">
-            {[[parties.length, "активных"], [partyInvites.length, "инвайтов"], [friends.filter(f => onlineIds.has(f.id)).length, "друзей онлайн"]].map(([value, label]) => (
-              <div key={label} className="rounded-2xl px-3 py-2" style={{ background: "rgba(0,0,0,0.20)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                <p className="text-[16px] font-black text-white">{value}</p>
-                <p className="text-[9px] uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>{label}</p>
-              </div>
-            ))}
-          </div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.18em] font-bold" style={{ color: "rgba(255,255,255,0.3)" }}>Игровые группы</p>
+          <h2 className="text-[17px] font-bold text-white mt-0.5">Собери отряд</h2>
         </div>
+        <button onClick={() => setCreating(v => !v)}
+          className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+          style={{ background: creating ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}
+          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+          onMouseLeave={e => e.currentTarget.style.background = creating ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.06)"}>
+          {creating ? <X size={14} /> : <Plus size={14} />}
+        </button>
       </div>
 
+      {/* Create form */}
       {creating && (
-        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl p-3 mb-3" style={{ background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{ color: "rgba(96,165,250,0.75)" }}>Новая группа</p>
-          <div className="flex gap-2">
-            <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={40} autoFocus placeholder="Например: Рейд, Дуо, Выживание..." onKeyDown={e => { if (e.key === "Enter") createParty(); if (e.key === "Escape") { setCreating(false); setNewName(""); } }} className="flex-1 rounded-xl px-4 py-3 text-[12px] outline-none" style={{ background: "rgba(0,0,0,0.22)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
-            <button onClick={createParty} disabled={!newName.trim()} className="px-4 rounded-xl text-[11px] font-black text-white disabled:opacity-35" style={{ background: "linear-gradient(135deg, #2563eb, #3b82f6)" }}>Создать</button>
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="overflow-hidden mb-3">
+          <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.035)" }}>
+            <div className="flex gap-2">
+              <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={40} autoFocus placeholder="Название группы..." onKeyDown={e => { if (e.key === "Enter") createParty(); if (e.key === "Escape") { setCreating(false); setNewName(""); } }} className="flex-1 rounded-lg px-3 py-2.5 text-[12px] outline-none" style={{ background: "rgba(0,0,0,0.2)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
+              <button onClick={createParty} disabled={!newName.trim()} className="px-4 rounded-lg text-[11px] font-bold text-white disabled:opacity-30 transition-all" style={{ background: "rgba(255,255,255,0.1)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.15)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}>Создать</button>
+            </div>
           </div>
         </motion.div>
       )}
 
       {/* Приглашения */}
       {partyInvites.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[9px] uppercase tracking-widest px-1 pb-2 font-semibold" style={{ color: "rgba(96,165,250,0.7)" }}>
+        <div className="mb-3">
+          <p className="text-[9px] uppercase tracking-widest px-1 pb-1.5 font-bold" style={{ color: "rgba(255,255,255,0.25)" }}>
             Приглашения &middot; {partyInvites.length}
           </p>
           {partyInvites.map(inv => (
             <motion.div key={inv.partyId} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-              className="rounded-xl p-3 mb-2 flex items-center gap-3"
-              style={{ background: "rgba(37,99,235,0.07)", border: "1px solid rgba(59,130,246,0.14)" }}>
+              className="rounded-xl p-3 mb-1.5 flex items-center gap-3"
+              style={{ background: "rgba(255,255,255,0.04)" }}>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-bold flex-shrink-0"
-                style={{ background: "rgba(37,99,235,0.2)", color: "#93c5fd" }}>
+                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
                 {inv.fromUsername?.slice(0, 1).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] font-semibold text-white truncate">{inv.partyName || "Группа"}</p>
-                <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>от @{inv.fromUsername}</p>
+                <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>от @{inv.fromUsername}</p>
               </div>
               <button onClick={() => onAcceptInvite(inv.partyId)}
-                className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all"
-                style={{ background: "rgba(37,99,235,0.6)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.8)"}
-                onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.6)"}>
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.12)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}>
                 Войти
               </button>
               <button onClick={() => onDeclineInvite(inv.partyId)}
                 className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-                style={{ color: "rgba(255,255,255,0.3)" }}
+                style={{ color: "rgba(255,255,255,0.25)" }}
                 onMouseEnter={e => e.currentTarget.style.color = "#f87171"}
-                onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}>
+                onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.25)"}>
                 <X size={12} />
               </button>
             </motion.div>
@@ -2196,166 +2312,58 @@ function PartiesPanel({ user, friends, onlineIds, parties, partyInvites, onCreat
         </div>
       )}
 
-      {/* Active lobby or empty state */}
-      {activePartyData ? (
-        /* ── Lobby view ── */
-        <div className="rounded-3xl overflow-hidden mb-4" style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <div className="px-4 pt-4 pb-3" style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.16), rgba(0,0,0,0))" }}>
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-[20px] font-black flex-shrink-0" style={{ background: "linear-gradient(135deg, #2563eb, #38bdf8)", color: "#fff", boxShadow: "0 14px 34px rgba(37,99,235,0.30)" }}>
-                {activePartyData.name?.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-[17px] font-black text-white truncate">{activePartyData.name}</p>
-                  {isActiveLeader && <span className="text-[8px] px-2 py-1 rounded-lg font-black" style={{ background: "rgba(251,191,36,0.16)", color: "#fbbf24" }}>ЛИДЕР</span>}
-                </div>
-                <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.42)" }}>
-                  {activePartyData.members.length}/{MAX_SLOTS} игроков · {activeOnlineCount} онлайн
-                </p>
-                <div className="h-1.5 rounded-full overflow-hidden mt-3" style={{ background: "rgba(255,255,255,0.08)" }}>
-                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, activePartyData.members.length / MAX_SLOTS * 100)}%`, background: "linear-gradient(90deg, #2563eb, #22c55e)" }} />
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              <button onClick={() => setInviteOpen(v => !v)} disabled={!isActiveLeader} className="rounded-2xl py-2.5 text-[10px] font-black transition-all disabled:opacity-35" style={{ background: "rgba(37,99,235,0.18)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.18)" }}>Позвать</button>
-              <button onClick={() => copyPartyName(activePartyData)} className="rounded-2xl py-2.5 text-[10px] font-black transition-all" style={{ background: "rgba(255,255,255,0.055)", color: copied ? "#4ade80" : "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.07)" }}>{copied ? "Скопировано" : "Копировать"}</button>
-              <button onClick={() => onLeave(activePartyData.id)} className="rounded-2xl py-2.5 text-[10px] font-black transition-all" style={{ background: "rgba(239,68,68,0.10)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>Выйти</button>
-            </div>
-
-            {/* Player slots — horizontal grid */}
-            <div className="grid grid-cols-5 gap-2">
-              {activePartyData.members.map(m => {
-                const online = onlineIds.has(m.id);
-                const isLeader = m.id === activePartyData.leaderId;
-                return (
-                  <div key={m.id} className="relative flex flex-col items-center gap-1.5 p-2 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                    <div className="relative">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-bold"
-                        style={{ background: isLeader ? "rgba(251,191,36,0.12)" : "rgba(99,102,241,0.15)", color: isLeader ? "rgba(251,191,36,0.9)" : "rgba(168,85,247,0.8)" }}>
-                        {m.username?.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
-                        style={{ borderColor: "rgba(15,15,20,1)", background: online ? "#4ade80" : "rgba(255,255,255,0.12)" }} />
-                    </div>
-                    <p className="text-[9px] font-semibold truncate w-full text-center" style={{ color: online ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)" }}>
-                      {m.id === user?.id ? "Ты" : (m.username || "").slice(0, 6)}
-                    </p>
-                    {isLeader && (
-                      <span className="text-[7px] px-1 rounded font-black" style={{ background: "rgba(251,191,36,0.15)", color: "rgba(251,191,36,0.8)" }}>★</span>
-                    )}
-                    {activePartyData.leaderId === user?.id && m.id !== user?.id && (
-                      <button onClick={() => onKick(activePartyData.id, m.id)}
-                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px]"
-                        style={{ background: "rgba(239,68,68,0.7)", color: "#fff", opacity: 0, transition: "opacity 0.15s" }}
-                        onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-                        onMouseLeave={e => e.currentTarget.style.opacity = "0"}>
-                        <X size={8} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Empty slots */}
-              {Array.from({ length: Math.max(0, MAX_SLOTS - activePartyData.members.length) }).map((_, i) => (
-                <div key={`empty-${i}`} className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl aspect-square"
-                  style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.08)" }}>
-                  <UserPlus size={14} style={{ color: "rgba(255,255,255,0.1)" }} />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {inviteOpen && isActiveLeader && (() => {
-            const memberIds = new Set(activePartyData.members.map(m => m.id));
-            const invitable = friends
-              .filter(f => !memberIds.has(f.id))
-              .filter(f => !inviteFilter.trim() || f.username?.toLowerCase().includes(inviteFilter.trim().toLowerCase()))
-              .sort((a, b) => Number(onlineIds.has(b.id)) - Number(onlineIds.has(a.id)) || (a.username || "").localeCompare(b.username || ""));
-            return (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="overflow-hidden border-t px-4 py-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                <input value={inviteFilter} onChange={e => setInviteFilter(e.target.value)} placeholder="Найти друга для приглашения..." className="w-full rounded-xl px-3 py-2.5 text-[11px] outline-none mb-2" style={{ background: "rgba(0,0,0,0.20)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }} />
-                <div className="flex flex-col gap-1 max-h-44 overflow-y-auto">
-                  {invitable.length === 0 ? (
-                    <p className="text-[10px] py-3 text-center" style={{ color: "rgba(255,255,255,0.30)" }}>Некого позвать: добавь друзей или дождись онлайна.</p>
-                  ) : invitable.map(f => {
-                    const online = onlineIds.has(f.id);
-                    return (
-                      <button key={f.id} onClick={() => onInvite(activePartyData.id, f.id)} className="flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-all" style={{ background: online ? "rgba(34,197,94,0.055)" : "rgba(255,255,255,0.025)" }}>
-                        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)", color: online ? "#4ade80" : "rgba(255,255,255,0.4)" }}>{f.username?.slice(0, 2).toUpperCase()}</div>
-                        <span className="text-[11px] flex-1 font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>{f.username}</span>
-                        <span className="text-[9px]" style={{ color: online ? "#4ade80" : "rgba(255,255,255,0.28)" }}>{online ? "онлайн" : "оффлайн"}</span>
-                        <UserPlus size={11} style={{ color: "rgba(96,165,250,0.55)" }} />
-                      </button>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            );
-          })()}
+      {/* Groups list */}
+      {parties.length === 0 ? (
+        <div className="rounded-xl p-6 flex flex-col items-center gap-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <UsersThree size={24} style={{ color: "rgba(255,255,255,0.12)" }} />
+          <p className="text-[12px] font-medium" style={{ color: "rgba(255,255,255,0.35)" }}>Создай группу для совместной игры</p>
+          <button onClick={() => setCreating(true)}
+            className="mt-1 px-4 py-2 rounded-lg text-[11px] font-bold transition-all"
+            style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>
+            <Plus size={12} className="inline mr-1" />Создать
+          </button>
         </div>
       ) : (
-        /* ── Empty state + Create ── */
-        <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="px-4 py-5 flex flex-col items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-              style={{ background: "rgba(37,99,235,0.12)" }}>
-              <UsersThree size={20} style={{ color: "rgba(96,165,250,0.7)" }} />
-            </div>
-            <div className="text-center">
-              <p className="text-[12px] font-semibold text-white mb-1">Создай группу</p>
-              <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-                Собери до {MAX_SLOTS} друзей для совместной игры
-              </p>
-            </div>
-            <button onClick={() => setCreating(true)}
-              className="w-full py-3 rounded-xl text-[12px] font-bold text-white flex items-center justify-center gap-2 transition-all"
-              style={{ background: "rgba(37,99,235,0.35)" }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(37,99,235,0.55)"}
-              onMouseLeave={e => e.currentTarget.style.background = "rgba(37,99,235,0.35)"}>
-              <Plus size={14} /> Создать лобби
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Other parties */}
-      {parties.length > 1 && (
-        <div className="mt-4">
-          <p className="text-[9px] uppercase tracking-widest px-1 pb-2 font-semibold" style={{ color: "rgba(255,255,255,0.25)" }}>
-            Другие группы &middot; {parties.length - 1}
-          </p>
-          {parties.slice(1).map((p, idx) => (
-            <motion.div key={p.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.04 }}>
-              <button onClick={() => setActiveParty(p.id)}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all mb-1.5"
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[12px] font-black flex-shrink-0"
-                  style={{ background: "rgba(37,99,235,0.15)", border: "1px solid rgba(59,130,246,0.2)", color: "#60a5fa" }}>
-                  {p.name?.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-white truncate">{p.name}</p>
-                  <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                    {p.members.length} / {MAX_SLOTS}
-                  </p>
-                </div>
-                <div className="flex -space-x-1.5">
-                  {p.members.slice(0, 4).map(m => (
-                    <div key={m.id} className="w-6 h-6 rounded-md flex items-center justify-center text-[7px] font-bold ring-1 ring-black"
-                      style={{ background: "rgba(99,102,241,0.2)", color: "rgba(168,85,247,0.8)" }}>
-                      {m.username?.slice(0, 1).toUpperCase()}
+        <div className="flex flex-col gap-1">
+          {parties.map((p, idx) => {
+            const online = (p.members || []).filter(m => onlineIds.has(m.id)).length;
+            return (
+              <motion.div key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.04 }}>
+                <button onClick={() => setActiveParty(p.id)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
+                  style={{ background: "rgba(255,255,255,0.035)" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.035)"}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-bold flex-shrink-0"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+                    {p.name?.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-[13px] font-bold text-white truncate">{p.name}</p>
+                      {p.leaderId === user?.id && (
+                        <span className="text-[7px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider" style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.8)" }}>Лидер</span>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </button>
-            </motion.div>
-          ))}
+                    <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
+                      {p.members.length}/{MAX_SLOTS} · {online} онлайн
+                    </p>
+                  </div>
+                  <div className="flex -space-x-1.5">
+                    {p.members.slice(0, 4).map(m => (
+                      <div key={m.id} className="w-6 h-6 rounded-md flex items-center justify-center text-[7px] font-bold ring-1 ring-black"
+                        style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+                        {m.username?.slice(0, 1).toUpperCase()}
+                      </div>
+                    ))}
+                  </div>
+                  <CaretLeft size={12} style={{ color: "rgba(255,255,255,0.15)", transform: "rotate(180deg)" }} />
+                </button>
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -2498,13 +2506,20 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
                 const memberName = group.memberNames?.[mid] || mid;
                 const role = mid === group.ownerId ? "owner" : (group.memberRoles?.[mid] || "member");
                 const roleLabel = { owner: "OWNER", leader: "РУКОВОДИТЕЛЬ", elder: "СТАРШИНА", member: "" }[role];
-                const roleColor = { owner: "rgba(251,191,36,0.8)", leader: "rgba(96,165,250,0.8)", elder: "rgba(168,85,247,0.8)", member: "" }[role];
-                const roleBg = { owner: "rgba(251,191,36,0.12)", leader: "rgba(96,165,250,0.12)", elder: "rgba(168,85,247,0.12)", member: "" }[role];
+                const roleColor = { owner: "rgba(251,191,36,0.8)", leader: "rgba(96,165,250,0.8)", elder: "rgba(255,255,255,0.6)", member: "" }[role];
+                const roleBg = { owner: "rgba(251,191,36,0.12)", leader: "rgba(96,165,250,0.12)", elder: "rgba(255,255,255,0.06)", member: "" }[role];
                 return (
                 <div key={mid} className="flex items-center gap-2.5 py-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold"
-                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
-                    {memberName.slice(0, 2).toUpperCase()}
+                  <div className="w-7 h-7 rounded-lg overflow-hidden flex-shrink-0"
+                    style={{ background: "rgba(255,255,255,0.06)" }}>
+                    {group.memberAvatars?.[mid] ? (
+                      <img src={group.memberAvatars[mid]} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[9px] font-bold"
+                        style={{ color: "rgba(255,255,255,0.4)" }}>
+                        {memberName.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
                   </div>
                   <span className="text-[11px] flex-1" style={{ color: "rgba(255,255,255,0.65)" }}>
                     {mid === user?.id ? "Ты" : memberName}
@@ -2540,8 +2555,8 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
                             {role !== "elder" && (
                               <button onClick={() => onSetRole?.(mid, "elder")}
                                 className="w-full text-left px-3 py-2 text-[10px] transition-all"
-                                style={{ color: "rgba(168,85,247,0.8)" }}
-                                onMouseEnter={e => e.currentTarget.style.background = "rgba(168,85,247,0.1)"}
+            style={{ color: "rgba(255,255,255,0.5)" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
                                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                                 Сделать старшиной
                               </button>
@@ -2654,14 +2669,39 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
         ) : (
           messages.map((m, i) => {
             const isMe = m.fromId === user?.id;
+            const sameAuthor = i > 0 && messages[i - 1]?.fromId === m.fromId;
+            const role = m.fromId === group.ownerId ? "owner" : (group.memberRoles?.[m.fromId] || "member");
+            const roleLabel = { owner: "OWNER", leader: "LEADER", elder: "ELDER", member: "" }[role];
+            const roleColor = { owner: "rgba(251,191,36,0.8)", leader: "rgba(96,165,250,0.8)", elder: "rgba(255,255,255,0.6)", member: "" }[role];
             return (
-              <div key={m.id || i} className={"flex flex-col gap-0.5 max-w-[78%] " + (isMe ? "self-end items-end" : "self-start items-start")}>
-                {!isMe && <span className="text-[10px] px-1" style={{ color: "rgba(255,255,255,0.35)" }}>@{m.fromUsername}</span>}
-                <div className="px-4 py-2 rounded-2xl text-[13px] leading-relaxed"
-                  style={isMe
-                    ? { background: "rgba(168,85,247,0.4)", color: "#fff", borderBottomRightRadius: 4 }
-                    : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.85)", borderBottomLeftRadius: 4 }
+              <div key={m.id || i} className={`flex gap-2 ${isMe ? "flex-row-reverse" : "flex-row"} ${sameAuthor ? "mt-0.5" : "mt-2.5"}`}>
+                {!sameAuthor ? (
+                  <div className="flex-shrink-0 w-7 h-7 rounded-lg overflow-hidden mt-0.5"
+                    style={{ background: "rgba(255,255,255,0.06)" }}>
+                    {group.memberAvatars?.[m.fromId] ? (
+                      <img src={group.memberAvatars[m.fromId]} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[9px] font-bold"
+                        style={{ color: "rgba(255,255,255,0.4)" }}>
+                        {m.fromUsername?.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                ) : <div className="w-7 flex-shrink-0" />}
+                <div className={`max-w-[75%] ${isMe ? "items-end" : "items-start"} flex flex-col`}>
+                  {!sameAuthor && (
+                    <p className="text-[9px] font-semibold mb-0.5 px-0.5 flex items-center gap-1.5"
+                      style={{ color: isMe ? "rgba(96,165,250,0.6)" : "rgba(255,255,255,0.35)" }}>
+                      {isMe ? "Ты" : m.fromUsername}
+                      {roleLabel && <span className="text-[7px] px-1 py-0.5 rounded font-bold" style={{ background: "rgba(255,255,255,0.06)", color: roleColor }}>{roleLabel}</span>}
+                    </p>
+                  )}
+                  <div className="px-3 py-2 rounded-xl text-[12px]"
+                    style={isMe
+                      ? { background: "rgba(59,130,246,0.18)", color: "rgba(255,255,255,0.8)" }
+                      : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)" }
                   }>{m.text}</div>
+                </div>
               </div>
             );
           })
@@ -2679,7 +2719,7 @@ function GroupChat({ group, user, messages, onLeave, onBack, onKick, onSetRole, 
           style={{ background: "rgba(255,255,255,0.05)", color: "#fff", maxHeight: 80, caretColor: "#c4b5fd" }} />
         <button type="submit" disabled={!input.trim()}
           className="w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center disabled:opacity-30 transition-all"
-          style={{ background: "rgba(168,85,247,0.5)", color: "#fff" }}>
+          style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}>
           <PaperPlaneTilt size={14} weight="fill" />
         </button>
       </form>
@@ -2766,7 +2806,7 @@ function IncomingCallModal({ call, onAccept, onReject }) {
 }
 
 // ─── CallOverlay ──────────────────────────────────────────────────────────────
-function CallOverlay({ call, groupVoiceIds, friends, localStream, remoteScreen, remoteSharing, onMute, onShare, onHangUp }) {
+function CallOverlay({ call, groupVoiceIds, friends, localStream, screenStream, remoteScreen, remoteSharing, onMute, onShare, onHangUp }) {
   const selfVideoRef = React.useRef(null);
   const remoteVideoRef = React.useRef(null);
   const [elapsed, setElapsed] = React.useState(0);
@@ -2782,9 +2822,9 @@ function CallOverlay({ call, groupVoiceIds, friends, localStream, remoteScreen, 
     const video = selfVideoRef.current;
     if (!video) return;
     video.srcObject = null;
-    if (call.sharing && localStream?.current) {
-      const tracks = localStream.current.getVideoTracks?.() || [];
-      if (tracks.length > 0) video.srcObject = localStream.current;
+    if (call.sharing && screenStream?.current) {
+      video.srcObject = screenStream.current;
+      video.play?.().catch(() => {});
     }
   }, [call]);
 
@@ -2813,109 +2853,101 @@ function CallOverlay({ call, groupVoiceIds, friends, localStream, remoteScreen, 
       transition={{ type: "spring", stiffness: 350, damping: 28 }}
       style={{
         position: "fixed", bottom: 24, right: 24, zIndex: 99999,
-        width: 320, borderRadius: 22, overflow: "hidden",
-        background: "rgba(16, 16, 24, 0.97)",
-        backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05)",
+        width: 300, borderRadius: 16, overflow: "hidden",
+        background: "rgba(14, 14, 20, 0.96)",
+        backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.06)",
+        boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
       }}
     >
-      {/* Accent line */}
-      <div style={{ height: 2, background: "linear-gradient(90deg, transparent, #2563eb, transparent)" }} />
-
-      {/* Self-video preview */}
-      <div style={{ padding: (remoteSharing || call.sharing) ? "12px 12px 0" : 0 }}>
-        {/* Удалённая демонстрация экрана собеседника */}
-        <video
-          ref={remoteVideoRef}
-          autoPlay playsInline
-          style={{
-            display: remoteSharing ? "block" : "none",
-            width: "100%", height: 160, borderRadius: 14, objectFit: "contain",
-            background: "#0a0a12",
-            border: "1px solid rgba(37,99,235,0.25)",
-          }}
-        />
-        {/* Локальное превью своей демонстрации */}
-        <video
-          ref={selfVideoRef}
-          autoPlay muted playsInline
-          style={{
-            display: (call.sharing && !remoteSharing) ? "block" : "none",
-            width: "100%", height: 100, borderRadius: 14, objectFit: "cover",
-            background: "#0a0a12",
-            border: "1px solid rgba(255,255,255,0.06)",
-          }}
-        />
-      </div>
-
-      {/* Info */}
-      <div style={{ padding: "10px 16px 4px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: 12,
-            background: "linear-gradient(135deg, rgba(37,99,235,0.2), rgba(37,99,235,0.05))",
-            border: "1px solid rgba(59,130,246,0.3)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <Phone size={15} weight="fill" style={{ color: "#60a5fa" }} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ color: "#fff", fontSize: 13, fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</p>
-            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, margin: 0, fontWeight: 600, fontFamily: "monospace" }}>
-              {fmt(elapsed)}{call.muted ? " · Выкл. микро" : ""}{call.sharing ? " · Экран" : ""}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Participants (group) */}
-      {call.type === "group" && groupVoiceIds.length > 0 && (
-        <div style={{ display: "flex", gap: 6, padding: "6px 16px", flexWrap: "wrap" }}>
-          {groupVoiceIds.map(uid => {
-            const f = friends.find(x => x.id === uid);
-            return (
-              <div key={uid} style={{
-                padding: "4px 10px", borderRadius: 8,
-                background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.2)",
-                fontSize: 10, fontWeight: 700, color: "#93c5fd",
-              }}>
-                {f?.username || "?"}
-              </div>
-            );
-          })}
+      {/* Video area */}
+      {(remoteSharing || call.sharing) && (
+        <div style={{ padding: "8px 8px 0" }}>
+          {/* Remote screen */}
+          <video ref={remoteVideoRef} autoPlay playsInline
+            style={{
+              display: remoteSharing ? "block" : "none",
+              width: "100%", height: 150, borderRadius: 12, objectFit: "contain",
+              background: "#0a0a12",
+            }}
+          />
+          {/* Self screen preview */}
+          <video ref={selfVideoRef} autoPlay muted playsInline
+            style={{
+              display: (call.sharing && !remoteSharing) ? "block" : "none",
+              width: "100%", height: 100, borderRadius: 12, objectFit: "cover",
+              background: "#0a0a12",
+            }}
+          />
         </div>
       )}
 
+      {/* Info + participants */}
+      <div style={{ padding: "10px 14px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 10,
+            background: call.type === "group" ? "rgba(34,197,94,0.1)" : "rgba(99,102,241,0.12)",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            <Phone size={13} weight="fill" style={{ color: call.type === "group" ? "#4ade80" : "#818cf8" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</p>
+            <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 10, margin: 0, fontWeight: 600, fontFamily: "monospace" }}>
+              {fmt(elapsed)}{call.muted ? " · Микро выкл" : ""}{call.sharing ? " · Экран" : ""}
+            </p>
+          </div>
+        </div>
+
+        {/* Group participants */}
+        {call.type === "group" && groupVoiceIds.length > 0 && (
+          <div style={{ display: "flex", gap: 4, padding: "8px 0 2px", flexWrap: "wrap" }}>
+            {groupVoiceIds.map(uid => {
+              const f = friends.find(x => x.id === uid);
+              return (
+                <div key={uid} style={{
+                  padding: "3px 8px", borderRadius: 6,
+                  background: "rgba(255,255,255,0.04)",
+                  fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.6)",
+                }}>
+                  {f?.username || "?"}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Controls */}
-      <div style={{ display: "flex", gap: 8, padding: "10px 16px 14px" }}>
+      <div style={{ display: "flex", gap: 6, padding: "10px 14px 12px" }}>
         <button onClick={onMute} style={{
-          flex: 1, padding: "10px 0", borderRadius: 12, border: "none", cursor: "pointer",
-          background: call.muted ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.06)",
-          color: call.muted ? "#f87171" : "rgba(255,255,255,0.6)",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-          fontSize: 11, fontWeight: 600, transition: "background 0.15s",
+          flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
+          background: call.muted ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.05)",
+          color: call.muted ? "#f87171" : "rgba(255,255,255,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          fontSize: 10, fontWeight: 600, transition: "background 0.15s",
         }}>
-          {call.muted ? <MicrophoneSlash size={14} weight="fill" /> : <Microphone size={14} weight="fill" />}
+          {call.muted ? <MicrophoneSlash size={12} weight="fill" /> : <Microphone size={12} weight="fill" />}
           {call.muted ? "Вкл" : "Выкл"}
         </button>
         <button onClick={onShare} style={{
-          flex: 1, padding: "10px 0", borderRadius: 12, border: "none", cursor: "pointer",
-          background: call.sharing ? "rgba(37,99,235,0.25)" : "rgba(255,255,255,0.06)",
-          color: call.sharing ? "#60a5fa" : "rgba(255,255,255,0.6)",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-          fontSize: 11, fontWeight: 600, transition: "background 0.15s",
+          flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
+          background: call.sharing ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)",
+          color: call.sharing ? "#4ade80" : "rgba(255,255,255,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          fontSize: 10, fontWeight: 600, transition: "background 0.15s",
         }}>
-          <MonitorArrowUp size={14} weight="fill" />
+          <MonitorArrowUp size={12} weight="fill" />
           {call.sharing ? "Стоп" : "Экран"}
         </button>
         <button onClick={onHangUp} style={{
-          flex: 1, padding: "10px 0", borderRadius: 12, border: "none", cursor: "pointer",
-          background: "rgba(239,68,68,0.15)", color: "#f87171",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-          fontSize: 11, fontWeight: 600, transition: "background 0.15s",
+          flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer",
+          background: "rgba(239,68,68,0.1)", color: "rgba(239,68,68,0.8)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          fontSize: 10, fontWeight: 600, transition: "background 0.15s",
         }}>
-          <PhoneSlash size={14} weight="fill" />
+          <PhoneSlash size={12} weight="fill" />
           Завершить
         </button>
       </div>

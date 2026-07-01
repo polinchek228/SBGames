@@ -225,7 +225,8 @@ app.use(cors({
 }));
 
 // ─── Body limits ──────────────────────────────────────────────────────────────
-app.use(express.json({ limit: "16kb" }));
+// 5mb чтобы пропускать base64 аватарку (PNG ~1MB → ~1.3MB в base64)
+app.use(express.json({ limit: "5mb" }));
 
 // ─── IP blocklist (Redis-backed, in-memory fallback) ─────────────────────────
 const blockedIPs     = new Map(); // ip → unblock timestamp
@@ -485,6 +486,8 @@ let invoiceCounter = 1;
 
 const trades = new Map(); // tradeId -> { id, initiatorId, targetId, initiatorItems: [], targetItems: [], initiatorConfirmed, targetConfirmed, status, createdAt }
 const wsClients = new Map();
+// Active DM calls: callerId -> { calleeId, callerName }
+const activeCalls = new Map();
 
 function getFriends(userId)         { return friendships.get(userId) || new Set(); }
 function areFriends(a, b)           { return getFriends(a).has(b); }
@@ -805,21 +808,26 @@ app.get("/online", requireAuth, (_, res) => {
 });
 
 app.get("/support/tickets", requireAuth, (req, res) => {
-  const list = [...tickets.values()].map(t => ({ id: t.id, category: t.category, username: t.username, status: t.status, createdAt: t.createdAt, preview: t.preview, unread: t.unread || 0 }));
+  const isAdmin = req.userId && [...ADMIN_TG_IDS].includes(String(req.userId));
+  const list = [...tickets.values()]
+    .filter(t => isAdmin || t.userId === String(req.userId))
+    .map(t => ({ id: t.id, category: t.category, username: t.username, status: t.status, createdAt: t.createdAt, preview: t.preview, unread: t.unread || 0, paymentAmount: t.paymentAmount || null }));
   res.json({ tickets: list.sort((a, b) => b.createdAt - a.createdAt) });
 });
 
 app.get("/support/ticket/:id", requireAuth, (req, res) => {
   const t = tickets.get(Number(req.params.id));
   if (!t) return res.status(404).json({ message: "Тикет не найден" });
+  const isAdmin = req.userId && [...ADMIN_TG_IDS].includes(String(req.userId));
+  if (!isAdmin && t.userId !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
   res.json(t);
 });
 
-app.post("/support/ticket", (req, res) => {
+app.post("/support/ticket", requireAuth, (req, res) => {
   const rawCategory = sanitize(req.body.category || "", 80);
   const rawMessage  = sanitize(req.body.message  || "", 2000);
   const rawUsername = sanitize(req.body.username || "Player", 32);
-  const userId      = sanitize(req.body.userId || "anon", 64);
+  const userId      = sanitize(req.userId || req.body.userId || "anon", 64);
   if (!rawCategory || !rawMessage || rawMessage.length < 5)
     return res.status(400).json({ message: "Заполните все поля (минимум 5 символов)" });
   const ticketId = ++ticketCounter;
@@ -1735,6 +1743,7 @@ function canEditGroup(g, uid) {
 const parties      = new Map(); // partyId -> { id, name, leaderId, members: Set<userId>, createdAt }
 const userParties  = new Map(); // userId -> Set<partyId>
 const partyInvites = new Map(); // userId (invitee) -> [{ partyId, partyName, fromId, fromUsername }]
+const partyMessages = new Map(); // partyId -> [{ id, userId, username, text, time }]
 let partyCounter = 0;
 
 function userPartyIds(uid) {
@@ -1746,7 +1755,7 @@ async function publicParty(p) {
   const memberList = await Promise.all([...p.members].map(async uid => {
     let acc = [...redisAccounts._map.values()].find(a => a && a.id === uid);
     if (!acc) { try { acc = await redisAccounts.get(uid); } catch {} }
-    return { id: uid, username: acc?.username || acc?.telegram || uid };
+    return { id: uid, username: acc?.username || acc?.telegram || uid, avatar: acc?.avatar || null };
   }));
   return { id: p.id, name: p.name, leaderId: p.leaderId, members: memberList, createdAt: p.createdAt };
 }
@@ -1756,6 +1765,57 @@ function disbandParty(partyId) {
   if (!p) return;
   for (const uid of p.members) userPartyIds(uid).delete(partyId);
   parties.delete(partyId);
+  // Cleanup persistence
+  redis.del("sbgames:party:" + partyId).catch(() => {});
+  redis.srem("sbgames:party_ids", partyId).catch(() => {});
+  redis.del("sbgames:partychat:" + partyId).catch(() => {});
+}
+
+// --- Redis persistence for parties --------------------------------------------
+async function saveParty(p) {
+  try {
+    const data = { id: p.id, name: p.name, leaderId: p.leaderId, members: [...p.members], createdAt: p.createdAt };
+    await redis.set("sbgames:party:" + p.id, JSON.stringify(data));
+    await redis.sadd("sbgames:party_ids", p.id);
+  } catch {}
+}
+async function loadPartiesFromRedis() {
+  try {
+    const ids = await redis.smembers("sbgames:party_ids");
+    for (const id of ids) {
+      const raw = await redis.get("sbgames:party:" + id);
+      if (!raw) continue;
+      const d = JSON.parse(raw);
+      if (!d.members || d.members.length === 0) { redis.srem("sbgames:party_ids", id).catch(() => {}); continue; }
+      const p = { id: d.id, name: d.name, leaderId: d.leaderId, members: new Set(d.members), createdAt: d.createdAt || Date.now() };
+      parties.set(id, p);
+      for (const uid of p.members) userPartyIds(uid).add(id);
+      const numId = parseInt(id, 10);
+      if (!isNaN(numId) && numId >= partyCounter) partyCounter = numId + 1;
+    }
+    console.log("[parties] loaded " + parties.size + " parties from Redis");
+  } catch (e) { console.warn("[parties] failed to load:", e.message); }
+}
+async function savePartyMessages(partyId) {
+  try {
+    const msgs = partyMessages.get(partyId);
+    if (msgs && msgs.length > 0) {
+      await redis.set("sbgames:partychat:" + partyId, JSON.stringify(msgs));
+    }
+  } catch {}
+}
+async function loadPartyMessagesFromRedis() {
+  try {
+    const stream = redis.scanStream({ match: "sbgames:partychat:*", count: 100 });
+    const keys = [];
+    for await (const k of stream) keys.push(...k);
+    for (const key of keys) {
+      const pid = key.replace("sbgames:partychat:", "");
+      const raw = await redis.get(key);
+      if (raw && parties.has(pid)) partyMessages.set(pid, JSON.parse(raw));
+    }
+    console.log("[partyMessages] loaded from Redis");
+  } catch (e) { console.warn("[partyMessages] failed to load:", e.message); }
 }
 
 async function userPartiesList(uid) {
@@ -2006,6 +2066,8 @@ loadGroupsFromRedis();
 loadGroupMessagesFromRedis();
 loadGroupInvitesFromRedis();
 loadGroupJoinRequestsFromRedis();
+loadPartiesFromRedis();
+loadPartyMessagesFromRedis();
 loadCommentsFromRedis();
 loadDMsFromRedis();
 loadFriendshipsFromRedis();
@@ -2058,6 +2120,7 @@ function clanLevelInfo(g) {
 
 async function publicGroup(g) {
   const memberNames = {};
+  const memberAvatars = {};
   for (const mid of g.members) {
     let acc = [...redisAccounts._map.values()].find(a => a && a.id === mid);
     if (!acc) {
@@ -2065,9 +2128,10 @@ async function publicGroup(g) {
       if (acc && !acc.username) acc.username = acc.telegram || mid;
     }
     memberNames[mid] = acc?.username || acc?.telegram || "";
+    memberAvatars[mid] = acc?.avatar || null;
   }
   const li = clanLevelInfo(g);
-  return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, memberNames, createdAt: g.createdAt, levelInfo: li };
+  return { id: g.id, name: g.name, description: g.description || "", avatar: g.avatar || "", ownerId: g.ownerId, members: [...g.members], memberRoles: g.memberRoles || {}, closed: !!g.closed, memberNames, memberAvatars, createdAt: g.createdAt, levelInfo: li };
 }
 
 app.get("/api/groups", requireAuth, async (req, res) => {
@@ -2767,6 +2831,8 @@ wss.on("connection", (ws, req) => {
         }
         case "message": {
           const ticket = tickets.get(Number(msg.ticketId)); if (!ticket) return;
+          const isMsgAdmin = client.role === "admin" || [...ADMIN_TG_IDS].includes(String(client.userId));
+          if (!isMsgAdmin && ticket.userId !== String(client.userId)) return;
           const cleanText = sanitize(msg.text || "", 2000); if (!cleanText) return;
           const message = { id: uuidv4(), from: client.userId || "anon", username: client.username || "Player", role: client.role, text: cleanText, time: Date.now() };
           ticket.messages.push(message);
@@ -2778,7 +2844,6 @@ wss.on("connection", (ws, req) => {
             ticket.unread = 0; ticket.status = "answered";
             broadcastToTicket(ticket.id, client.userId, { type: "message", ticketId: ticket.id, message });
             broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) });
-            // Форвард в TG если пользователь из бота
             if (ticket.tgChatId) {
               try {
                 await bot.sendMessage(ticket.tgChatId,
@@ -2792,17 +2857,19 @@ wss.on("connection", (ws, req) => {
         }
         case "read_ticket": {
           const ticket = tickets.get(Number(msg.ticketId));
-          if (ticket && client.role === "admin") { ticket.unread = 0; send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages }); }
+          const isReadAdmin = client.role === "admin" || [...ADMIN_TG_IDS].includes(String(client.userId));
+          if (ticket && isReadAdmin) { ticket.unread = 0; send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages }); }
           break;
         }
         case "close_ticket": {
           const ticket = tickets.get(Number(msg.ticketId));
-          if (ticket && client.role === "admin") { ticket.status = "closed"; broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
+          const isCloseAdmin = client.role === "admin" || [...ADMIN_TG_IDS].includes(String(client.userId));
+          if (ticket && isCloseAdmin) { ticket.status = "closed"; broadcastToTicket(ticket.id, null, { type: "ticket_closed", ticketId: ticket.id }); broadcastToAdmins({ type: "ticket_update", ticket: ticketSummary(ticket) }); }
           break;
         }
         // Админ отправляет реквизиты через лаунчер → форвардим в TG
         case "send_requisites": {
-          if (client.role !== "admin") break;
+          if (client.role !== "admin" && !([...ADMIN_TG_IDS].includes(String(client.userId)))) break;
           const ticket = tickets.get(Number(msg.ticketId));
           if (!ticket) break;
           const cleanText = sanitize(msg.text || "", 1000);
@@ -2828,7 +2895,7 @@ wss.on("connection", (ws, req) => {
         }
         // ????? ???????????? ?????? ????? ??????? ? ?????? ?????? + ?????????
         case "confirm_payment": {
-          if (client.role !== "admin") break;
+          if (client.role !== "admin" && !([...ADMIN_TG_IDS].includes(String(client.userId)))) break;
           const ticket = tickets.get(Number(msg.ticketId));
           if (!ticket) break;
           // Сумма берётся ТОЛЬКО из серверного источника (тикет), не из клиентского msg.amount.
@@ -2912,13 +2979,22 @@ wss.on("connection", (ws, req) => {
           } catch (e) { console.error("[affiliate commission]", e.message); }
           break;
         }
-        case "subscribe_ticket": {
-          client.ticketId = Number(msg.ticketId); wsClients.set(clientId, client);
-          const ticket = tickets.get(Number(msg.ticketId));
-          if (ticket) send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
-          break;
-        }
-        case "group_send": {
+case "subscribe_ticket": {
+           const ticketId = Number(msg.ticketId);
+           const ticket = tickets.get(ticketId);
+           if (!ticket) break;
+           const isTicketAdmin = client.role === "admin" || [...ADMIN_TG_IDS].includes(String(client.userId));
+           if (!isTicketAdmin && ticket.userId !== String(client.userId)) break;
+           client.ticketId = ticketId; wsClients.set(clientId, client);
+           send(ws, { type: "ticket_messages", ticketId: ticket.id, messages: ticket.messages });
+           break;
+         }
+         case "ping": {
+           // Client asks if connection alive, reply with pong
+           send(ws, { type: "pong" });
+           break;
+         }
+         case "group_send": {
           const gid = sanitize(msg.groupId || "", 32);
           const g = groups.get(gid);
           if (!g || !g.members.has(client.userId)) { send(ws, { type: "group_error", text: "Ты не в этом клане" }); break; }
@@ -2950,49 +3026,59 @@ wss.on("connection", (ws, req) => {
           break;
         }
         // --- DM Calls ------------------------------------------------------------
-        case "call_offer": {
-          const { toId, offer } = msg;
-          if (!toId || !offer) break;
-          sendToUser(toId, { type: "incoming_call", fromId: client.userId, fromUsername: client.username, offer, callType: "dm" });
-          break;
-        }
-        case "call_answer": {
-          const { toId, answer } = msg;
-          if (!toId || !answer) break;
-          sendToUser(toId, { type: "call_answered", fromId: client.userId, answer });
-          break;
-        }
-        case "call_ice": {
-          const { toId, candidate } = msg;
-          if (!toId || !candidate) break;
-          sendToUser(toId, { type: "call_ice_candidate", fromId: client.userId, candidate });
-          break;
-        }
-        case "call_reject": {
-          const { toId } = msg;
-          if (!toId) break;
-          sendToUser(toId, { type: "call_rejected", fromId: client.userId });
-          break;
-        }
-        case "call_end": {
-          const { toId } = msg;
-          if (!toId) break;
-          sendToUser(toId, { type: "call_ended", fromId: client.userId });
-          break;
-        }
+case "call_offer": {
+           const { toId, offer } = msg;
+           if (!toId || !offer) break;
+           // Cleanup any stale call from this caller (launcher restart protection)
+           activeCalls.delete(client.userId);
+           activeCalls.set(client.userId, { calleeId: toId, callerName: client.username });
+           sendToUser(toId, { type: "incoming_call", fromId: client.userId, fromUsername: client.username, offer, callType: "dm" });
+           break;
+         }
+         case "call_answer": {
+           const { toId, answer } = msg;
+           if (!toId || !answer) break;
+           // Mark as answered — no longer pending
+           activeCalls.delete(toId);
+           sendToUser(toId, { type: "call_answered", fromId: client.userId, answer });
+           break;
+         }
+         case "call_ice": {
+           const { toId, candidate } = msg;
+           if (!toId || !candidate) break;
+           sendToUser(toId, { type: "call_ice_candidate", fromId: client.userId, candidate });
+           break;
+         }
+         case "call_reject": {
+           const { toId } = msg;
+           if (!toId) break;
+           activeCalls.delete(toId);
+           sendToUser(toId, { type: "call_rejected", fromId: client.userId });
+           break;
+         }
+         case "call_end": {
+           const { toId } = msg;
+           if (!toId) break;
+           activeCalls.delete(toId);
+           activeCalls.delete(client.userId);
+           sendToUser(toId, { type: "call_ended", fromId: client.userId });
+           break;
+         }
         // --- Group Calls ---------------------------------------------------------
-        case "group_call_join": {
-          const { groupId } = msg;
-          const g = groups.get(groupId);
-          if (!g || !g.members.has(client.userId)) break;
-          if (!groupVoice.has(groupId)) groupVoice.set(groupId, new Set());
-          groupVoice.get(groupId).add(client.userId);
-          const participants = [...groupVoice.get(groupId)];
-          for (const memberId of g.members) {
-            sendToUser(memberId, { type: "group_call_state", groupId, participants });
-          }
-          break;
-        }
+case "group_call_join": {
+           const { groupId } = msg;
+           const g = groups.get(groupId);
+           if (!g || !g.members.has(client.userId)) break;
+           // Защита от дублирования: если уже в звонке — игнорируем
+           if (!groupVoice.has(groupId)) groupVoice.set(groupId, new Set());
+           if (groupVoice.get(groupId).has(client.userId)) break;
+           groupVoice.get(groupId).add(client.userId);
+           const participants = [...groupVoice.get(groupId)];
+           for (const memberId of g.members) {
+             sendToUser(memberId, { type: "group_call_state", groupId, participants });
+           }
+           break;
+         }
         case "group_call_leave": {
           const { groupId } = msg;
           const g = groups.get(groupId);
@@ -3033,6 +3119,7 @@ wss.on("connection", (ws, req) => {
           const p = { id, name: pname, leaderId: client.userId, members: new Set([client.userId]), createdAt: Date.now() };
           parties.set(id, p);
           userPartyIds(client.userId).add(id);
+          saveParty(p);
           send(ws, { type: "parties_list", parties: await userPartiesList(client.userId) });
           break;
         }
@@ -3056,6 +3143,7 @@ wss.on("connection", (ws, req) => {
             if (p && p.members.size < 8) {
               p.members.add(client.userId);
               userPartyIds(client.userId).add(partyId);
+              saveParty(p);
               for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
             }
           }
@@ -3072,6 +3160,7 @@ wss.on("connection", (ws, req) => {
           if (p.members.size === 0) { disbandParty(partyId); }
           else {
             if (p.leaderId === client.userId) p.leaderId = p.members.values().next().value;
+            saveParty(p);
             for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
           }
           send(ws, { type: "parties_list", parties: await userPartiesList(client.userId) });
@@ -3084,6 +3173,7 @@ wss.on("connection", (ws, req) => {
           if (!p || p.leaderId !== client.userId || targetId === client.userId) break;
           p.members.delete(targetId);
           userPartyIds(targetId).delete(partyId);
+          saveParty(p);
           sendToUser(targetId, { type: "parties_list", parties: await userPartiesList(targetId) });
           for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
           break;
@@ -3093,7 +3183,32 @@ wss.on("connection", (ws, req) => {
           const p = parties.get(partyId);
           if (!p || p.leaderId !== client.userId) break;
           p.name = sanitize(name || "", 40) || p.name;
+          saveParty(p);
           for (const mid of p.members) sendToUser(mid, { type: "parties_list", parties: await userPartiesList(mid) });
+          break;
+        }
+        case "party_chat": {
+          const partyId = sanitize(msg.partyId || "", 32);
+          const p = parties.get(partyId);
+          if (!p || !p.members.has(client.userId)) break;
+          const text = sanitize(msg.text || "", 500);
+          if (!text) break;
+          let acc = [...redisAccounts._map.values()].find(a => a && a.id === client.userId);
+          if (!acc) { try { acc = await redisAccounts.get(client.userId); } catch {} }
+          const m = { id: uuidv4(), userId: client.userId, username: client.username || "Player", avatar: acc?.avatar || null, text, time: Date.now() };
+          const list = partyMessages.get(partyId) || [];
+          list.push(m);
+          partyMessages.set(partyId, list.slice(-200));
+          savePartyMessages(partyId);
+          for (const mid of p.members) sendToUser(mid, { type: "party_chat", partyId, message: m });
+          break;
+        }
+        case "party_chat_history": {
+          const partyId = sanitize(msg.partyId || "", 32);
+          const p = parties.get(partyId);
+          if (!p || !p.members.has(client.userId)) break;
+          const msgs = partyMessages.get(partyId) || [];
+          send(ws, { type: "party_chat_history", partyId, messages: msgs.slice(-100) });
           break;
         }
         // ─── Trade system ────────────────────────────────────────────────────
@@ -3210,24 +3325,35 @@ wss.on("connection", (ws, req) => {
     }
   });
 
-  ws.on("close", () => {
-    clearTimeout(authTimeout);
-    const client = wsClients.get(clientId);
-    wsClients.delete(clientId);
-    const cnt = wsIPCount.get(ip) || 1;
-    if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
-    if (client?.userId) {
-      for (const [gid, voices] of groupVoice.entries()) {
-        if (voices.has(client.userId)) {
-          voices.delete(client.userId);
-          if (voices.size === 0) groupVoice.delete(gid);
-          const g = groups.get(gid);
-          if (g) { const p = [...(groupVoice.get(gid) || [])]; for (const mid of g.members) sendToUser(mid, { type: "group_call_state", groupId: gid, participants: p }); }
-        }
-      }
-    }
-    broadcastOnlineUsers();
-  });
+ws.on("close", () => {
+     clearTimeout(authTimeout);
+     const client = wsClients.get(clientId);
+     wsClients.delete(clientId);
+     const cnt = wsIPCount.get(ip) || 1;
+     if (cnt <= 1) wsIPCount.delete(ip); else wsIPCount.set(ip, cnt - 1);
+     if (client?.userId) {
+       // Cleanup active DM calls (launcher restart protection)
+       for (const [callerId, call] of activeCalls.entries()) {
+         if (callerId === client.userId) {
+           // Caller disconnected without ending call
+           sendToUser(call.calleeId, { type: "call_ended", fromId: callerId });
+           activeCalls.delete(callerId);
+         } else if (call.calleeId === client.userId) {
+           // Callee disconnected
+           activeCalls.delete(callerId);
+       }
+       }
+       for (const [gid, voices] of groupVoice.entries()) {
+         if (voices.has(client.userId)) {
+           voices.delete(client.userId);
+           if (voices.size === 0) groupVoice.delete(gid);
+           const g = groups.get(gid);
+           if (g) { const p = [...(groupVoice.get(gid) || [])]; for (const mid of g.members) sendToUser(mid, { type: "group_call_state", groupId: gid, participants: p }); }
+         }
+       }
+     }
+     broadcastOnlineUsers();
+   });
   ws.on("error", (err) => {
     try {
       clearTimeout(authTimeout);

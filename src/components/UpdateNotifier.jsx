@@ -17,7 +17,7 @@ export default function UpdateNotifier() {
       } catch (e) {
         console.warn("[update] check failed:", e);
       }
-    }, 5000); // проверяем через 5 сек после запуска
+    }, 5000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -40,22 +40,22 @@ export default function UpdateNotifier() {
     <AnimatePresence>
       {!minimized && (
         <motion.div
-          initial={{ opacity: 0, y: 40, scale: 0.95 }}
+          initial={{ opacity: 0, y: 20, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 40, scale: 0.95 }}
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
+          exit={{ opacity: 0, y: 20, scale: 0.96 }}
+          transition={{ type: "spring", damping: 28, stiffness: 320 }}
           style={{
             position: "fixed",
             bottom: 24,
             right: 24,
             zIndex: 9999,
-            width: 380,
-            background: "rgba(15, 15, 25, 0.95)",
+            width: 360,
+            background: "rgba(12, 12, 18, 0.97)",
             backdropFilter: "blur(20px)",
-            border: "1px solid rgba(100, 140, 255, 0.3)",
-            borderRadius: 16,
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 14,
             overflow: "hidden",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 60px rgba(80,120,255,0.1)",
+            boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
           }}
         >
           {/* Header */}
@@ -64,32 +64,31 @@ export default function UpdateNotifier() {
             alignItems: "center",
             justifyContent: "space-between",
             padding: "14px 16px",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: "rgba(37,99,235,0.2)",
-                border: "1px solid rgba(59,130,246,0.3)",
+                width: 34, height: 34, borderRadius: 10,
+                background: "rgba(255,255,255,0.05)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 16, color: "#60a5fa",
               }}>
-                &#x2191;
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 12V4M8 4L5 7M8 4L11 7" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </div>
               <div>
-                <div style={{ color: "#fff", fontWeight: 600, fontSize: 13 }}>
+                <div style={{ color: "rgba(255,255,255,0.9)", fontWeight: 600, fontSize: 13 }}>
                   Доступно обновление
                 </div>
-                <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 1 }}>
-                  v{update.currentVersion} &rarr; v{update.version}
+                <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, marginTop: 1, fontFamily: "monospace" }}>
+                  v{update.currentVersion} → v{update.version}
                 </div>
               </div>
             </div>
             <button
               onClick={() => setMinimized(true)}
               style={{
-                background: "none", border: "none", color: "rgba(255,255,255,0.4)",
-                cursor: "pointer", fontSize: 18, padding: 4, lineHeight: 1,
+                background: "none", border: "none", color: "rgba(255,255,255,0.25)",
+                cursor: "pointer", fontSize: 16, padding: 4, lineHeight: 1,
               }}
             >
               &minus;
@@ -97,14 +96,14 @@ export default function UpdateNotifier() {
           </div>
 
           {/* Body */}
-          <div style={{ padding: "12px 16px" }}>
+          <div style={{ padding: "0 16px 14px" }}>
             {update.body && (
               <div style={{
-                color: "rgba(255,255,255,0.7)",
-                fontSize: 12,
+                color: "rgba(255,255,255,0.5)",
+                fontSize: 11,
                 lineHeight: 1.5,
                 marginBottom: 12,
-                maxHeight: 80,
+                maxHeight: 60,
                 overflow: "auto",
               }}>
                 {update.body}
@@ -113,12 +112,11 @@ export default function UpdateNotifier() {
 
             {error && (
               <div style={{
-                background: "rgba(239,68,68,0.15)",
-                border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.08)",
                 borderRadius: 8,
                 padding: "8px 12px",
-                color: "#f87171",
-                fontSize: 12,
+                color: "rgba(239,68,68,0.8)",
+                fontSize: 11,
                 marginBottom: 12,
               }}>
                 {error}
@@ -129,14 +127,14 @@ export default function UpdateNotifier() {
               <div>
                 <div style={{
                   display: "flex", justifyContent: "space-between",
-                  marginBottom: 6, fontSize: 11, color: "rgba(255,255,255,0.5)",
+                  marginBottom: 8, fontSize: 10, color: "rgba(255,255,255,0.4)",
                 }}>
-                  <span>Загрузка обновления...</span>
+                  <span>Загрузка...</span>
                   <span>Не закрывайте лаунчер</span>
                 </div>
                 <div style={{
-                  height: 4, borderRadius: 2,
-                  background: "rgba(255,255,255,0.1)",
+                  height: 3, borderRadius: 2,
+                  background: "rgba(255,255,255,0.06)",
                   overflow: "hidden",
                 }}>
                   <motion.div
@@ -144,30 +142,30 @@ export default function UpdateNotifier() {
                     transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
                     style={{
                       height: "100%", borderRadius: 2, width: "40%",
-                      background: "linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, transparent)",
+                      background: "rgba(255,255,255,0.15)",
                     }}
                   />
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 6 }}>
                 <button
                   onClick={() => setMinimized(true)}
                   style={{
-                    flex: 1, padding: "8px 0", borderRadius: 8,
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    color: "rgba(255,255,255,0.6)",
-                    fontSize: 12, fontWeight: 500, cursor: "pointer",
-                    transition: "all 0.2s",
+                    flex: 1, padding: "9px 0", borderRadius: 8,
+                    background: "rgba(255,255,255,0.04)",
+                    border: "none",
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: 11, fontWeight: 500, cursor: "pointer",
+                    transition: "all 0.15s",
                   }}
                   onMouseEnter={e => {
-                    e.target.style.background = "rgba(255,255,255,0.1)";
-                    e.target.style.color = "#fff";
+                    e.target.style.background = "rgba(255,255,255,0.07)";
+                    e.target.style.color = "rgba(255,255,255,0.7)";
                   }}
                   onMouseLeave={e => {
-                    e.target.style.background = "rgba(255,255,255,0.06)";
-                    e.target.style.color = "rgba(255,255,255,0.6)";
+                    e.target.style.background = "rgba(255,255,255,0.04)";
+                    e.target.style.color = "rgba(255,255,255,0.5)";
                   }}
                 >
                   Позже
@@ -175,15 +173,15 @@ export default function UpdateNotifier() {
                 <button
                   onClick={handleInstall}
                   style={{
-                    flex: 2, padding: "8px 0", borderRadius: 8,
-                    background: "linear-gradient(135deg, #2563eb, #3b82f6)",
+                    flex: 2, padding: "9px 0", borderRadius: 8,
+                    background: "rgba(255,255,255,0.08)",
                     border: "none",
-                    color: "#fff",
-                    fontSize: 12, fontWeight: 600, cursor: "pointer",
-                    transition: "all 0.2s",
+                    color: "rgba(255,255,255,0.8)",
+                    fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    transition: "all 0.15s",
                   }}
-                  onMouseEnter={e => { e.target.style.opacity = "0.9"; }}
-                  onMouseLeave={e => { e.target.style.opacity = "1"; }}
+                  onMouseEnter={e => { e.target.style.background = "rgba(255,255,255,0.12)"; }}
+                  onMouseLeave={e => { e.target.style.background = "rgba(255,255,255,0.08)"; }}
                 >
                   Обновить
                 </button>
@@ -205,21 +203,20 @@ export default function UpdateNotifier() {
             bottom: 24,
             right: 24,
             zIndex: 9999,
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: "linear-gradient(135deg, #2563eb, #3b82f6)",
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.08)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
-            boxShadow: "0 4px 16px rgba(59,130,246,0.4)",
-            border: "2px solid rgba(255,255,255,0.2)",
-            fontSize: 18,
-            color: "#fff",
           }}
         >
-          &#x2191;
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 12V4M8 4L5 7M8 4L11 7" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </motion.div>
       )}
     </AnimatePresence>

@@ -8,10 +8,14 @@ let reconnectTimer = null;
 let heartbeatTimer = null;
 let reconnectDelay = 1000;
 const MAX_DELAY = 30_000;
+const MAX_RETRIES = 30;
+let retryCount = 0;
 let dead = false;
 const listeners = new Set();
 let authenticated = false;
 let pendingAuth = null;
+let missedPongs = 0;
+const PONG_TIMEOUT = 45_000;
 
 function connect() {
   if (dead) return;
@@ -26,19 +30,25 @@ function connect() {
 
   socket.onopen = () => {
     reconnectDelay = 1000;
+    retryCount = 0;
+    missedPongs = 0;
     if (pendingAuth) {
       try {
         socket.send(JSON.stringify(pendingAuth));
-        // Auth sent (userId not logged for security)
       } catch {}
     }
-    // Start heartbeat to detect half-open connections
     clearInterval(heartbeatTimer);
     heartbeatTimer = setInterval(() => {
       if (socket && socket.readyState === WebSocket.OPEN) {
+        missedPongs++;
+        if (missedPongs >= 2) {
+          socket.close();
+          missedPongs = 0;
+          return;
+        }
         try { socket.send(JSON.stringify({ type: "ping" })); } catch {}
       }
-    }, 30_000);
+    }, PONG_TIMEOUT);
     listeners.forEach(fn => fn({ type: "_ws_status", connected: true }));
   };
 
@@ -46,9 +56,10 @@ function connect() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === "_auth_ok") { authenticated = true; pendingAuth = null; return; }
+      if (msg.type === "pong") { missedPongs = 0; return; }
       if (msg.type === "auth_error") {
         authenticated = false;
-        dead = true; // stop reconnecting — token is invalid
+        dead = true;
         clearTimeout(reconnectTimer);
         clearInterval(heartbeatTimer);
         listeners.forEach(fn => fn({ type: "_ws_status", connected: false, authError: true }));
@@ -71,7 +82,8 @@ function connect() {
 }
 
 function scheduleReconnect() {
-  if (dead) return;
+  if (dead || retryCount >= MAX_RETRIES) return;
+  retryCount++;
   clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(connect, reconnectDelay);
   reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_DELAY);
@@ -125,6 +137,7 @@ export function destroyWS() {
 
 export function resetWS() {
   dead = false;
+  retryCount = 0;
   reconnectDelay = 1000;
   clearTimeout(reconnectTimer);
   clearInterval(heartbeatTimer);

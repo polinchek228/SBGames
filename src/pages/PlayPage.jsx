@@ -906,8 +906,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
             <button onClick={() => setShowSidebarMenu(!showSidebarMenu)} title="Дополнительно"
               className="w-[38px] h-[38px] rounded-xl flex items-center justify-center transition-all flex-shrink-0"
               style={{
-                background: showSidebarMenu ? "rgba(37,99,235,0.22)" : "rgba(255,255,255,0.05)",
-                color: showSidebarMenu ? "#93c5fd" : "rgba(255,255,255,0.55)",
+                background: showSidebarMenu ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.05)",
+                color: showSidebarMenu ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.55)",
               }}
               onMouseEnter={e => { if (!showSidebarMenu) { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.color = "#fff"; } }}
               onMouseLeave={e => { if (!showSidebarMenu) { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.55)"; } }}>
@@ -924,7 +924,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
             style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }} onClick={e => { if (e.target === e.currentTarget) setShowSidebarMenu(false); }}>
             <motion.div initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 12 }} transition={{ duration: 0.18 }}
               className="w-[460px] rounded-2xl p-5 flex flex-col gap-4"
-              style={{ background: "linear-gradient(160deg, rgba(20,20,28,0.98) 0%, rgba(10,10,14,0.98) 100%)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
+              style={{ background: "rgba(12,12,18,0.97)", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 24px 64px rgba(0,0,0,0.7)" }}>
               {/* Header */}
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -932,16 +932,16 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <MoreHorizontal size={16} style={{ color: "rgba(255,255,255,0.6)" }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-black text-white leading-tight">Дополнительно</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{sidebarMenuTab === "servers" ? `${SERVERS.length} серверов` : `${customModpacks.length} сборок`}</p>
+                  <p className="text-[14px] font-bold text-white leading-tight">Дополнительно</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{sidebarMenuTab === "servers" ? `${SERVERS.length} серверов` : `${customModpacks.length} сборок`}</p>
                 </div>
                 <button onClick={() => setShowSidebarMenu(false)} aria-label="Закрыть" className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff"; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#fff"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}><X size={13} /></button>
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(0,0,0,0.3)" }}>
+              <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.03)" }}>
                 {[
                   { id: "servers", label: "Серверы", icon: UsersThree },
                   { id: "modpacks", label: "Сборки", icon: FolderOpen },
@@ -949,9 +949,8 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <button key={t.id} onClick={() => setSidebarMenuTab(t.id)}
                     className="flex-1 h-9 rounded-lg flex items-center justify-center gap-2 text-[12px] font-bold transition-all"
                     style={{
-                      background: sidebarMenuTab === t.id ? "rgba(37,99,235,0.22)" : "transparent",
-                      color: sidebarMenuTab === t.id ? "#93c5fd" : "rgba(255,255,255,0.4)",
-                      boxShadow: sidebarMenuTab === t.id ? "inset 0 0 0 1px rgba(96,165,250,0.4)" : "none",
+                      background: sidebarMenuTab === t.id ? "rgba(255,255,255,0.07)" : "transparent",
+                      color: sidebarMenuTab === t.id ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.35)",
                     }}>
                     <t.icon size={13} weight={sidebarMenuTab === t.id ? "fill" : "regular"} />
                     {t.label}
@@ -960,38 +959,34 @@ export default function PlayPage({ user, onOpenCommunity }) {
               </div>
 
               {/* Content */}
-              <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+              <div className="flex flex-col gap-1.5 max-h-[420px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
                 {sidebarMenuTab === "servers" ? (
                   SERVERS.map((srv, idx) => {
                     const activeS = selected?.id === srv.id && !showBuilder;
                     const online = serverOnline[srv.id] || 0;
                     return (
-                      <motion.button key={srv.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2, delay: idx * 0.04 }}
+                      <motion.button key={srv.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.15, delay: idx * 0.03 }}
                         onClick={() => { setShowBuilder(false); setSelected(srv); setShowSidebarMenu(false); }}
-                        className="group w-full rounded-xl overflow-hidden flex items-center gap-3 px-2.5 py-2 text-left"
-                        style={{ background: activeS ? `${srv.accent}18` : "rgba(255,255,255,0.03)" }}>
-                        <motion.div whileHover={{ scale: 1.08 }} transition={{ duration: 0.2 }}
-                          className="w-11 h-11 rounded-lg flex-shrink-0 overflow-hidden relative" style={{ background: srv.bg }}>
+                        className="group w-full rounded-xl flex items-center gap-3 px-2.5 py-2.5 text-left transition-all"
+                        style={{ background: activeS ? "rgba(255,255,255,0.06)" : "transparent" }}
+                        onMouseEnter={e => { if (!activeS) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                        onMouseLeave={e => { if (!activeS) e.currentTarget.style.background = "transparent"; }}>
+                        <div className="w-11 h-11 rounded-lg flex-shrink-0 overflow-hidden relative" style={{ background: srv.bg }}>
                           {srv.image && <img src={srv.image} alt={srv.name || "Сервер"} className="w-full h-full object-cover" loading="lazy" onError={e => e.currentTarget.style.display = "none"} />}
                           <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.4))" }} />
-                        </motion.div>
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-black text-white truncate leading-tight">{srv.name}</p>
-                          <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.4)" }}>{srv.description}</p>
+                          <p className="text-[12px] font-bold text-white truncate leading-tight">{srv.name}</p>
+                          <p className="text-[10px] mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.35)" }}>{srv.description}</p>
                         </div>
                         {online > 0 ? (
-                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md" style={{ background: "rgba(34,197,94,0.12)" }}>
-                            <motion.div className="w-1.5 h-1.5 rounded-full bg-green-400"
-                              animate={{ boxShadow: ["0 0 0 0 rgba(74,222,128,0.5)", "0 0 0 4px rgba(74,222,128,0)"] }}
-                              transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
-                            />
-                            <span className="text-[9px] font-bold text-green-400">{online}</span>
+                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md" style={{ background: "rgba(34,197,94,0.1)" }}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80" }} />
+                            <span className="text-[9px] font-bold" style={{ color: "#4ade80" }}>{online}</span>
                           </div>
                         ) : activeS ? (
-                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 25 }}>
-                            <Check size={14} style={{ color: srv.accent || "#60a5fa" }} />
-                          </motion.div>
+                          <Check size={13} style={{ color: "rgba(255,255,255,0.4)" }} />
                         ) : null}
                       </motion.button>
                     );
@@ -1000,50 +995,56 @@ export default function PlayPage({ user, onOpenCommunity }) {
                   <>
                     {customModpacks.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
-                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: "rgba(255,255,255,0.04)" }}>
-                          <FolderOpen size={22} style={{ color: "rgba(255,255,255,0.2)" }} />
+                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+                          <FolderOpen size={22} style={{ color: "rgba(255,255,255,0.15)" }} />
                         </div>
-                        <p className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.4)" }}>Пока нет сборок</p>
-                        <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.25)" }}>Создай свою первую сборку модов</p>
+                        <p className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>Пока нет сборок</p>
+                        <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.2)" }}>Создай свою первую сборку модов</p>
                       </div>
                     ) : (
                       customModpacks.map(mp => {
                         const activeM = selected?.id === `custom_${mp.id}` && !showBuilder;
                         return (
                           <div key={mp.id} className="group/item rounded-xl flex items-center gap-2.5 px-2.5 py-2 transition-all"
-                            style={{ background: activeM ? "rgba(37,99,235,0.14)" : "rgba(255,255,255,0.03)" }}>
+                            style={{ background: activeM ? "rgba(255,255,255,0.06)" : "transparent" }}>
                             <button onClick={() => { selectCustom(mp); setShowSidebarMenu(false); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                               <div className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center"
-                                style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.22), rgba(59,130,252,0.14))" }}>
-                                <FolderOpen size={15} style={{ color: "rgba(147,197,253,0.95)" }} />
+                                style={{ background: "rgba(255,255,255,0.05)" }}>
+                                <FolderOpen size={15} style={{ color: "rgba(255,255,255,0.4)" }} />
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="text-[12px] font-bold text-white truncate leading-tight">{mp.name}</p>
-                                <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} · {mp.mods.length} модов{mp.launchCount ? ` · ${mp.launchCount} запусков` : ""}</p>
+                                <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{mp.loader.toUpperCase()} {mp.mcVersion} · {mp.mods.length} модов{mp.launchCount ? ` · ${mp.launchCount} запусков` : ""}</p>
                               </div>
                             </button>
                             <div className="flex gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity">
                               <button onClick={(e) => { e.stopPropagation(); openBuilder(mp); setShowSidebarMenu(false); }}
-                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 transition-colors" title="Редактировать">
-                                <Settings size={11} style={{ color: "rgba(255,255,255,0.45)" }} />
+                                className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
+                                style={{ color: "rgba(255,255,255,0.35)" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"} title="Редактировать">
+                                <Settings size={11} />
                               </button>
                               <button onClick={(e) => { e.stopPropagation(); deleteModpack(mp.id); }}
-                                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-red-500/15 transition-colors" title="Удалить">
-                                <Trash2 size={11} style={{ color: "rgba(239,68,68,0.6)" }} />
+                                className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
+                                style={{ color: "rgba(239,68,68,0.5)" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"} title="Удалить">
+                                <Trash2 size={11} />
                               </button>
                             </div>
                           </div>
                         );
                       })
                     )}
-                    {/* Создать сборку — внизу, акцентная кнопка */}
+                    {/* Создать сборку */}
                     <button onClick={() => { openBuilder(null); setShowSidebarMenu(false); }}
                       className="w-full mt-2 rounded-xl flex items-center justify-center gap-2 px-3 h-11 transition-all"
-                      style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(59,130,246,0.9))", boxShadow: "0 0 18px rgba(37,99,235,0.3)" }}
-                      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 0 24px rgba(37,99,235,0.45)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 0 18px rgba(37,99,235,0.3)"; e.currentTarget.style.transform = "translateY(0)"; }}>
-                      <Plus size={14} style={{ color: "#fff" }} />
-                      <span className="text-[12px] font-black text-white">Создать сборку</span>
+                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.8)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}>
+                      <Plus size={14} />
+                      <span className="text-[12px] font-bold">Создать сборку</span>
                     </button>
                   </>
                 )}

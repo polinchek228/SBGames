@@ -369,24 +369,24 @@ const MARKET_TYPE_LABELS = {
 };
 
 const MKT_SERVERS = [
-  { id: "all",      name: "Все серверы",    image: null, color: "#60a5fa" },
-  { id: "cosmetic", name: "Косметика",      image: null, color: "#c084fc", cosmetic: true },
-  { id: "starwars", name: "Starwars",       image: "https://games.sb-capital.group/servers/starwars.jpg", color: "#818cf8" },
-  { id: "minigames",name: "Minigames",      image: "https://games.sb-capital.group/servers/minigames.jpg", color: "#22c55e" },
-  { id: "gta",      name: "GTA",            image: "https://games.sb-capital.group/servers/gta.jpg", color: "#ef4444" },
-  { id: "vanilla_plus", name: "Vanila+",    image: "https://games.sb-capital.group/servers/vanilla.jpg", color: "#06b6d4" },
-  { id: "anarchy",  name: "Анархия",        image: "https://games.sb-capital.group/servers/anarchy.jpg", color: "#f59e0b" },
+  { id: "all",           name: "Все предметы",  image: null, color: "#60a5fa" },
+  { id: "cosmetic",      name: "Косметика",      image: null, color: "#c084fc", cosmetic: true },
+  { id: "starwars",      name: "Starwars",      image: "https://games.sb-capital.group/servers/starwars.jpg", color: "#818cf8" },
+  { id: "minigames",     name: "Minigames",      image: "https://games.sb-capital.group/servers/minigames.jpg", color: "#22c55e" },
+  { id: "gta",           name: "GTA",           image: "https://games.sb-capital.group/servers/gta.jpg", color: "#ef4444" },
+  { id: "vanilla_plus",  name: "Vanila+",        image: "https://games.sb-capital.group/servers/vanilla.jpg", color: "#06b6d4" },
+  { id: "anarchy",       name: "Анархия",        image: "https://games.sb-capital.group/servers/anarchy.jpg", color: "#f59e0b" },
 ];
 
 function MarketplaceView({ user, onViewProfile }) {
   const [listings, setListings] = useState([]);
   const [owned, setOwned]       = useState([]);
   const [equip, setEquip]       = useState({});
-  const [catalog, setCatalog]   = useState([]);
-  const [filter, setFilter]     = useState("all");
-  const [serverFilter, setServerFilter] = useState("all");
-  const section = serverFilter === "cosmetic" ? "cosmetic" : "items";
-  const [searchQuery, setSearchQuery] = useState("");
+const [catalog, setCatalog]   = useState([]);
+   const [filter, setFilter]     = useState("all");
+   const [serverFilter, setServerFilter] = useState("all");
+   const section = serverFilter === "cosmetic" ? "cosmetic" : serverFilter === "all" ? "all_items" : "items";
+   const [searchQuery, setSearchQuery] = useState("");
   const [sortTab, setSortTab]   = useState("popular");
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
@@ -428,9 +428,13 @@ function MarketplaceView({ user, onViewProfile }) {
   const filteredListings = useMemo(() => {
     let items = [...listings];
 
-    // Основные серверные разделы показывают только игровые предметы.
-    // Косметика вынесена в отдельный раздел и не смешивается с серверами.
-    items = items.filter(l => section === "cosmetic" ? isCosmeticId(l.itemId) : !isCosmeticId(l.itemId));
+    // "all_items" - показывает всё, "items" - только серверные, "cosmetic" - только косметика.
+    if (section === "items") {
+      items = items.filter(l => !isCosmeticId(l.itemId));
+    } else if (section === "cosmetic") {
+      items = items.filter(l => isCosmeticId(l.itemId));
+    }
+    // all_items - без фильтрации по типу
 
     if (section === "items" && serverFilter !== "all") {
       items = items.filter(l => l.server === serverFilter);
@@ -569,18 +573,18 @@ function MarketplaceView({ user, onViewProfile }) {
         </div>
       </div>
 
-      {/* Sidebar — servers */}
-      <div className="w-[200px] flex-shrink-0 flex flex-col py-4 px-3" style={{ background: "rgba(255,255,255,0.02)" }}>
-        <span className="text-[10px] uppercase tracking-widest font-bold mb-3 px-2" style={{ color: "rgba(255,255,255,0.25)" }}>Сервер</span>
+{/* Sidebar — servers */}
+       <div className="w-[200px] flex-shrink-0 flex flex-col py-4 px-3" style={{ background: "rgba(255,255,255,0.02)" }}>
+         <span className="text-[10px] uppercase tracking-widest font-bold mb-3 px-2" style={{ color: "rgba(255,255,255,0.25)" }}>Раздел</span>
         <div className="flex flex-col gap-1">
-          {MKT_SERVERS.map(s => {
-            const active = serverFilter === s.id;
-            const count = s.cosmetic
-              ? listings.filter(l => isCosmeticId(l.itemId)).length
-              : s.id === "all"
-                ? listings.filter(l => !isCosmeticId(l.itemId)).length
-                : listings.filter(l => !isCosmeticId(l.itemId) && l.server === s.id).length;
-            return (
+{MKT_SERVERS.map(s => {
+             const active = serverFilter === s.id;
+             const count = s.cosmetic
+               ? listings.filter(l => isCosmeticId(l.itemId)).length
+               : s.id === "all"
+                 ? listings.length
+                 : listings.filter(l => !isCosmeticId(l.itemId) && l.server === s.id).length;
+             return (
               <button key={s.id} onClick={() => { setServerFilter(s.id); if (!s.cosmetic) setFilter("all"); }}
                 className="flex items-center gap-2.5 px-2 py-2 rounded-xl transition-all text-left"
                 style={{
@@ -881,7 +885,7 @@ function SellModal({ owned, catalog, serverFilter = "all", onClose, onCreated })
   };
 
   const visibleIds = useMemo(() => (
-    serverFilter === "cosmetic" ? owned.filter(isCosmeticId) : owned.filter(id => !isCosmeticId(id))
+    serverFilter === "cosmetic" ? owned.filter(isCosmeticId) : serverFilter === "all" ? owned : owned.filter(id => !isCosmeticId(id))
   ), [owned, serverFilter]);
 
   // Если выбранный предмет не входит в текущий раздел — сбрасываем выбор.
