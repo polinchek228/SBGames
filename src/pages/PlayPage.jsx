@@ -276,15 +276,15 @@ export default function PlayPage({ user, onOpenCommunity }) {
     });
   }, [selected]);
 
-  // Discord RPC cycling — живой статус каждые 8 сек
+  // Discord RPC cycling
   useEffect(() => {
-    if (selected) return; // не крутим если сервер уже выбран
+    if (selected) return;
     const lines = [
-      "Выбери сервер для игры",
-      `${SERVERS.length} серверов доступно`,
-      `${friends.filter(f => onlineIds.has(f.id)).length} друзей онлайн`,
-      "Играй с друзьями",
-      "Новые мини-игры каждую неделю",
+      "Присоединяйся к друзьям",
+      "Ждёт тебя на сервере",
+      "Собирай отряд и играй",
+      "Новые приключения каждый день",
+      "Готов к приключениям",
     ];
     let idx = 0;
     const t = setInterval(() => {
@@ -297,7 +297,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       });
     }, 8000);
     return () => clearInterval(t);
-  }, [selected, user?.id, friends, onlineIds]);
+  }, [selected, user?.id]);
 
   useEffect(() => {
     setDiscordPresence("SB Games", "Выбирает сервер", {
