@@ -148,11 +148,19 @@ function scheduleHide() {
   }, NOTIF_DURATION + 300);
 }
 
-export async function setDiscordPresence(details, status, largeImage = "sbgames") {
-  // Discord RPC — фоновая фича. Если плагин падает (особенно на macOS, где
-  // discord IPC-сокет может быть недоступен), не валим рендер.
+export async function setDiscordPresence(details, status, opts = {}) {
   try {
-    return await invoke("set_discord_presence", { details, status, largeImage });
+    return await invoke("set_discord_presence", {
+      details,
+      status,
+      largeImage: opts.largeImage || "sbgames",
+      largeText: opts.largeText || null,
+      smallImage: opts.smallImage || null,
+      smallText: opts.smallText || null,
+      startTimestamp: opts.startTimestamp || null,
+      endTimestamp: opts.endTimestamp || null,
+      buttons: opts.buttons || null,
+    });
   } catch (e) {
     console.warn("[setDiscordPresence] failed:", e);
     return undefined;

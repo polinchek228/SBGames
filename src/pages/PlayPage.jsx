@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Settings, X, Cpu, HardDrive, AlertTriangle, ShieldAlert, Info, Plus, Package, FileImage, Sparkles, Trash2, Search, Download, Check, ExternalLink, ChevronDown, ArrowLeft, MoreHorizontal, Grid3X3, List, Folder, FolderOpen, Settings2, RefreshCw, Camera, ArrowUpDown, Save, Link2, ShieldCheck } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
-import { invoke, notifyDesktop, setDiscordPresence, getMinecraftStatus, killMinecraft, launchInstance, instanceCreate, instanceDelete, instanceOpenFolder, importMrpack } from "../lib/tauri.js";
+import { invoke, notifyDesktop, setDiscordPresence, clearDiscordPresence, getMinecraftStatus, killMinecraft, launchInstance, instanceCreate, instanceDelete, instanceOpenFolder, importMrpack } from "../lib/tauri.js";
 import { pushLocalActivity } from "../components/RecentActivityCard.jsx";
 import { searchMods, searchResourcePacks, searchShaders, getPopular, getProjectVersions, getProject, downloadUrl, formatDownloads, truncateText, getMcVersions, getModrinthLoaders, getLatestVersions } from "../lib/modrinth.js";
 
@@ -257,15 +257,32 @@ export default function PlayPage({ user, onOpenCommunity }) {
   useEffect(() => {
     if (!selected) {
       window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } }));
-      setDiscordPresence("В лаунчере", "Выбирает сервер", "sbgames");
+      setDiscordPresence("Выбирает сервер", "SB Games", {
+        largeImage: "sbgames", largeText: "SB Games Launcher",
+        smallImage: "logo_small", smallText: user?.username || "Игрок",
+        startTimestamp: Math.floor(Date.now() / 1000),
+        buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+      });
       return;
     }
     window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
-    setDiscordPresence(`Выбирает сервер: ${selected.name}`, "В лаунчере", "sbgames");
+    setDiscordPresence(`Выбирает: ${selected.name}`, "SB Games", {
+      largeImage: selected.id,
+      largeText: selected.description || selected.name,
+      smallImage: "logo_small",
+      smallText: user?.username || "Игрок",
+      startTimestamp: Math.floor(Date.now() / 1000),
+      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+    });
   }, [selected]);
 
   useEffect(() => {
-    setDiscordPresence("В лаунчере", "Выбирает сервер", "sbgames");
+    setDiscordPresence("Выбирает сервер", "SB Games", {
+      largeImage: "sbgames", largeText: "SB Games Launcher",
+      smallImage: "logo_small", smallText: user?.username || "Игрок",
+      startTimestamp: Math.floor(Date.now() / 1000),
+      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+    });
     return () => { window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } })); };
   }, []);
 
@@ -676,7 +693,14 @@ export default function PlayPage({ user, onOpenCommunity }) {
     if (!selected) return;
     setLaunching(true);
     setLaunchError(null);
-    await setDiscordPresence(`Играет на ${selected.name}`, "В игре · SB Games", "sbgames");
+    await setDiscordPresence(`${selected.name}`, "Играет в Minecraft", {
+      largeImage: selected.id,
+      largeText: selected.description || selected.name,
+      smallImage: "playing",
+      smallText: user?.username || "Игрок",
+      startTimestamp: Math.floor(Date.now() / 1000),
+      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+    });
     const startedAt = Date.now();
     try {
       if (selected.id?.startsWith("custom_") && selected.customPack?.instanceId) {
@@ -737,6 +761,7 @@ export default function PlayPage({ user, onOpenCommunity }) {
       await killMinecraft();
     } catch {}
     setMcRunning(false);
+    clearDiscordPresence();
   };
 
   function saveSession(serverId, username) {

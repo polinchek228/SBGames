@@ -131,7 +131,14 @@ export default function MainLayout({ user, onLogout }) {
 
   // Discord — в лаунчере
   useEffect(() => {
-    setDiscordPresence("В лаунчере", "SB Games", "sbgames");
+    setDiscordPresence("В лаунчере", "SB Games", {
+      largeImage: "sbgames",
+      largeText: "SB Games Launcher v1.1",
+      smallImage: "logo_small",
+      smallText: user?.username || "Игрок",
+      startTimestamp: Math.floor(Date.now() / 1000),
+      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+    });
   }, []);
 
   // Запрос разрешения на уведомления при первом входе.

@@ -528,37 +528,96 @@ fn get_system_ram_gb() -> u64 {
 }
 
 // ─── 4. Discord Rich Presence ────────────────────────────────────────────────
+const DISCORD_APP_ID: &str = "1521885388153684219";
+
+fn ensure_discord_connected(client: &mut Option<discord_rich_presence::DiscordIpcClient>) -> bool {
+    use discord_rich_presence::DiscordIpc;
+    match client {
+        Some(c) => {
+            if c.set_activity(discord_rich_presence::activity::Activity::new()).is_err() {
+                let _ = c.connect();
+            }
+            true
+        }
+        None => {
+            if let Ok(mut c) = discord_rich_presence::DiscordIpcClient::new(DISCORD_APP_ID) {
+                let _ = c.connect();
+                *client = Some(c);
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct DiscordButton {
+    label: String,
+    url: String,
+}
+
 #[tauri::command]
 async fn set_discord_presence(
     state: tauri::State<'_, DiscordState>,
     details: String,
     status: String,
     large_image: Option<String>,
+    large_text: Option<String>,
+    small_image: Option<String>,
+    small_text: Option<String>,
+    start_timestamp: Option<i64>,
+    end_timestamp: Option<i64>,
+    buttons: Option<Vec<DiscordButton>>,
 ) -> Result<(), String> {
     use discord_rich_presence::{activity, DiscordIpc};
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-
-    // Ленивая инициализация клиента
-    if guard.is_none() {
-        // App ID из Discord Developer Portal — замени на свой
-        let mut client = discord_rich_presence::DiscordIpcClient::new("1234567890")
-            .map_err(|e| e.to_string())?;
-        let _ = client.connect(); // не критично если Discord не запущен
-        *guard = Some(client);
-    }
+    ensure_discord_connected(&mut guard);
 
     if let Some(client) = guard.as_mut() {
         let mut act = activity::Activity::new()
             .details(&details)
             .state(&status);
 
-        if let Some(img) = large_image.as_deref() {
-            act = act.assets(
-                activity::Assets::new()
-                    .large_image(img)
-                    .large_text("SB Games Launcher"),
-            );
+        // Assets: large + small images with hover text
+        let mut assets = activity::Assets::new();
+        if let Some(ref img) = large_image {
+            assets = assets.large_image(img);
+        }
+        if let Some(ref text) = large_text {
+            assets = assets.large_text(text);
+        }
+        if let Some(ref img) = small_image {
+            assets = assets.small_image(img);
+        }
+        if let Some(ref text) = small_text {
+            assets = assets.small_text(text);
+        }
+        if large_image.is_some() || small_image.is_some() || large_text.is_some() || small_text.is_some() {
+            act = act.assets(assets);
+        }
+
+        // Timestamps: elapsed time or countdown
+        if start_timestamp.is_some() || end_timestamp.is_some() {
+            let mut ts = activity::Timestamps::new();
+            if let Some(start) = start_timestamp {
+                ts = ts.start(start);
+            }
+            if let Some(end) = end_timestamp {
+                ts = ts.end(end);
+            }
+            act = act.timestamps(ts);
+        }
+
+        // Buttons (max 2, each with label + URL)
+        if let Some(ref btns) = buttons {
+            let activity_buttons: Vec<activity::Button> = btns.iter().take(2).map(|b| {
+                activity::Button::new(&b.label, &b.url)
+            }).collect();
+            if !activity_buttons.is_empty() {
+                act = act.buttons(activity_buttons);
+            }
         }
 
         let _ = client.set_activity(act);
@@ -570,6 +629,7 @@ async fn set_discord_presence(
 async fn clear_discord_presence(state: tauri::State<'_, DiscordState>) -> Result<(), String> {
     use discord_rich_presence::DiscordIpc;
     if let Ok(mut guard) = state.0.lock() {
+        ensure_discord_connected(&mut guard);
         if let Some(client) = guard.as_mut() {
             let _ = client.clear_activity();
         }
