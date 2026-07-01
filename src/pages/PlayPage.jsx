@@ -257,31 +257,54 @@ export default function PlayPage({ user, onOpenCommunity }) {
   useEffect(() => {
     if (!selected) {
       window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } }));
-      setDiscordPresence("Выбирает сервер", "SB Games", {
-        largeImage: "sbgames", largeText: "SB Games Launcher",
-        smallImage: "logo_small", smallText: user?.username || "Игрок",
+      setDiscordPresence("SB Games", "Выбирает сервер", {
+        largeImage: "logo", largeText: "Minecraft с модами",
+        smallImage: "online", smallText: user?.username || "Игрок",
         startTimestamp: Math.floor(Date.now() / 1000),
-        buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+        buttons: [{ label: "Начать играть", url: "https://games.sb-capital.group" }],
       });
       return;
     }
     window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: selected.id } }));
-    setDiscordPresence(`Выбирает: ${selected.name}`, "SB Games", {
+    setDiscordPresence(selected.name, "Готов к запуску", {
       largeImage: selected.id,
       largeText: selected.description || selected.name,
-      smallImage: "logo_small",
+      smallImage: "online",
       smallText: user?.username || "Игрок",
       startTimestamp: Math.floor(Date.now() / 1000),
-      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+      buttons: [{ label: "Начать играть", url: "https://games.sb-capital.group" }],
     });
   }, [selected]);
 
+  // Discord RPC cycling — живой статус каждые 8 сек
   useEffect(() => {
-    setDiscordPresence("Выбирает сервер", "SB Games", {
-      largeImage: "sbgames", largeText: "SB Games Launcher",
-      smallImage: "logo_small", smallText: user?.username || "Игрок",
+    if (selected) return; // не крутим если сервер уже выбран
+    const lines = [
+      "Выбери сервер для игры",
+      `${SERVERS.length} серверов доступно`,
+      `${friends.filter(f => onlineIds.has(f.id)).length} друзей онлайн`,
+      "Играй с друзьями",
+      "Новые мини-игры каждую неделю",
+    ];
+    let idx = 0;
+    const t = setInterval(() => {
+      idx = (idx + 1) % lines.length;
+      setDiscordPresence("SB Games", lines[idx], {
+        largeImage: "logo", largeText: "Minecraft с модами",
+        smallImage: "online", smallText: user?.username || "Игрок",
+        startTimestamp: Math.floor(Date.now() / 1000),
+        buttons: [{ label: "Начать играть", url: "https://games.sb-capital.group" }],
+      });
+    }, 8000);
+    return () => clearInterval(t);
+  }, [selected, user?.id, friends, onlineIds]);
+
+  useEffect(() => {
+    setDiscordPresence("SB Games", "Выбирает сервер", {
+      largeImage: "logo", largeText: "Minecraft с модами",
+      smallImage: "online", smallText: user?.username || "Игрок",
       startTimestamp: Math.floor(Date.now() / 1000),
-      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+      buttons: [{ label: "Начать играть", url: "https://games.sb-capital.group" }],
     });
     return () => { window.dispatchEvent(new CustomEvent("serverChange", { detail: { id: null } })); };
   }, []);
@@ -693,13 +716,13 @@ export default function PlayPage({ user, onOpenCommunity }) {
     if (!selected) return;
     setLaunching(true);
     setLaunchError(null);
-    await setDiscordPresence(`${selected.name}`, "Играет в Minecraft", {
+    await setDiscordPresence(selected.name, "Играет в Minecraft", {
       largeImage: selected.id,
       largeText: selected.description || selected.name,
       smallImage: "playing",
       smallText: user?.username || "Игрок",
       startTimestamp: Math.floor(Date.now() / 1000),
-      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+      buttons: [{ label: "Присоединиться", url: `https://games.sb-capital.group` }],
     });
     const startedAt = Date.now();
     try {

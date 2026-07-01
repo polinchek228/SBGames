@@ -131,15 +131,15 @@ export default function MainLayout({ user, onLogout }) {
 
   // Discord — в лаунчере
   useEffect(() => {
-    setDiscordPresence("В лаунчере", "SB Games", {
-      largeImage: "sbgames",
-      largeText: "SB Games Launcher v1.1",
-      smallImage: "logo_small",
+    setDiscordPresence("SB Games", "Загружает лаунчер...", {
+      largeImage: "logo",
+      largeText: "Minecraft с модами",
+      smallImage: "online",
       smallText: user?.username || "Игрок",
       startTimestamp: Math.floor(Date.now() / 1000),
-      buttons: [{ label: "Скачать лаунчер", url: "https://games.sb-capital.group" }],
+      buttons: [{ label: "Начать играть", url: "https://games.sb-capital.group" }],
     });
-  }, []);
+  }, [user?.id]);
 
   // Запрос разрешения на уведомления при первом входе.
   // На macOS WKWebView Tauri-плагин перехватывает window.Notification и может
